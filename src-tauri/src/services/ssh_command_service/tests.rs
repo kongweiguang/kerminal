@@ -528,6 +528,34 @@ async fn native_command_rejects_untrusted_loopback_host_key() {
     ));
 }
 
+#[tokio::test]
+async fn native_connection_test_learns_unknown_loopback_host_key() {
+    let server = start_loopback_command_server().await;
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let known_hosts_path = paths.root.join("known_hosts");
+    let mut host = remote_host(RemoteHostAuthType::Password);
+    host.host = "127.0.0.1".to_owned();
+    host.port = server.addr.port();
+    host.credential_secret = Some("secret".to_owned());
+
+    SshCommandService::new()
+        .test_connection(&paths, &host)
+        .await
+        .expect("test connection should trust and authenticate loopback host");
+
+    assert!(
+        keys::known_hosts::check_known_hosts_path(
+            "127.0.0.1",
+            server.addr.port(),
+            &server.host_key,
+            &known_hosts_path,
+        )
+        .expect("check learned loopback host key"),
+        "test connection should persist the first-seen host key"
+    );
+}
+
 #[test]
 fn normalize_command_rejects_empty_and_nul() {
     assert!(matches!(
