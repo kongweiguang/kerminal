@@ -72,10 +72,15 @@ const mocks = vi.hoisted(() => {
     cols = 80;
     clear = vi.fn();
     rows = 24;
+    customKeyEventHandler:
+      | ((event: KeyboardEvent) => boolean)
+      | undefined;
     dispose = vi.fn();
     focus = vi.fn();
     getSelection = vi.fn(() => "selected output");
-    loadAddon = vi.fn();
+    loadAddon = vi.fn((addon: { activate?: (terminal: MockTerminal) => void }) => {
+      addon.activate?.(this);
+    });
     onDataCallback: ((data: string) => void) | undefined;
     onScrollCallback: ((viewportY: number) => void) | undefined;
     onSelectionChangeCallback: (() => void) | undefined;
@@ -175,6 +180,10 @@ const mocks = vi.hoisted(() => {
       terminalInstances.push(this);
     }
 
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      this.customKeyEventHandler = handler;
+    }
+
     onData(callback: (data: string) => void) {
       this.onDataCallback = callback;
       return { dispose: vi.fn() };
@@ -255,11 +264,36 @@ const mocks = vi.hoisted(() => {
     emitSelectionChange() {
       this.onSelectionChangeCallback?.();
     }
+
+    triggerCustomKeyEvent(init: KeyboardEventInit) {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      const result = this.customKeyEventHandler?.(event);
+      return {
+        defaultPrevented: event.defaultPrevented,
+        result,
+      };
+    }
   }
 
   class MockFitAddon {
+    private terminal: MockTerminal | null = null;
+
+    activate(terminal: MockTerminal) {
+      this.terminal = terminal;
+    }
+
     dispose = vi.fn();
-    fit = vi.fn();
+    fit = vi.fn(() => {
+      const dimensions = this.proposeDimensions();
+      if (this.terminal && dimensions) {
+        this.terminal.cols = dimensions.cols;
+        this.terminal.rows = dimensions.rows;
+      }
+    });
     proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
 
     constructor() {
@@ -518,6 +552,7 @@ beforeEach(() => {
   mocks.api.readTerminalClipboardText.mockReset();
   mocks.api.writeDesktopClipboardText.mockReset();
   mocks.api.writeTerminal.mockReset();
+  mocks.terminalInstances.forEach((terminal) => terminal.write.mockReset());
   mocks.api.resizeTerminal.mockReset();
   mocks.api.closeTerminal.mockReset();
   mocks.api.startTerminalLog.mockReset();
