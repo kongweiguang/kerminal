@@ -6,15 +6,15 @@ import type { TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import { listTerminalSuggestions, recordTerminalSuggestionFeedback } from "../../lib/terminalSuggestionApi";
-import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
+import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneRuntimeContext, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
 import { createTerminalOutputWriter } from "./terminalOutputWriter";
-import { appendCommandBlockOutput } from "./terminalCommandBlocks";
+import { appendCommandBlockOutput, terminalCommandBlockPlainText } from "./terminalCommandBlocks";
 import {
   clearTerminalCommandBlocks,
   closeLatestTerminalCommandBlock,
   submitTerminalCommandBlock,
 } from "./terminalCommandBlockLifecycle";
-import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind } from "./terminalInputModel";
+import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
 import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
@@ -24,11 +24,12 @@ import {
 } from "./terminalOutputInstrumentation";
 import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
 import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
+import { KITTY_KEYBOARD_PROTOCOL_ENABLE, resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
 
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 
 export function installXtermPaneRuntime(params: any) {
-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
+  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
     const container = containerRef.current;
     if (!container) {
       return undefined;
@@ -42,6 +43,8 @@ export function installXtermPaneRuntime(params: any) {
     let suggestionTimer: number | null = null;
     let commandBlockViewSyncFrame: number | null = null;
     const assistEnabled = shellAssistEnabled !== false;
+    const inputCompatibilityMode =
+      params.inputCompatibilityMode === "agentTui" ? "agentTui" : "shell";
     commandBlocksRef.current = [];
     inputModelRef.current = createTerminalInputModelState();
     setCommandBlockViews([]);
@@ -147,6 +150,20 @@ export function installXtermPaneRuntime(params: any) {
       }
       commandBlockViewSyncFrame = null;
     };
+    const latestCommandBlockText = () => {
+      if (!assistEnabled) {
+        return undefined;
+      }
+      const block = [...commandBlocksRef.current]
+        .reverse()
+        .find((candidate) => candidate.submitted && candidate.command.trim());
+      return block ? terminalCommandBlockPlainText(block) : undefined;
+    };
+    const syncCommandBlockRuntimeContext = () => {
+      updateTerminalPaneRuntimeContext(paneId, {
+        commandBlockText: latestCommandBlockText(),
+      });
+    };
     const scheduleCommandBlockViewSync = () => {
       if (!assistEnabled) {
         return;
@@ -160,12 +177,14 @@ export function installXtermPaneRuntime(params: any) {
               commandBlockViewSyncFrame = null;
               if (!disposed) {
                 syncCommandBlockViews();
+                syncCommandBlockRuntimeContext();
               }
             })
           : window.setTimeout(() => {
               commandBlockViewSyncFrame = null;
               if (!disposed) {
                 syncCommandBlockViews();
+                syncCommandBlockRuntimeContext();
               }
             }, 16);
     };
@@ -446,11 +465,28 @@ export function installXtermPaneRuntime(params: any) {
         scheduleGhostSuggestion();
       }
     });
+    terminal.attachCustomKeyEventHandler((event) => {
+      const compatibilityOverride = resolveTerminalInputCompatibilityOverride(
+        event,
+        inputCompatibilityMode,
+      );
+      if (compatibilityOverride) {
+        event.preventDefault();
+        event.stopPropagation();
+        const sessionId = sessionIdRef.current;
+        if (sessionId) {
+          void writeTerminal(sessionId, compatibilityOverride.data);
+        }
+        return false;
+      }
+      return true;
+    });
     const selectionDisposable = terminal.onSelectionChange(() => {
+      const selection = terminal.getSelection?.() ?? "";
+      updateTerminalPaneRuntimeContext(paneId, { selectedText: selection });
       if (!terminalAppearanceRef.current.selectionCopy) {
         return;
       }
-      const selection = terminal.getSelection?.() ?? "";
       if (selection) {
         void writeDesktopClipboardText(selection);
       }
@@ -472,6 +508,7 @@ export function installXtermPaneRuntime(params: any) {
     const writeParsedDisposable = terminal.onWriteParsed(() => {
       clearCommandBlockViewSyncFrame();
       syncCommandBlockViews();
+      syncCommandBlockRuntimeContext();
       refreshGhostSuggestionLayout();
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
@@ -491,8 +528,80 @@ export function installXtermPaneRuntime(params: any) {
       }
       scheduleCommandBlockViewSync();
     });
+    const xtermElement = container.querySelector(".xterm");
+    const compositionTarget = xtermElement ?? container;
+    const handleCompositionStart = () => {
+      inputModelRef.current = updateTerminalInputComposition(
+        inputModelRef.current,
+        true,
+      );
+      inputBufferRef.current = inputModelRef.current.command;
+      clearGhostSuggestion();
+    };
+    const handleCompositionEnd = () => {
+      inputModelRef.current = updateTerminalInputComposition(
+        inputModelRef.current,
+        false,
+      );
+      inputBufferRef.current = inputModelRef.current.command;
+      scheduleGhostSuggestion();
+    };
+    compositionTarget.addEventListener(
+      "compositionstart",
+      handleCompositionStart,
+    );
+    compositionTarget.addEventListener("compositionend", handleCompositionEnd);
     terminal.open(container);
     terminalRef.current = terminal;
+    if (shouldEnableKittyKeyboardProtocol(inputCompatibilityMode)) {
+      terminal.write(KITTY_KEYBOARD_PROTOCOL_ENABLE);
+    }
+    let suppressNextPasteEvent = false;
+    let suppressPasteResetTimer: number | null = null;
+    const clearRuntimePasteSuppression = () => {
+      suppressNextPasteEvent = false;
+      if (suppressPasteResetTimer !== null) {
+        window.clearTimeout(suppressPasteResetTimer);
+        suppressPasteResetTimer = null;
+      }
+    };
+    const armRuntimePasteSuppression = () => {
+      clearRuntimePasteSuppression();
+      suppressNextPasteEvent = true;
+      suppressPasteResetTimer = window.setTimeout(() => {
+        suppressNextPasteEvent = false;
+        suppressPasteResetTimer = null;
+      }, 500);
+    };
+    const handleRuntimeKeydown = (event: KeyboardEvent) => {
+      const runtimeOverride = resolveTerminalRuntimeKeydownOverride(event);
+      if (!runtimeOverride) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (runtimeOverride.suppressPasteEvent) {
+        armRuntimePasteSuppression();
+      }
+      const sessionId = sessionIdRef.current;
+      if (sessionId) {
+        void writeTerminal(sessionId, runtimeOverride.data);
+      }
+    };
+    const handleRuntimePaste = (event: ClipboardEvent) => {
+      if (!suppressNextPasteEvent) {
+        return;
+      }
+
+      clearRuntimePasteSuppression();
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    container.addEventListener("keydown", handleRuntimeKeydown, true);
+    container.addEventListener("paste", handleRuntimePaste, true);
     const commandBlockClearHandlersDisposable = registerCommandBlockClearHandlers(
       terminal,
       clearCommandBlocks,
@@ -511,15 +620,13 @@ export function installXtermPaneRuntime(params: any) {
     const fitAndResize = () => {
       fitAddon.fit();
       const sessionId = sessionIdRef.current;
-      const dimensions = fitAddon.proposeDimensions();
-      if (!sessionId || !dimensions) {
+      const dimensions = { cols: terminal.cols, rows: terminal.rows };
+      onTerminalDimensionsChangeRef.current?.(dimensions);
+      if (!sessionId) {
         return;
       }
 
-      void resizeTerminal(sessionId, {
-        cols: dimensions.cols,
-        rows: dimensions.rows,
-      });
+      void resizeTerminal(sessionId, dimensions);
       refreshGhostSuggestionLayout();
     };
 
@@ -894,6 +1001,17 @@ export function installXtermPaneRuntime(params: any) {
       scrollDisposable.dispose();
       writeParsedDisposable.dispose();
       bufferChangeDisposable.dispose();
+      compositionTarget.removeEventListener(
+        "compositionstart",
+        handleCompositionStart,
+      );
+      compositionTarget.removeEventListener(
+        "compositionend",
+        handleCompositionEnd,
+      );
+      container.removeEventListener("keydown", handleRuntimeKeydown, true);
+      container.removeEventListener("paste", handleRuntimePaste, true);
+      clearRuntimePasteSuppression();
       commandBlockClearHandlersDisposable.dispose();
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
