@@ -23,6 +23,7 @@ import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type {
   ResolvedTheme,
+  TerminalColorScheme,
   TerminalAppearance,
 } from "../settings/settingsModel";
 import {
@@ -77,6 +78,7 @@ export {
   collectSubmittedCommands,
 } from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
+import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
 const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
@@ -86,7 +88,10 @@ interface XtermPaneProps {
   currentCwd?: string;
   cwd?: string;
   env?: Record<string, string>;
+  focusRequestToken?: number;
   focused: boolean;
+  inputCompatibilityMode?: TerminalInputCompatibilityMode;
+  inputRequest?: XtermPaneInputRequest | null;
   paneId: string;
   profileId?: string;
   remoteCommand?: string;
@@ -97,6 +102,7 @@ interface XtermPaneProps {
   shellAssistEnabled?: boolean;
   startupMessage?: string;
   terminalAppearance: TerminalAppearance;
+  terminalColorSchemeOverride?: TerminalColorScheme;
   target?: RemoteTargetRef;
   title: string;
   transientStartupMessage?: boolean;
@@ -105,8 +111,20 @@ interface XtermPaneProps {
   onOutputHistoryChange?: (outputHistory: string | undefined) => void;
   onSessionFinished?: (event: XtermPaneSessionFinishedEvent) => void;
   onSplitPane?: (direction: TerminalSplitDirection) => void;
+  onTerminalDimensionsChange?: (dimensions: XtermPaneDimensions) => void;
   outputHistory?: string;
   resolveInitialOutputHistory?: () => string | undefined;
+}
+
+export interface XtermPaneDimensions {
+  cols: number;
+  rows: number;
+}
+
+export interface XtermPaneInputRequest {
+  id: string;
+  submit?: boolean;
+  text: string;
 }
 
 export interface XtermPaneSessionFinishedEvent {
@@ -120,7 +138,10 @@ export function XtermPane({
   currentCwd,
   cwd,
   env,
+  focusRequestToken,
   focused,
+  inputCompatibilityMode = "shell",
+  inputRequest,
   paneId,
   profileId,
   remoteCommand,
@@ -131,6 +152,7 @@ export function XtermPane({
   shellAssistEnabled = true,
   startupMessage,
   terminalAppearance,
+  terminalColorSchemeOverride,
   target,
   title,
   transientStartupMessage = false,
@@ -139,6 +161,7 @@ export function XtermPane({
   onOutputHistoryChange,
   onSessionFinished,
   onSplitPane,
+  onTerminalDimensionsChange,
   outputHistory,
   resolveInitialOutputHistory,
 }: XtermPaneProps) {
@@ -158,6 +181,7 @@ export function XtermPane({
   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
   const onSessionFinishedRef = useRef(onSessionFinished);
+  const onTerminalDimensionsChangeRef = useRef(onTerminalDimensionsChange);
   const outputHistoryRef = useRef(
     outputHistory ?? resolveInitialOutputHistory?.(),
   );
@@ -167,6 +191,7 @@ export function XtermPane({
   const reconnectSessionRef = useRef<(() => Promise<void>) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const lastInputRequestIdRef = useRef<string | null>(null);
   const terminalAppearanceRef = useRef(terminalAppearance);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const searchInputId = useId();
@@ -201,10 +226,12 @@ export function XtermPane({
     () =>
       xtermThemeFor(
         resolvedTheme,
-        terminalColorSchemeForTheme(terminalAppearance, resolvedTheme),
+        terminalColorSchemeOverride ??
+          terminalColorSchemeForTheme(terminalAppearance, resolvedTheme),
       ),
     [
       resolvedTheme,
+      terminalColorSchemeOverride,
       terminalAppearance.darkColorScheme,
       terminalAppearance.lightColorScheme,
     ],
@@ -334,6 +361,10 @@ export function XtermPane({
   }, [onSessionFinished]);
 
   useEffect(() => {
+    onTerminalDimensionsChangeRef.current = onTerminalDimensionsChange;
+  }, [onTerminalDimensionsChange]);
+
+  useEffect(() => {
     if (resolveInitialOutputHistory) {
       return;
     }
@@ -364,9 +395,11 @@ export function XtermPane({
       ghostSuggestionRef,
       inputBufferRef,
       inputModelRef,
+      inputCompatibilityMode,
       onCurrentCwdChangeRef,
       onOutputHistoryChangeRef,
       onSessionFinishedRef,
+      onTerminalDimensionsChangeRef,
       outputHistoryRef,
       paneId,
       profileId,
@@ -400,6 +433,7 @@ export function XtermPane({
     argsDependencyKey,
     cwd,
     envDependencyKey,
+    inputCompatibilityMode,
     paneId,
     profileId,
     remoteCommand,
@@ -421,6 +455,32 @@ export function XtermPane({
   }, [focused]);
 
   useEffect(() => {
+    if (typeof focusRequestToken === "number") {
+      terminalRef.current?.focus();
+    }
+  }, [focusRequestToken]);
+
+  useEffect(() => {
+    if (!inputRequest || lastInputRequestIdRef.current === inputRequest.id) {
+      return;
+    }
+    const terminal = terminalRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!terminal || !sessionId) {
+      return;
+    }
+
+    lastInputRequestIdRef.current = inputRequest.id;
+    if (inputRequest.text.length > 0) {
+      terminal.paste(inputRequest.text);
+    }
+    if (inputRequest.submit) {
+      void writeTerminal(sessionId, "\r");
+    }
+    terminal.focus();
+  }, [connectionState, inputRequest]);
+
+  useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) {
       return;
@@ -436,20 +496,20 @@ export function XtermPane({
     terminal.options.macOptionIsMeta = terminalAppearance.macOptionIsMeta;
     terminal.options.scrollback = terminalAppearance.scrollback;
     terminal.options.theme = terminalTheme;
+    (terminal.options as { modifyOtherKeys?: number }).modifyOtherKeys =
+      inputCompatibilityMode === "agentTui" ? 2 : 0;
     if (containerRef.current) {
       containerRef.current.style.fontFamily = terminalAppearance.fontFamily;
     }
-    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
     fitAddonRef.current?.fit();
-    const dimensions = fitAddonRef.current?.proposeDimensions();
+    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
+    const dimensions = { cols: terminal.cols, rows: terminal.rows };
     const sessionId = sessionIdRef.current;
-    if (sessionId && dimensions) {
-      void resizeTerminal(sessionId, {
-        cols: dimensions.cols,
-        rows: dimensions.rows,
-      });
+    onTerminalDimensionsChangeRef.current?.(dimensions);
+    if (sessionId) {
+      void resizeTerminal(sessionId, dimensions);
     }
-  }, [terminalAppearance, terminalFontWeight, terminalTheme]);
+  }, [inputCompatibilityMode, terminalAppearance, terminalFontWeight, terminalTheme]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -744,6 +804,7 @@ export function XtermPane({
         className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${
           shellAssistEnabled ? "pl-6" : "pl-3"
         }`}
+        onPointerDown={() => terminalRef.current?.focus()}
       >
         <div
           aria-label={`${title} xterm 终端`}
