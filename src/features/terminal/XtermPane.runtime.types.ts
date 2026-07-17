@@ -1,3 +1,4 @@
+// @author kongweiguang
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type {
@@ -91,6 +92,7 @@ export interface InstallXtermPaneRuntimeParams
   setCommandBlockViews: Dispatch<SetStateAction<TerminalCommandBlockView[]>>;
   setConnectionState: Dispatch<SetStateAction<ConnectionState>>;
   setGhostSuggestion: Dispatch<SetStateAction<TerminalGhostSuggestion | null>>;
+  setInlineTuiActive: (active: boolean) => void;
   setLogNotice: Dispatch<SetStateAction<string | null>>;
   setLogState: Dispatch<SetStateAction<TerminalSessionLogState>>;
   setSearchResults: Dispatch<SetStateAction<XtermPaneSearchResults>>;

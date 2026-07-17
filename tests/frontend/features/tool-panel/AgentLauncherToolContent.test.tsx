@@ -1,9 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// @author kongweiguang
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExternalAgentId, ExternalAgentWorkspaceStatus } from "../../../../src/lib/agentLauncherApi";
+import type {
+  ExternalAgentId,
+  ExternalAgentWorkspaceStatus,
+} from "../../../../src/lib/agentLauncherApi";
 import { registerTerminalPaneSession } from "../../../../src/features/terminal/terminalSessionRegistry";
-import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";const apiMocks = vi.hoisted(() => ({
+import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";
+import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";
+const apiMocks = vi.hoisted(() => ({
   archiveAgentSession: vi.fn(),
   createAgentSession: vi.fn(),
   getExternalAgentWorkspaceStatus: vi.fn(),
@@ -28,8 +40,9 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   agentSessionRecordAgentId: (record: {
     session: { agentId?: string; agent_id?: string };
   }) => record.session.agentId ?? record.session.agent_id,
-  agentSessionRecordId: (record: { session: { agentSessionId?: string; agent_session_id?: string } }) =>
-    record.session.agentSessionId ?? record.session.agent_session_id,
+  agentSessionRecordId: (record: {
+    session: { agentSessionId?: string; agent_session_id?: string };
+  }) => record.session.agentSessionId ?? record.session.agent_session_id,
   agentSessionRecordStatus: (record: { session: { status?: string } }) =>
     record.session.status ?? "active",
   agentSessionRecordTarget: (record: { session: { target?: unknown } }) =>
@@ -77,7 +90,10 @@ vi.mock("../../../../src/features/terminal/XtermPane", () => ({
       status: "working" | "attention" | "finished" | "exited";
       terminalSessionId: string;
     }) => void;
-    onSessionFinished?: (event: { durationMs: number; sessionId: string }) => void;
+    onSessionFinished?: (event: {
+      durationMs: number;
+      sessionId: string;
+    }) => void;
   }) => {
     terminalMocks.renderXtermPane(props);
     return (
@@ -123,7 +139,9 @@ describe("AgentLauncherToolContent", () => {
       sent: true,
     });
     unregisterTestTerminalPaneSessions();
-    apiMocks.getExternalAgentWorkspaceStatus.mockResolvedValue(workspaceStatus());
+    apiMocks.getExternalAgentWorkspaceStatus.mockResolvedValue(
+      workspaceStatus(),
+    );
     apiMocks.listAgentSessions.mockResolvedValue({
       diagnostics: [],
       sessions: [],
@@ -148,13 +166,7 @@ describe("AgentLauncherToolContent", () => {
       }),
     );
     apiMocks.createAgentSession.mockImplementation(
-      async ({
-        agentId,
-        target,
-      }: {
-        agentId: string;
-        target?: unknown;
-      }) => ({
+      async ({ agentId, target }: { agentId: string; target?: unknown }) => ({
         session: {
           agentId,
           agentSessionId: `ags-${agentId}`,
@@ -166,7 +178,12 @@ describe("AgentLauncherToolContent", () => {
           },
           sessionRoot: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
           target,
-          title: agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex",
+          title:
+            agentId === "claude"
+              ? "Claude"
+              : agentId === "custom"
+                ? "Custom"
+                : "Codex",
           workspaceRoot: "C:/Users/me/.kerminal",
         },
       }),
@@ -187,13 +204,7 @@ describe("AgentLauncherToolContent", () => {
         return {
           agentId: request.agentId,
           agentSessionId: request.agentSessionId,
-          args: [
-            "-NoLogo",
-            "-NoProfile",
-            "-NoExit",
-            "-Command",
-            command,
-          ],
+          args: ["-NoLogo", "-NoProfile", "-NoExit", "-Command", command],
           cwd: `C:/Users/me/.kerminal/agents/sessions/${request.agentSessionId}`,
           env: {
             KERMINAL_AGENT_SESSION_ID: request.agentSessionId,
@@ -215,7 +226,9 @@ describe("AgentLauncherToolContent", () => {
     const user = userEvent.setup();
     const { container } = renderAgentLauncher();
 
-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Open Codex" }),
+    ).toBeInTheDocument();
     expect(
       screen
         .getAllByRole("button")
@@ -256,7 +269,9 @@ describe("AgentLauncherToolContent", () => {
   });
 
   it("keeps the same three launchers while workspace status is loading", () => {
-    apiMocks.getExternalAgentWorkspaceStatus.mockReturnValueOnce(new Promise(() => {}));
+    apiMocks.getExternalAgentWorkspaceStatus.mockReturnValueOnce(
+      new Promise(() => {}),
+    );
 
     renderAgentLauncher();
 
@@ -281,7 +296,9 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Open Codex" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Open Codex" }));
 
@@ -299,13 +316,16 @@ describe("AgentLauncherToolContent", () => {
         resumeProviderSession: false,
       });
     });
-    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute("data-shell", "pwsh.exe");
+    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
+      "data-shell",
+      "pwsh.exe",
+    );
     expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
       "data-cwd",
       "C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
     expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
-      "codex · C:/Users/me/.kerminal/agents/sessions/ags-codex",
+      "codex --dangerously-bypass-hook-trust · C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
     expect(terminalMocks.renderXtermPane).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -314,7 +334,7 @@ describe("AgentLauncherToolContent", () => {
           "-NoProfile",
           "-NoExit",
           "-Command",
-          "codex",
+          "codex --dangerously-bypass-hook-trust",
         ],
         cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
         focused: true,
@@ -382,9 +402,9 @@ describe("AgentLauncherToolContent", () => {
       });
     });
 
-    expect(await screen.findByTestId("agent-terminal-signal")).toHaveTextContent(
-      "需处理",
-    );
+    expect(
+      await screen.findByTestId("agent-terminal-signal"),
+    ).toHaveTextContent("需处理");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByText("队列")).not.toBeInTheDocument();
   });
@@ -394,7 +414,9 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    const codexButton = await screen.findByRole("button", { name: "Open Codex" });
+    const codexButton = await screen.findByRole("button", {
+      name: "Open Codex",
+    });
     fireEvent.contextMenu(codexButton, { clientX: 120, clientY: 160 });
 
     const menu = await screen.findByRole("menu");
@@ -419,10 +441,10 @@ describe("AgentLauncherToolContent", () => {
     });
     expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
       "data-args",
-      "-NoLogo -NoProfile -NoExit -Command codex --dangerously-bypass-approvals-and-sandbox",
+      "-NoLogo -NoProfile -NoExit -Command codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
     );
     expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
-      "codex --dangerously-bypass-approvals-and-sandbox · C:/Users/me/.kerminal/agents/sessions/ags-codex",
+      "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust · C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
   });
 
@@ -431,7 +453,9 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    const claudeButton = await screen.findByRole("button", { name: "Open Claude" });
+    const claudeButton = await screen.findByRole("button", {
+      name: "Open Claude",
+    });
     fireEvent.contextMenu(claudeButton, { clientX: 120, clientY: 160 });
 
     await user.click(
@@ -470,14 +494,16 @@ describe("AgentLauncherToolContent", () => {
     render(
       <AgentLauncherToolContent
         activeTab={{ id: "tab-main" } as never}
-        focusedPane={{
-          currentCwd: "/srv/app",
-          cwd: "/srv/fallback",
-          id: "pane-prod",
-          mode: "ssh",
-          shell: "bash",
-          title: "prod web",
-        } as never}
+        focusedPane={
+          {
+            currentCwd: "/srv/app",
+            cwd: "/srv/fallback",
+            id: "pane-prod",
+            mode: "ssh",
+            shell: "bash",
+            title: "prod web",
+          } as never
+        }
       />,
     );
 
@@ -525,13 +551,15 @@ describe("AgentLauncherToolContent", () => {
     render(
       <AgentLauncherToolContent
         activeTab={{ id: "tab-main" } as never}
-        focusedPane={{
-          currentCwd: "/srv/app",
-          cwd: "/srv/fallback",
-          id: "pane-prod",
-          mode: "ssh",
-          shell: "bash",
-        } as never}
+        focusedPane={
+          {
+            currentCwd: "/srv/app",
+            cwd: "/srv/fallback",
+            id: "pane-prod",
+            mode: "ssh",
+            shell: "bash",
+          } as never
+        }
       />,
     );
 
@@ -572,7 +600,8 @@ describe("AgentLauncherToolContent", () => {
               cwd: "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
               shell: "codex",
             },
-            sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
+            sessionRoot:
+              "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
             status: "active",
             target: {
               tabId: "tab-main",
@@ -588,7 +617,9 @@ describe("AgentLauncherToolContent", () => {
 
     await user.click(await screen.findByRole("button", { name: "Open Codex" }));
 
-    expect(await screen.findByRole("button", { name: "继续上次" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "继续上次" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新会话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
     expect(apiMocks.createAgentSession).not.toHaveBeenCalled();
@@ -609,18 +640,13 @@ describe("AgentLauncherToolContent", () => {
       "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
     );
   });
-
-
 });
 
 function renderAgentLauncher(
   props: Partial<Parameters<typeof AgentLauncherToolContent>[0]> = {},
 ) {
   return render(
-    <AgentLauncherToolContent
-      activeTab={terminalTab("tab-main")}
-      {...props}
-    />,
+    <AgentLauncherToolContent activeTab={terminalTab("tab-main")} {...props} />,
   );
 }
 

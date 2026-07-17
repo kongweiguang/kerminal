@@ -34,6 +34,7 @@ export function createXtermPaneCommandBlockRuntime({
   reduceShellIntegrationState,
   setCommandBlockNotice,
   setCommandBlockViews,
+  setInlineTuiActive,
   shellIntegrationCommandBlockProtocolRef,
   syncCommandBlockViews,
   terminal,
@@ -51,6 +52,7 @@ export function createXtermPaneCommandBlockRuntime({
   ) => TerminalShellIntegrationState;
   setCommandBlockNotice: (notice: string | null) => void;
   setCommandBlockViews: (views: TerminalCommandBlockView[]) => void;
+  setInlineTuiActive: (active: boolean) => void;
   shellIntegrationCommandBlockProtocolRef: MutableRefObject<boolean>;
   syncCommandBlockViews: () => void;
   terminal: XtermTerminal;
@@ -59,6 +61,9 @@ export function createXtermPaneCommandBlockRuntime({
   let shellIntegrationOsc133Buffer = "";
   let pendingProtocolCommand: string | undefined;
   let protocolCommandOutputActive = false;
+  let interactiveTuiActive = false;
+
+  const commandBlocksEnabled = () => assistEnabled && !interactiveTuiActive;
 
   const scheduleViewSyncIfLive = () => {
     if (!isDisposed()) {
@@ -67,7 +72,7 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const closeCurrentCommandBlock = () => {
-    if (!assistEnabled) {
+    if (!commandBlocksEnabled()) {
       return;
     }
     if (
@@ -94,7 +99,7 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const registerCommandBlock = (command: string) => {
-    if (!assistEnabled) {
+    if (!commandBlocksEnabled()) {
       return;
     }
     if (
@@ -134,7 +139,7 @@ export function createXtermPaneCommandBlockRuntime({
 
   const syncProtocolPromptBlock = () => {
     if (
-      !assistEnabled ||
+      !commandBlocksEnabled() ||
       !shellIntegrationCommandBlockProtocolRef.current ||
       terminal.buffer.active.type !== "normal"
     ) {
@@ -159,7 +164,7 @@ export function createXtermPaneCommandBlockRuntime({
 
   const startProtocolCommandBlock = (commandFromOsc?: string) => {
     if (
-      !assistEnabled ||
+      !commandBlocksEnabled() ||
       !shellIntegrationCommandBlockProtocolRef.current ||
       terminal.buffer.active.type !== "normal"
     ) {
@@ -185,7 +190,10 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const finishProtocolCommandBlock = (options: { closeMarker: boolean }) => {
-    if (!assistEnabled || !shellIntegrationCommandBlockProtocolRef.current) {
+    if (
+      !commandBlocksEnabled() ||
+      !shellIntegrationCommandBlockProtocolRef.current
+    ) {
       return;
     }
     protocolCommandOutputActive = false;
@@ -199,7 +207,10 @@ export function createXtermPaneCommandBlockRuntime({
     event: TerminalShellIntegrationOsc133Event,
     source: "output" | "parser",
   ) => {
-    if (!shellIntegrationCommandBlockProtocolRef.current) {
+    if (
+      !commandBlocksEnabled() ||
+      !shellIntegrationCommandBlockProtocolRef.current
+    ) {
       return;
     }
     switch (event.marker) {
@@ -217,15 +228,17 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const appendProtocolCommandOutput = (data: string) => {
-    if (!assistEnabled || !protocolCommandOutputActive) {
+    if (!commandBlocksEnabled() || !protocolCommandOutputActive) {
       return;
     }
     appendCommandBlockOutput(commandBlocksRef.current, data);
   };
 
   const appendShellIntegrationCommandOutput = (data: string) => {
+    if (!commandBlocksEnabled()) {
+      return;
+    }
     if (
-      !assistEnabled ||
       !shellIntegrationCommandBlockProtocolRef.current ||
       !readShellIntegrationState().trusted
     ) {
@@ -263,7 +276,7 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const latestCommandBlockText = () => {
-    if (!assistEnabled) {
+    if (!commandBlocksEnabled()) {
       return undefined;
     }
     const block = [...commandBlocksRef.current]
@@ -279,7 +292,7 @@ export function createXtermPaneCommandBlockRuntime({
   };
 
   const scheduleCommandBlockViewSync = () => {
-    if (!assistEnabled || commandBlockViewSyncFrame !== null) {
+    if (!commandBlocksEnabled() || commandBlockViewSyncFrame !== null) {
       return;
     }
     commandBlockViewSyncFrame =
@@ -305,16 +318,40 @@ export function createXtermPaneCommandBlockRuntime({
     clearCommandBlockViewSyncFrame,
     clearCommandBlocks,
     closeCurrentCommandBlock,
+    hasOpenCommandBlock: () => Boolean(latestOpenSubmittedCommandBlock()),
     handleShellIntegrationOsc133,
+    isInteractiveTuiActive: () => interactiveTuiActive,
     registerCommandBlock,
     resetProtocolState: () => {
       shellIntegrationOsc133Buffer = "";
       pendingProtocolCommand = undefined;
       protocolCommandOutputActive = false;
+      if (interactiveTuiActive) {
+        interactiveTuiActive = false;
+        setInlineTuiActive(false);
+      }
     },
     scheduleCommandBlockViewSync,
     setPendingProtocolCommand: (command: string) => {
+      if (!commandBlocksEnabled()) {
+        return;
+      }
       pendingProtocolCommand = command;
+    },
+    setInteractiveTuiActive: (active: boolean) => {
+      if (!assistEnabled || interactiveTuiActive === active) {
+        return;
+      }
+      interactiveTuiActive = active;
+      clearCommandBlockViewSyncFrame();
+      setInlineTuiActive(active);
+      shellIntegrationOsc133Buffer = "";
+      pendingProtocolCommand = undefined;
+      protocolCommandOutputActive = false;
+      clearTerminalCommandBlocks(commandBlocksRef);
+      setCommandBlockViews([]);
+      setCommandBlockNotice(null);
+      syncCommandBlockRuntimeContext();
     },
     syncCommandBlockRuntimeContext,
   };

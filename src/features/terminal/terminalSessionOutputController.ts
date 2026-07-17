@@ -75,6 +75,7 @@ export function createTerminalSessionOutputController({
 }: CreateTerminalSessionOutputControllerOptions) {
   let transientStartupNoticeVisible = initialStartupNoticeVisible;
   let remoteCwdProtocolEstablished = false;
+  let terminalControlSequenceTail = "";
 
   return (event: TerminalOutputEvent) => {
     if (!isCurrent()) {
@@ -82,6 +83,9 @@ export function createTerminalSessionOutputController({
     }
     if (event.kind === "agentSignal") {
       if (event.agentSignal) {
+        outputWriter.setTuiCursorProtection?.(
+          event.agentSignal.status !== "exited",
+        );
         onAgentSignal(event.agentSignal);
       }
       return;
@@ -132,6 +136,18 @@ export function createTerminalSessionOutputController({
         "writer",
         event.data.length,
         () => {
+          const terminalControlSequenceWindow =
+            terminalControlSequenceTail + event.data;
+          terminalControlSequenceTail = terminalControlSequenceWindow.slice(-16);
+          if (
+            terminalControlSequenceRequiresImmediateResponse(
+              terminalControlSequenceWindow,
+            )
+          ) {
+            terminalControlSequenceTail = "";
+            outputWriter.writeNow(event.data);
+            return;
+          }
           if (
             hasRemoteTerminalTarget &&
             initialRemoteOutputGate.shouldWriteNow(event.data)
@@ -163,4 +179,17 @@ export function createTerminalSessionOutputController({
     }
     onReadError(event);
   };
+}
+
+/**
+ * 终端能力探测有严格超时，必须立即交给 xterm 解析并回写 PTY。
+ * DSR 查询用于取得 inline viewport 起始光标，OSC 10/11 查询用于生成与主题一致的
+ * Codex 输入区背景；普通 Agent TUI 数据由 writer 合并同步帧并保护 cursor 状态。
+ */
+export function terminalControlSequenceRequiresImmediateResponse(data: string) {
+  return (
+    data.includes("\x1b[6n") ||
+    data.includes("\x1b]10;?") ||
+    data.includes("\x1b]11;?")
+  );
 }

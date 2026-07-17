@@ -1,14 +1,11 @@
+// @author kongweiguang
 import type {
   ExternalAgentId,
   ExternalAgentLaunchSpec,
   ExternalAgentStatus,
   ExternalAgentWorkspaceStatus,
 } from "../../../lib/agentLauncherApi";
-const EXTERNAL_AGENT_IDS: ExternalAgentId[] = [
-  "codex",
-  "claude",
-  "custom",
-];
+const EXTERNAL_AGENT_IDS: ExternalAgentId[] = ["codex", "claude", "custom"];
 type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
 type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
@@ -221,7 +218,32 @@ export function applyAgentLaunchPermissionMode(
   return { ...spec, args: [flag, ...args] };
 }
 
-export function agentLaunchDisplayCommand(spec: ExternalAgentLaunchSpec): string {
+/** Kerminal 已审查并生成受管会话 hooks，因此仅为受管 Codex 启动跳过重复信任确认。 */
+export function applyManagedAgentLaunchTrust(
+  spec: ExternalAgentLaunchSpec,
+): ExternalAgentLaunchSpec {
+  const flag = "--dangerously-bypass-hook-trust";
+  if (spec.agentId !== "codex" || launchSpecContainsArg(spec, flag)) {
+    return spec;
+  }
+
+  const args = spec.args ?? [];
+  const wrappedCommand = agentLaunchWrappedCommand(spec.shell, args);
+  if (wrappedCommand?.command.trim()) {
+    const nextArgs = [...args];
+    nextArgs[wrappedCommand.argIndex] = insertGlobalCliArg(
+      wrappedCommand.command,
+      flag,
+    );
+    return { ...spec, args: nextArgs };
+  }
+
+  return { ...spec, args: [flag, ...args] };
+}
+
+export function agentLaunchDisplayCommand(
+  spec: ExternalAgentLaunchSpec,
+): string {
   const args = spec.args ?? [];
   const wrappedCommand = agentLaunchWrappedCommand(spec.shell, args);
   if (wrappedCommand?.command.trim()) {

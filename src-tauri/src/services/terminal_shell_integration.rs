@@ -233,19 +233,8 @@ fn integrated_launch(
     scripts: &ShellIntegrationScripts,
     _platform: ShellIntegrationPlatform,
 ) -> TerminalShellLaunchPlan {
-    let mut next_env = env.clone();
-    next_env.insert(KERMINAL_TERMINAL_ENV.to_owned(), "1".to_owned());
+    let mut next_env = terminal_capability_env(env);
     next_env.insert(KERMINAL_SHELL_INTEGRATION_ENV.to_owned(), "1".to_owned());
-    if next_env
-        .get("TERM")
-        .map(|value| value.trim().is_empty() || value == "dumb")
-        .unwrap_or(true)
-    {
-        next_env.insert("TERM".to_owned(), "xterm-256color".to_owned());
-    }
-    next_env
-        .entry("COLORTERM".to_owned())
-        .or_insert_with(|| "truecolor".to_owned());
     if entry.kind == IntegratedShellKind::Zsh {
         next_env.insert(
             "ZDOTDIR".to_owned(),
@@ -291,7 +280,7 @@ fn bare_launch(
     TerminalShellLaunchPlan {
         shell: shell.to_owned(),
         args: args.to_vec(),
-        env: env.clone(),
+        env: terminal_capability_env(env),
         integration: TerminalShellIntegrationSummary {
             status: TerminalShellIntegrationStatus::Disabled,
             shell: None,
@@ -299,4 +288,51 @@ fn bare_launch(
             reason: Some(reason.to_owned()),
         },
     }
+}
+
+/// shell integration 只增强提示符协议；所有本地 PTY 都必须声明真实终端能力。
+/// 否则自定义 shell 参数等 bare launch 路径会继承宿主进程的 `TERM=dumb`，导致
+/// Codex 等 inline TUI 关闭颜色、同步刷新和光标定位能力。
+fn terminal_capability_env(env: &HashMap<String, String>) -> HashMap<String, String> {
+    let mut next_env = env.clone();
+    next_env.insert(KERMINAL_TERMINAL_ENV.to_owned(), "1".to_owned());
+
+    let replace_term = next_env
+        .get("TERM")
+        .map(|value| {
+            let value = value.trim();
+            value.is_empty() || value.eq_ignore_ascii_case("dumb")
+        })
+        .unwrap_or(true);
+    if replace_term {
+        next_env.insert("TERM".to_owned(), "xterm-256color".to_owned());
+    }
+
+    let replace_colorterm = next_env
+        .get("COLORTERM")
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    if replace_colorterm {
+        next_env.insert("COLORTERM".to_owned(), "truecolor".to_owned());
+    }
+
+    let replace_term_program = next_env
+        .get("TERM_PROGRAM")
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    if replace_term_program {
+        next_env.insert("TERM_PROGRAM".to_owned(), "Kerminal".to_owned());
+    }
+    let replace_term_program_version = next_env
+        .get("TERM_PROGRAM_VERSION")
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    if replace_term_program_version {
+        next_env.insert(
+            "TERM_PROGRAM_VERSION".to_owned(),
+            env!("CARGO_PKG_VERSION").to_owned(),
+        );
+    }
+
+    next_env
 }

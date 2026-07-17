@@ -56,10 +56,7 @@ const PROMPT_OSC_RE = new RegExp(
   String.raw`\u001b\][^\u0007]*(?:\u0007|\u001b\\)`,
   "g",
 );
-const PROMPT_CSI_RE = new RegExp(
-  String.raw`\u001b\[[0-?]*[ -/]*[@-~]`,
-  "g",
-);
+const PROMPT_CSI_RE = new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, "g");
 const PROMPT_ESCAPE_RE = new RegExp(String.raw`\u001b[ -/]*[@-~]`, "g");
 const PROMPT_C0_CONTROL_RE = new RegExp(
   String.raw`[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]`,
@@ -156,11 +153,7 @@ export function resolveTerminalRowHeight(
   terminal?: Pick<XtermTerminal, "rows">,
 ) {
   const screenElement = container?.querySelector(".xterm-screen");
-  if (
-    screenElement instanceof HTMLElement &&
-    terminal &&
-    terminal.rows > 0
-  ) {
+  if (screenElement instanceof HTMLElement && terminal && terminal.rows > 0) {
     const measuredHeight = screenElement.getBoundingClientRect().height;
     if (measuredHeight > 0) {
       return measuredHeight / terminal.rows;
@@ -240,14 +233,18 @@ export function resolveGhostSuggestionLayout(
       : frameRect && screenRect && screenRect.width > 0
         ? screenRect.left - frameRect.left
         : container.offsetLeft +
-          (rowsElement instanceof HTMLElement ? rowsElement.offsetLeft : paddingLeft);
+          (rowsElement instanceof HTMLElement
+            ? rowsElement.offsetLeft
+            : paddingLeft);
   const originTop =
     frameRect && rowsRect && rowsRect.height > 0
       ? rowsRect.top - frameRect.top
       : frameRect && screenRect && screenRect.height > 0
         ? screenRect.top - frameRect.top
         : container.offsetTop +
-          (rowsElement instanceof HTMLElement ? rowsElement.offsetTop : paddingTop);
+          (rowsElement instanceof HTMLElement
+            ? rowsElement.offsetTop
+            : paddingTop);
   const left = originLeft + cursorX * cellWidth;
   const top = originTop + cursorY * rowHeight;
   const screenRight =
@@ -350,12 +347,12 @@ export function resolveTerminalPromptLine(
     return undefined;
   }
 
-  if (pendingInput.length > 0) {
-    return cursorLine;
-  }
-
   const text = buffer.getLine(cursorLine)?.translateToString(true) ?? "";
-  return isLikelyShellPrompt(text) ? cursorLine : undefined;
+  const promptCandidate =
+    pendingInput.length > 0 && text.endsWith(pendingInput)
+      ? text.slice(0, -pendingInput.length).trimEnd()
+      : text;
+  return isLikelyShellPrompt(promptCandidate) ? cursorLine : undefined;
 }
 
 export function isLikelyShellPrompt(text: string) {
@@ -555,8 +552,7 @@ function findNextCurrentDirOsc(buffer: string): {
     { prefix: CURRENT_DIR_OSC_7_PREFIX, protocol: "osc7" as const },
   ];
   let next:
-    | { index: number; prefix: string; protocol: "osc7" | "osc1337" }
-    | undefined;
+    { index: number; prefix: string; protocol: "osc7" | "osc1337" } | undefined;
   for (const candidate of candidates) {
     const index = buffer.indexOf(candidate.prefix);
     if (index >= 0 && (!next || index < next.index)) {
@@ -617,11 +613,14 @@ function extractRemotePromptCwd(line: string): string | undefined {
   const bracketPrompt = trimmed.match(
     /^\[[^\]\s@]+@[^\]\s]+\s+(\/[^\]]+?)\]\s*[#$]\s*$/,
   );
-  return sanitizeCurrentDirOscPath(userHostPrompt?.[1] ?? bracketPrompt?.[1] ?? "");
+  return sanitizeCurrentDirOscPath(
+    userHostPrompt?.[1] ?? bracketPrompt?.[1] ?? "",
+  );
 }
 
 function trailingPromptCwdBuffer(buffer: string): string {
-  const lineStart = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r")) + 1;
+  const lineStart =
+    Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r")) + 1;
   const tail = buffer.slice(lineStart);
   if (tail.length === 0 || tail.length > MAX_PROMPT_CWD_LINE_LENGTH) {
     return "";
@@ -649,7 +648,10 @@ function stripTerminalControlsForPrompt(value: string): string {
 
 function trailingPotentialCurrentDirOscPrefix(buffer: string): string {
   let longest = "";
-  for (const prefix of [CURRENT_DIR_OSC_1337_PREFIX, CURRENT_DIR_OSC_7_PREFIX]) {
+  for (const prefix of [
+    CURRENT_DIR_OSC_1337_PREFIX,
+    CURRENT_DIR_OSC_7_PREFIX,
+  ]) {
     const maxLength = Math.min(buffer.length, prefix.length - 1);
     for (let length = maxLength; length > longest.length; length -= 1) {
       const tail = buffer.slice(-length);

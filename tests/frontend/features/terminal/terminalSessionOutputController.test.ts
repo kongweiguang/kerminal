@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createTerminalSessionOutputController } from "../../../../src/features/terminal/terminalSessionOutputController";
+import {
+  createTerminalSessionOutputController,
+  terminalControlSequenceRequiresImmediateResponse,
+} from "../../../../src/features/terminal/terminalSessionOutputController";
 
 function createHarness(
   overrides: {
@@ -21,6 +24,9 @@ function createHarness(
     flush: vi.fn(),
     pendingLength: vi.fn(() => 0),
     setCadence: vi.fn((cadence: string) => order.push(`cadence:${cadence}`)),
+    setTuiCursorProtection: vi.fn((active: boolean) =>
+      order.push(`protect:${active}`),
+    ),
     stats: vi.fn(),
     write: vi.fn((data: string) => order.push(`write:${data}`)),
     writeNow: vi.fn((data: string) => order.push(`now:${data}`)),
@@ -142,6 +148,100 @@ describe("terminalSessionOutputController", () => {
     hiddenController({ data: "buffered", kind: "data", sessionId: "session-1" });
 
     expect(harness.order).toEqual(["cadence:hidden", "write:buffered"]);
+  });
+
+  it("routes terminal capability probes through the immediate writer path", () => {
+    expect(
+      terminalControlSequenceRequiresImmediateResponse("\x1b[6n"),
+    ).toBe(true);
+    expect(
+      terminalControlSequenceRequiresImmediateResponse(
+        "\x1b]10;?\x1b\\\x1b]11;?\x1b\\",
+      ),
+    ).toBe(true);
+    expect(
+      terminalControlSequenceRequiresImmediateResponse(
+        "\x1b[?2026hstreaming response\x1b[?2026l",
+      ),
+    ).toBe(false);
+
+    const harness = createHarness({ remote: false });
+    harness.controller({
+      data: "\x1b]10;?\x1b\\\x1b]11;?\x1b\\",
+      kind: "data",
+      sessionId: "session-1",
+    });
+
+    expect(harness.order).toContain("now:\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
+    expect(harness.order).not.toContain(
+      "write:\x1b]10;?\x1b\\\x1b]11;?\x1b\\",
+    );
+
+    const splitHarness = createHarness({ remote: false });
+    splitHarness.controller({
+      data: "\x1b]10;",
+      kind: "data",
+      sessionId: "session-1",
+    });
+    splitHarness.controller({
+      data: "?\x1b\\",
+      kind: "data",
+      sessionId: "session-1",
+    });
+    expect(splitHarness.order).toContain("write:\x1b]10;");
+    expect(splitHarness.order).toContain("now:?\x1b\\");
+
+    harness.controller({
+      data: "streaming response",
+      kind: "data",
+      sessionId: "session-1",
+    });
+    expect(harness.order).toContain("write:streaming response");
+    expect(harness.order).not.toContain("now:streaming response");
+  });
+
+  it("protects Agent TUI cursor frames and restores shell buffering on exit", () => {
+    const harness = createHarness({ remote: false });
+
+    harness.controller({
+      agentSignal: {
+        agent: "codex",
+        status: "working",
+        terminalSessionId: "session-1",
+      },
+      data: "",
+      kind: "agentSignal",
+      sessionId: "session-1",
+    });
+    harness.controller({
+      data: "\x1b[?2026hframe\x1b[?2026l",
+      kind: "data",
+      sessionId: "session-1",
+    });
+
+    expect(harness.order).toContain("protect:true");
+    expect(harness.order).toContain("write:\x1b[?2026hframe\x1b[?2026l");
+    expect(harness.order).not.toContain("now:\x1b[?2026hframe\x1b[?2026l");
+
+    harness.controller({
+      agentSignal: {
+        agent: "codex",
+        status: "exited",
+        terminalSessionId: "session-1",
+      },
+      data: "",
+      kind: "agentSignal",
+      sessionId: "session-1",
+    });
+    harness.controller({
+      data: "shell output",
+      kind: "data",
+      sessionId: "session-1",
+    });
+
+    expect(harness.order).toContain("write:shell output");
+    expect(harness.order).not.toContain("now:shell output");
+    expect(harness.order).toContain("protect:false");
   });
 
   it("routes agent, closed and read-error events without cross-calling", () => {

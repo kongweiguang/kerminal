@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { describe, expect, it } from "vitest";
 import type {
   ExternalAgentLaunchSpec,
@@ -9,6 +10,7 @@ import {
   agentPermissionSkipFlag,
   agentSupportsPermissionSkip,
   applyAgentLaunchPermissionMode,
+  applyManagedAgentLaunchTrust,
   buildAgentActionViewModel,
   buildAgentConfigSnippet,
   buildAgentLauncherViewModel,
@@ -178,11 +180,9 @@ describe("agentLauncherModel", () => {
       workspaceDir: "C:/Users/me/.kerminal",
     };
 
-    expect(buildAgentLauncherViewModel(status, true).map((view) => view.agentId)).toEqual([
-      "codex",
-      "claude",
-      "custom",
-    ]);
+    expect(
+      buildAgentLauncherViewModel(status, true).map((view) => view.agentId),
+    ).toEqual(["codex", "claude", "custom"]);
   });
 
   it("builds MCP status and copyable config snippets from endpoint", () => {
@@ -237,8 +237,12 @@ describe("agentLauncherModel", () => {
     expect(agentSupportsPermissionSkip("claude")).toBe(true);
     expect(agentSupportsPermissionSkip("custom")).toBe(false);
     expect(agentPermissionSkipFlag("custom")).toBeUndefined();
-    expect(applyAgentLaunchPermissionMode(codexSpec, "default")).toBe(codexSpec);
-    expect(applyAgentLaunchPermissionMode(codexSpec, "skipPermissions").args).toEqual([
+    expect(applyAgentLaunchPermissionMode(codexSpec, "default")).toBe(
+      codexSpec,
+    );
+    expect(
+      applyAgentLaunchPermissionMode(codexSpec, "skipPermissions").args,
+    ).toEqual([
       "-NoLogo",
       "-NoProfile",
       "-NoExit",
@@ -246,17 +250,72 @@ describe("agentLauncherModel", () => {
       "codex --dangerously-bypass-approvals-and-sandbox resume --last",
     ]);
     expect(agentLaunchDisplayCommand(codexSpec)).toBe("codex resume --last");
-    expect(applyAgentLaunchPermissionMode(cmdCodexSpec, "skipPermissions").args).toEqual([
+    expect(
+      applyAgentLaunchPermissionMode(cmdCodexSpec, "skipPermissions").args,
+    ).toEqual([
       "/d",
       "/s",
       "/k",
       "codex --dangerously-bypass-approvals-and-sandbox resume --last",
     ]);
-    expect(applyAgentLaunchPermissionMode(claudeSpec, "skipPermissions").args).toEqual([
+    expect(
+      applyAgentLaunchPermissionMode(claudeSpec, "skipPermissions").args,
+    ).toEqual([
       "--dangerously-skip-permissions",
       "--permission-mode",
       "default",
     ]);
+  });
+
+  it("bypasses hook trust only for Kerminal-managed Codex launches", () => {
+    const directSpec: ExternalAgentLaunchSpec = {
+      agentId: "codex",
+      agentSessionId: "ags-codex",
+      args: ["resume", "--last"],
+      cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
+      message: "Codex workspace prepared.",
+      shell: "codex",
+      title: "Codex",
+    };
+    const wrappedSpec: ExternalAgentLaunchSpec = {
+      ...directSpec,
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NoExit",
+        "-Command",
+        "codex resume --last",
+      ],
+      shell: "pwsh.exe",
+    };
+    const cmdSpec: ExternalAgentLaunchSpec = {
+      ...directSpec,
+      args: ["/d", "/s", "/k", "codex resume --last"],
+      shell: "cmd.exe",
+    };
+    const claudeSpec: ExternalAgentLaunchSpec = {
+      ...directSpec,
+      agentId: "claude",
+      shell: "claude",
+      title: "Claude",
+    };
+
+    expect(applyManagedAgentLaunchTrust(directSpec).args).toEqual([
+      "--dangerously-bypass-hook-trust",
+      "resume",
+      "--last",
+    ]);
+    expect(
+      agentLaunchDisplayCommand(applyManagedAgentLaunchTrust(wrappedSpec)),
+    ).toBe("codex --dangerously-bypass-hook-trust resume --last");
+    expect(
+      agentLaunchDisplayCommand(applyManagedAgentLaunchTrust(cmdSpec)),
+    ).toBe("codex --dangerously-bypass-hook-trust resume --last");
+    expect(applyManagedAgentLaunchTrust(claudeSpec)).toBe(claudeSpec);
+    expect(
+      applyManagedAgentLaunchTrust(applyManagedAgentLaunchTrust(directSpec))
+        .args,
+    ).toEqual(["--dangerously-bypass-hook-trust", "resume", "--last"]);
   });
 
   it("parses custom agent command lines into shell and args", () => {

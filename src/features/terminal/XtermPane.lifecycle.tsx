@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
@@ -162,6 +163,7 @@ export function XtermPane({
   const [commandBlockViews, setCommandBlockViews] = useState<
     TerminalCommandBlockView[]
   >([]);
+  const [inlineTuiActive, setInlineTuiActive] = useState(false);
   const [contextMenu, setContextMenu] =
     useState<XtermPaneContextMenuState | null>(null);
   const [connectionState, setConnectionState] =
@@ -386,6 +388,7 @@ export function XtermPane({
         setCommandBlockViews,
         setConnectionState,
         setGhostSuggestion,
+        setInlineTuiActive,
         shellAssistEnabled,
         setLogNotice,
         setLogState,
@@ -422,6 +425,7 @@ export function XtermPane({
       shell,
       shellAssistEnabled,
       setCommandBlockNotice,
+      setInlineTuiActive,
       setSearchResults,
       setSuggestionMenu,
       startupMessage,
@@ -784,7 +788,7 @@ export function XtermPane({
       paneActivity={paneActivity}
       paneId={paneId}
       search={search}
-      shellAssistEnabled={shellAssistEnabled}
+      shellAssistEnabled={shellAssistEnabled && !inlineTuiActive}
       suggestionOverlay={suggestionMenuRuntime.overlay}
       terminalAppearance={terminalAppearance}
       terminalRef={terminalRef}

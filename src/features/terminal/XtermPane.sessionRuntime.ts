@@ -1,3 +1,4 @@
+// @author kongweiguang
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
 import {
@@ -305,8 +306,12 @@ export function createXtermPaneSessionRuntime({
       instrumentation,
       isCurrent: () => !disposed && sessionRun === currentRun,
       isSshTerminalTarget: isSshTerminalTarget(),
-      onAgentSignal: (signal: TerminalAgentSignal) =>
-        onAgentSignalRef.current?.(signal),
+      onAgentSignal: (signal: TerminalAgentSignal) => {
+        const interactiveTuiActive = signal.status !== "exited";
+        commandBlockRuntime.setInteractiveTuiActive(interactiveTuiActive);
+        ghostSuggestions.clearGhostSuggestion();
+        onAgentSignalRef.current?.(signal);
+      },
       onCurrentCwd,
       onReadError: (event) => {
         ghostSuggestions.clearGhostSuggestion();

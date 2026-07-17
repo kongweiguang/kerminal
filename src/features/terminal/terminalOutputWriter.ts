@@ -1,8 +1,22 @@
+// @author kongweiguang
 import type { TerminalRendererPerformanceTelemetry } from "./terminalRendererPerformanceTelemetry";
+import {
+  discardForegroundRenderSettle,
+  writeForegroundTerminalChunk,
+  type ForegroundTerminalOutputTarget,
+} from "./terminalForegroundRenderSettle";
+import {
+  coalescedTuiFrameNeedsCursorRestore,
+  CURSOR_SHOW,
+  previewPendingData,
+  removeTransientCursorShowSequences,
+  scanSynchronizedOutput,
+  TUI_SYNCHRONIZED_FLUSH_MAX_CHARS,
+  TUI_SYNCHRONIZED_FRAME_COALESCE_MS,
+  TUI_SYNCHRONIZED_FRAME_HOLD_MS,
+} from "./terminalTuiCursorProtection";
 
-interface TerminalOutputSink {
-  write(data: string, callback?: () => void): void;
-}
+type TerminalOutputSink = ForegroundTerminalOutputTarget;
 
 export interface TerminalOutputScheduler {
   cancel(handle: number): void;
@@ -56,8 +70,10 @@ export interface TerminalOutputWriterStats {
 export interface TerminalOutputWriter {
   dispose(): void;
   flush(): void;
+  isTuiCursorProtectionActive?(): boolean;
   pendingLength(): number;
   setCadence(cadence: TerminalOutputCadence): void;
+  setTuiCursorProtection?(active: boolean): void;
   stats(): TerminalOutputWriterStats;
   write(data: string): void;
   writeNow(data: string): void;
@@ -137,6 +153,11 @@ export function createTerminalOutputWriter(
   let pendingBytes = 0;
   let pendingChars = 0;
   let scheduledHandle: number | null = null;
+  let synchronizedOutputActive = false;
+  let synchronizedOutputScanTail = "";
+  let tuiCoalescedFlushPending = false;
+  let tuiPostFrameCoalesceActive = false;
+  let tuiCursorProtection = false;
   const flushStats = {
     adaptationDecreaseCount: 0,
     adaptationIncreaseCount: 0,
@@ -177,7 +198,7 @@ export function createTerminalOutputWriter(
     });
   };
 
-  const scheduleFlush = (immediate = false) => {
+  const scheduleFlush = (immediate = false, delayOverrideMs?: number) => {
     if (
       disposed ||
       inFlight ||
@@ -186,7 +207,10 @@ export function createTerminalOutputWriter(
     ) {
       return;
     }
-    const configuredDelay = Math.max(0, cadenceDelaysMs[cadence] ?? 0);
+    const configuredDelay = Math.max(
+      0,
+      delayOverrideMs ?? cadenceDelaysMs[cadence] ?? 0,
+    );
     const pressureDelay =
       cadence === "hidden" && pendingChars >= HIDDEN_PRESSURE_THRESHOLD_CHARS
         ? FRAME_FALLBACK_MS
@@ -195,6 +219,18 @@ export function createTerminalOutputWriter(
       flushFrame,
       immediate ? 0 : pressureDelay,
     );
+  };
+
+  const schedulePendingFlush = () => {
+    if (tuiCursorProtection && synchronizedOutputActive) {
+      scheduleFlush(false, TUI_SYNCHRONIZED_FRAME_HOLD_MS);
+      return;
+    }
+    if (tuiCursorProtection && tuiPostFrameCoalesceActive) {
+      scheduleFlush(false, TUI_SYNCHRONIZED_FRAME_COALESCE_MS);
+      return;
+    }
+    scheduleFlush();
   };
 
   const compactQueue = () => {
@@ -339,6 +375,12 @@ export function createTerminalOutputWriter(
     if (!batch || disposed || inFlight) {
       return;
     }
+    const protectedBatch = tuiCursorProtection
+      ? removeTransientCursorShowSequences(batch)
+      : batch;
+    const settleForegroundRender =
+      tuiCursorProtection &&
+      (batch.includes("\x1b[?2026") || batch.includes(CURSOR_SHOW));
     inFlight = true;
     const startedAt = now();
     let completed = false;
@@ -348,26 +390,40 @@ export function createTerminalOutputWriter(
       }
       completed = true;
       const completedAt = now();
-      recordCompletedWrite(batch, startedAt, completedAt);
+      recordCompletedWrite(protectedBatch, startedAt, completedAt);
       inFlight = false;
       finishDrainIfIdle(completedAt);
-      scheduleFlush();
+      schedulePendingFlush();
     };
 
-    try {
-      if (callbackSupported) {
-        terminal.write(batch, complete);
-      } else {
-        terminal.write(batch);
-        complete();
+    const fail = (error: unknown) => {
+      if (completed) {
+        return;
       }
-    } catch (error: unknown) {
       completed = true;
       inFlight = false;
       flushStats.writeErrorCount += 1;
-      options.onWriteError?.(error, batch);
+      options.onWriteError?.(error, protectedBatch);
       finishDrainIfIdle(now());
-      scheduleFlush();
+      schedulePendingFlush();
+    };
+
+    try {
+      if (callbackSupported && settleForegroundRender) {
+        writeForegroundTerminalChunk(terminal, protectedBatch, {
+          followupViewportRefresh: batch.includes(CURSOR_SHOW),
+          forceViewportRefresh: true,
+          onParsed: complete,
+          onWriteFailure: fail,
+        });
+      } else if (callbackSupported) {
+        terminal.write(protectedBatch, complete);
+      } else {
+        terminal.write(protectedBatch);
+        complete();
+      }
+    } catch (error: unknown) {
+      fail(error);
     }
   };
 
@@ -376,7 +432,15 @@ export function createTerminalOutputWriter(
     if (disposed || inFlight) {
       return;
     }
-    writeBatch(takeBatch(currentCharsPerFlush));
+    const batchLimit = tuiCoalescedFlushPending
+      ? Math.max(
+          currentCharsPerFlush,
+          Math.min(pendingChars, TUI_SYNCHRONIZED_FLUSH_MAX_CHARS),
+        )
+      : currentCharsPerFlush;
+    tuiCoalescedFlushPending = false;
+    tuiPostFrameCoalesceActive = false;
+    writeBatch(takeBatch(batchLimit));
   }
 
   const flush = () => {
@@ -404,6 +468,23 @@ export function createTerminalOutputWriter(
     syncTelemetry();
   };
 
+  const writeNow = (data: string) => {
+    if (disposed) {
+      return;
+    }
+    cancelScheduledFlush();
+    flush();
+    if (data) {
+      flushStats.writeNowCount += 1;
+      enqueue(data);
+    }
+    if (inFlight) {
+      schedulePendingFlush();
+    } else {
+      flush();
+    }
+  };
+
   return {
     dispose() {
       if (disposed) {
@@ -411,9 +492,13 @@ export function createTerminalOutputWriter(
       }
       disposed = true;
       cancelScheduledFlush();
+      discardForegroundRenderSettle(terminal);
       clearQueue();
     },
     flush,
+    isTuiCursorProtectionActive() {
+      return tuiCursorProtection;
+    },
     pendingLength() {
       return pendingChars;
     },
@@ -425,6 +510,20 @@ export function createTerminalOutputWriter(
       if (scheduledHandle !== null) {
         cancelScheduledFlush();
         scheduleFlush();
+      }
+    },
+    setTuiCursorProtection(active) {
+      if (tuiCursorProtection === active) {
+        return;
+      }
+      tuiCursorProtection = active;
+      synchronizedOutputActive = false;
+      synchronizedOutputScanTail = "";
+      tuiCoalescedFlushPending = false;
+      tuiPostFrameCoalesceActive = false;
+      if (!active && scheduledHandle !== null && pendingChars > 0) {
+        cancelScheduledFlush();
+        scheduleFlush(true);
       }
     },
     stats() {
@@ -465,24 +564,59 @@ export function createTerminalOutputWriter(
         return;
       }
       enqueue(data);
+      const transition = scanSynchronizedOutput(data, {
+        active: synchronizedOutputActive,
+        tail: synchronizedOutputScanTail,
+      });
+      synchronizedOutputActive = transition.active;
+      synchronizedOutputScanTail = transition.tail;
+      // 手动启动或 shell integration 信号延迟时仍要保护标准 DEC 2026 重绘。
+      if (transition.started) {
+        tuiCursorProtection = true;
+      }
+      if (tuiCursorProtection) {
+        if (transition.started && synchronizedOutputActive) {
+          cancelScheduledFlush();
+        }
+        if (synchronizedOutputActive) {
+          scheduleFlush(false, TUI_SYNCHRONIZED_FRAME_HOLD_MS);
+          return;
+        }
+        if (transition.ended) {
+          cancelScheduledFlush();
+          tuiCoalescedFlushPending = true;
+          const pendingData = previewPendingData(
+            chunks,
+            chunkHead,
+            TUI_SYNCHRONIZED_FLUSH_MAX_CHARS,
+          );
+          if (coalescedTuiFrameNeedsCursorRestore(pendingData)) {
+            tuiPostFrameCoalesceActive = true;
+            scheduleFlush(false, TUI_SYNCHRONIZED_FRAME_COALESCE_MS);
+          } else {
+            tuiPostFrameCoalesceActive = false;
+            scheduleFlush(true);
+          }
+          return;
+        }
+        if (tuiPostFrameCoalesceActive) {
+          const pendingData = previewPendingData(
+            chunks,
+            chunkHead,
+            TUI_SYNCHRONIZED_FLUSH_MAX_CHARS,
+          );
+          if (!coalescedTuiFrameNeedsCursorRestore(pendingData)) {
+            cancelScheduledFlush();
+            tuiCoalescedFlushPending = true;
+            tuiPostFrameCoalesceActive = false;
+            scheduleFlush(true);
+          }
+          return;
+        }
+      }
       scheduleFlush();
     },
-    writeNow(data: string) {
-      if (disposed) {
-        return;
-      }
-      cancelScheduledFlush();
-      flush();
-      if (data) {
-        flushStats.writeNowCount += 1;
-        enqueue(data);
-      }
-      if (inFlight) {
-        scheduleFlush();
-      } else {
-        flush();
-      }
-    },
+    writeNow,
   };
 }
 

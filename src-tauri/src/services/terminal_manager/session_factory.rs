@@ -1,4 +1,6 @@
 //! 本地 PTY 与 managed SSH 终端会话的创建编排。
+//!
+//! @author kongweiguang
 
 use super::{
     io_runtime::{
@@ -35,6 +37,8 @@ use std::{
 use uuid::Uuid;
 
 const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
+const INHERITED_TERMINAL_COLOR_OPT_OUT_ENV_KEYS: [&str; 3] =
+    ["NO_COLOR", "FORCE_COLOR", "CLICOLOR"];
 
 /// 已完成资源构造、尚未登记到 manager registry 的终端会话。
 pub(super) struct CreatedTerminalSession {
@@ -185,6 +189,10 @@ pub(super) fn create_pty_session(
     let launch_plan = build_terminal_shell_launch(&shell, &args, &env, shell_integration_cache);
 
     let mut command = CommandBuilder::new(&launch_plan.shell);
+    // GUI/开发宿主设置的无色变量不应污染新 PTY；profile 显式值会在下方重新写入。
+    for key in INHERITED_TERMINAL_COLOR_OPT_OUT_ENV_KEYS {
+        command.env_remove(key);
+    }
     command.args(launch_plan.args.iter().map(String::as_str));
     if let Some(cwd) = &cwd {
         command.cwd(cwd.as_os_str());

@@ -1,24 +1,45 @@
+// @author kongweiguang
 import type { MutableRefObject } from "react";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import { writeTerminal } from "../../lib/terminalApi";
-import { applyTerminalInputData, updateTerminalInputBufferKind, updateTerminalInputComposition, type TerminalInputModelState } from "./terminalInputModel";
-import { resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, type TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
-import { reduceTerminalShellIntegrationState, type TerminalShellIntegrationState } from "./terminalShellIntegrationModel";
+import {
+  applyTerminalInputData,
+  updateTerminalInputBufferKind,
+  updateTerminalInputComposition,
+  type TerminalInputModelState,
+} from "./terminalInputModel";
+import {
+  resolveTerminalInputCompatibilityOverride,
+  resolveTerminalRuntimeKeydownOverride,
+  type TerminalInputCompatibilityMode,
+} from "./terminalKeyboardPolicy";
+import {
+  reduceTerminalShellIntegrationState,
+  type TerminalShellIntegrationState,
+} from "./terminalShellIntegrationModel";
 import type { XtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import type { createXtermPaneCommandBlockRuntime } from "./XtermPane.commandBlockRuntime";
 import type { createXtermPaneGhostSuggestions } from "./XtermPane.ghostSuggestions";
-import { isRightArrowInput } from "./XtermPane.helpers";
+import {
+  isRightArrowInput,
+  resolveTerminalPromptLine,
+} from "./XtermPane.helpers";
 import type { createTerminalInlineSshAuthPrompt } from "./XtermPane.inlineSshAuthPrompt";
 import type { TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { TerminalAppearance } from "../settings/contracts/index";
 import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
+import { syncTerminalImeAnchor } from "./terminalImeAnchor";
 
-type CommandBlockRuntime = ReturnType<typeof createXtermPaneCommandBlockRuntime>;
-type GhostSuggestionsRuntime = ReturnType<typeof createXtermPaneGhostSuggestions>;
+type CommandBlockRuntime = ReturnType<
+  typeof createXtermPaneCommandBlockRuntime
+>;
+type GhostSuggestionsRuntime = ReturnType<
+  typeof createXtermPaneGhostSuggestions
+>;
 type InlineSshAuthPrompt = ReturnType<typeof createTerminalInlineSshAuthPrompt>;
 
 interface RuntimeEventsParams {
@@ -30,7 +51,10 @@ interface RuntimeEventsParams {
   currentCwdRef: MutableRefObject<string | undefined>;
   cwd?: string;
   ghostSuggestions: GhostSuggestionsRuntime;
-  ghostSuggestionRef: MutableRefObject<Parameters<GhostSuggestionsRuntime["recordGhostSuggestionFeedback"]>[1] | null>;
+  ghostSuggestionRef: MutableRefObject<
+    | Parameters<GhostSuggestionsRuntime["recordGhostSuggestionFeedback"]>[1]
+    | null
+  >;
   inputBufferRef: MutableRefObject<string>;
   inputCompatibilityMode: TerminalInputCompatibilityMode;
   inputModelRef: MutableRefObject<TerminalInputModelState>;
@@ -39,7 +63,11 @@ interface RuntimeEventsParams {
   remoteHostId?: string;
   searchAddon: SearchAddon;
   sessionIdRef: MutableRefObject<string | null>;
-  setSearchResults: (value: { hasSearched: boolean; resultCount: number; resultIndex: number }) => void;
+  setSearchResults: (value: {
+    hasSearched: boolean;
+    resultCount: number;
+    resultIndex: number;
+  }) => void;
   shell?: string;
   shellIntegrationCommandBlockProtocolRef: MutableRefObject<boolean>;
   syncCommandBlockViews: () => void;
@@ -62,7 +90,9 @@ export interface XtermPaneRuntimeEvents {
  * 集中注册并释放 Xterm 的输入、选择、buffer 与 DOM 事件。
  * 该边界只管理事件生命周期，状态仍由调用方持有，避免改变既有会话时序。
  */
-export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): XtermPaneRuntimeEvents {
+export function registerXtermPaneRuntimeEvents(
+  params: RuntimeEventsParams,
+): XtermPaneRuntimeEvents {
   const {
     activityRuntimeRef,
     assistEnabled,
@@ -96,8 +126,12 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
     onArtifactInvalidate,
   } = params;
 
-  const reduceShellIntegration = (event: Parameters<typeof reduceTerminalShellIntegrationState>[1]) => {
-    writeShellIntegrationState(reduceTerminalShellIntegrationState(readShellIntegrationState(), event));
+  const reduceShellIntegration = (
+    event: Parameters<typeof reduceTerminalShellIntegrationState>[1],
+  ) => {
+    writeShellIntegrationState(
+      reduceTerminalShellIntegrationState(readShellIntegrationState(), event),
+    );
   };
 
   const inputDisposable = terminal.onData((data) => {
@@ -110,17 +144,55 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
     if (!sessionId) {
       return;
     }
-    if (isRightArrowInput(data) && ghostSuggestions.acceptGhostSuggestion(sessionId)) {
+    if (
+      isRightArrowInput(data) &&
+      ghostSuggestions.acceptGhostSuggestion(sessionId)
+    ) {
       return;
     }
+    const printableInput = Array.from(data)
+      .filter((character) => {
+        const codePoint = character.codePointAt(0);
+        return (
+          typeof codePoint === "number" &&
+          codePoint >= 0x20 &&
+          codePoint !== 0x7f
+        );
+      })
+      .join("");
+    if (
+      inputModelRef.current.bufferKind === "normal" &&
+      inputModelRef.current.command.length === 0 &&
+      printableInput.length > 0
+    ) {
+      const shellPromptVisible =
+        resolveTerminalPromptLine(terminal, printableInput) !== undefined;
+      if (shellPromptVisible) {
+        // 这里只收口命令色条；Codex 的 `>` 也可能命中提示符启发式，不能据此关闭输出保护。
+        commandBlockRuntime.setInteractiveTuiActive(false);
+      } else if (
+        commandBlockRuntime.hasOpenCommandBlock() &&
+        readTerminalCursorLine(terminal).trim().length > 0
+      ) {
+        // inline TUI 通常不切 alternate buffer；在首个输入字符处识别，避免把启动命令块延伸进 TUI。
+        commandBlockRuntime.setInteractiveTuiActive(true);
+      }
+    }
     const collected = applyTerminalInputData(inputModelRef.current, data);
-    inputModelRef.current = updateTerminalInputBufferKind(collected.state, terminal.buffer.active.type);
+    inputModelRef.current = updateTerminalInputBufferKind(
+      collected.state,
+      terminal.buffer.active.type,
+    );
     reduceShellIntegration({ data, type: "input" });
     inputBufferRef.current = inputModelRef.current.command;
     for (const command of collected.commands) {
       const dismissedSuggestion = ghostSuggestionRef.current;
       ghostSuggestions.clearGhostSuggestion();
-      if (assistEnabled && shellIntegrationCommandBlockProtocolRef.current && readShellIntegrationState().trusted) {
+      if (
+        assistEnabled &&
+        shellIntegrationCommandBlockProtocolRef.current &&
+        readShellIntegrationState().trusted
+      ) {
         commandBlockRuntime.setPendingProtocolCommand(command);
       } else {
         commandBlockRuntime.registerCommandBlock(command);
@@ -132,23 +204,43 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
         continue;
       }
       if (assistEnabled) {
-        if (dismissedSuggestion && dismissedSuggestion.candidate.replacementText !== command) {
-          ghostSuggestions.recordGhostSuggestionFeedback("dismissed", dismissedSuggestion, command);
+        if (
+          dismissedSuggestion &&
+          dismissedSuggestion.candidate.replacementText !== command
+        ) {
+          ghostSuggestions.recordGhostSuggestionFeedback(
+            "dismissed",
+            dismissedSuggestion,
+            command,
+          );
         }
-        const containerHostId = target?.kind === "dockerContainer" ? target.hostId : undefined;
-        const telnetHostId = target?.kind === "telnet" ? target.hostId : undefined;
-        const serialHostId = target?.kind === "serial" ? target.hostId : undefined;
-        const sshHostId = telnetHostId || serialHostId ? undefined : remoteHostId;
+        const containerHostId =
+          target?.kind === "dockerContainer" ? target.hostId : undefined;
+        const telnetHostId =
+          target?.kind === "telnet" ? target.hostId : undefined;
+        const serialHostId =
+          target?.kind === "serial" ? target.hostId : undefined;
+        const sshHostId =
+          telnetHostId || serialHostId ? undefined : remoteHostId;
         void recordCommandHistory({
           command,
           cwd: currentCwdRef.current ?? cwd,
           paneId,
           profileId,
-          remoteHostId: containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId,
+          remoteHostId:
+            containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId,
           sessionId,
           shell,
           source: "user",
-          target: containerHostId ? "dockerContainer" : telnetHostId ? "telnet" : serialHostId ? "serial" : sshHostId ? "ssh" : "local",
+          target: containerHostId
+            ? "dockerContainer"
+            : telnetHostId
+              ? "telnet"
+              : serialHostId
+                ? "serial"
+                : sshHostId
+                  ? "ssh"
+                  : "local",
         });
       }
     }
@@ -166,7 +258,10 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
       event.stopPropagation();
       return false;
     }
-    const compatibilityOverride = resolveTerminalInputCompatibilityOverride(event, inputCompatibilityMode);
+    const compatibilityOverride = resolveTerminalInputCompatibilityOverride(
+      event,
+      inputCompatibilityMode,
+    );
     if (!compatibilityOverride) {
       return true;
     }
@@ -226,7 +321,10 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
       commandBlockRuntime.closeCurrentCommandBlock();
       onArtifactInvalidate?.("clear");
     }
-    inputModelRef.current = updateTerminalInputBufferKind(inputModelRef.current, nextBufferType);
+    inputModelRef.current = updateTerminalInputBufferKind(
+      inputModelRef.current,
+      nextBufferType,
+    );
     inputBufferRef.current = inputModelRef.current.command;
     if (nextBufferType === "alternate") {
       ghostSuggestions.clearGhostSuggestion();
@@ -237,18 +335,35 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
   });
 
   const handleCompositionStart = () => {
-    inputModelRef.current = updateTerminalInputComposition(inputModelRef.current, true);
+    syncTerminalImeAnchor(terminal, compositionTarget);
+    inputModelRef.current = updateTerminalInputComposition(
+      inputModelRef.current,
+      true,
+    );
     inputBufferRef.current = inputModelRef.current.command;
     ghostSuggestions.setLifecycle({ imeComposing: true });
     ghostSuggestions.clearGhostSuggestion();
   };
+  const handleCompositionUpdate = () => {
+    syncTerminalImeAnchor(terminal, compositionTarget);
+  };
   const handleCompositionEnd = () => {
-    inputModelRef.current = updateTerminalInputComposition(inputModelRef.current, false);
+    inputModelRef.current = updateTerminalInputComposition(
+      inputModelRef.current,
+      false,
+    );
     inputBufferRef.current = inputModelRef.current.command;
     ghostSuggestions.setLifecycle({ imeComposing: false });
     ghostSuggestions.scheduleGhostSuggestion();
   };
-  compositionTarget.addEventListener("compositionstart", handleCompositionStart);
+  compositionTarget.addEventListener(
+    "compositionstart",
+    handleCompositionStart,
+  );
+  compositionTarget.addEventListener(
+    "compositionupdate",
+    handleCompositionUpdate,
+  );
   compositionTarget.addEventListener("compositionend", handleCompositionEnd);
 
   let suppressNextPasteEvent = false;
@@ -302,11 +417,34 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
       scrollDisposable.dispose();
       writeParsedDisposable.dispose();
       bufferChangeDisposable.dispose();
-      compositionTarget.removeEventListener("compositionstart", handleCompositionStart);
-      compositionTarget.removeEventListener("compositionend", handleCompositionEnd);
+      compositionTarget.removeEventListener(
+        "compositionstart",
+        handleCompositionStart,
+      );
+      compositionTarget.removeEventListener(
+        "compositionupdate",
+        handleCompositionUpdate,
+      );
+      compositionTarget.removeEventListener(
+        "compositionend",
+        handleCompositionEnd,
+      );
       container.removeEventListener("keydown", handleRuntimeKeydown, true);
       container.removeEventListener("paste", handleRuntimePaste, true);
       clearRuntimePasteSuppression();
     },
   };
+}
+
+function readTerminalCursorLine(terminal: XtermTerminal) {
+  const buffer = terminal.buffer.active as typeof terminal.buffer.active & {
+    baseY?: number;
+    cursorY?: number;
+  };
+  if (typeof buffer.baseY !== "number" || typeof buffer.cursorY !== "number") {
+    return "";
+  }
+  return (
+    buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? ""
+  );
 }

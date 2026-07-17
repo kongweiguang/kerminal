@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentWorkflowController,
@@ -37,6 +38,7 @@ import {
 } from "../workspace/contracts/index";
 import {
   agentLaunchDisplayCommand,
+  applyManagedAgentLaunchTrust,
   applyAgentLaunchPermissionMode,
   buildAgentLauncherViewModel,
   type AgentLaunchPermissionMode,
@@ -152,15 +154,13 @@ export function AgentLauncherToolContent({
     ? terminalPanes?.find((pane) => pane.id === pendingAgentSendRequest.paneId)
     : undefined;
   const effectiveFocusedPane = requestedPane ?? focusedPane;
-  const {
-    renameSession: renameWorkflowSession,
-    renamingSessionId,
-  } = useAgentSessionTitleRename({
-    controller: workflowController,
-    setActionError,
-    setPersistedSessions: setPersistedAgentSessions,
-    setRuntimeSessions: setAgentSessions,
-  });
+  const { renameSession: renameWorkflowSession, renamingSessionId } =
+    useAgentSessionTitleRename({
+      controller: workflowController,
+      setActionError,
+      setPersistedSessions: setPersistedAgentSessions,
+      setRuntimeSessions: setAgentSessions,
+    });
   const activeAgentTabId = isTerminalSessionTab(activeTab)
     ? activeTab.id
     : undefined;
@@ -377,23 +377,26 @@ export function AgentLauncherToolContent({
       agentId,
       permissionMode,
     )?.agentSessionId ?? null;
-  const setTabView = useCallback((tabId: string, nextView: AgentLauncherScreen) => {
-    setViewByTabId((current) => ({
-      ...current,
-      [tabId]: nextView,
-    }));
-  }, []);
+  const setTabView = useCallback(
+    (tabId: string, nextView: AgentLauncherScreen) => {
+      setViewByTabId((current) => ({
+        ...current,
+        [tabId]: nextView,
+      }));
+    },
+    [],
+  );
 
-  const activateAgentSessionForTab = useCallback((
-    tabId: string,
-    agentSessionId: string,
-  ) => {
-    setActiveSessionIdByTabId((current) => ({
-      ...current,
-      [tabId]: agentSessionId,
-    }));
-    setTabView(tabId, "terminal");
-  }, [setTabView]);
+  const activateAgentSessionForTab = useCallback(
+    (tabId: string, agentSessionId: string) => {
+      setActiveSessionIdByTabId((current) => ({
+        ...current,
+        [tabId]: agentSessionId,
+      }));
+      setTabView(tabId, "terminal");
+    },
+    [setTabView],
+  );
 
   useAgentSendRequestCoordinator({
     activeTab,
@@ -460,7 +463,10 @@ export function AgentLauncherToolContent({
     },
   ) => {
     const permissionMode = options.permissionMode ?? "default";
-    const launchSpec = applyAgentLaunchPermissionMode(spec, permissionMode);
+    const launchSpec = applyAgentLaunchPermissionMode(
+      applyManagedAgentLaunchTrust(spec),
+      permissionMode,
+    );
     const agentSessionId = launchSpec.agentSessionId?.trim();
     if (!agentSessionId) {
       throw new Error("Agent session launch spec is missing agentSessionId.");

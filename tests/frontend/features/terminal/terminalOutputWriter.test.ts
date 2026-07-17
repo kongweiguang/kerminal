@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+// @author kongweiguang
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTerminalOutputWriter,
   type TerminalOutputScheduler,
@@ -36,6 +37,270 @@ function createManualScheduler() {
 }
 
 describe("terminalOutputWriter", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the TUI native final cursor placement", () => {
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => callback?.()),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write(
+      "\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[?25h\x1b[13;4H\x1b[?2026l",
+    );
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenNthCalledWith(
+      1,
+      "\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[13;4H\x1b[?25h\x1b[?2026l",
+      expect.any(Function),
+    );
+  });
+
+  it("keeps the pinned cursor hidden until a split synchronized frame closes", () => {
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => callback?.()),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write(
+      "\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[?25h\x1b[13;4H",
+    );
+    manual.runNext();
+    writer.write("\x1b[?2026l");
+    manual.runNext();
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual([
+      "\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[13;4H\x1b[?25h",
+      "\x1b[?2026l",
+    ]);
+  });
+
+  it("settles a protected Codex frame through the real writer callback", () => {
+    const parseCallbacks: Array<() => void> = [];
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const terminal = {
+      _core: { refresh: vi.fn() },
+      buffer: { active: { baseY: 0, viewportY: 0 } },
+      rows: 14,
+      write: vi.fn((_data: string, callback?: () => void) => {
+        if (callback) {
+          parseCallbacks.push(callback);
+        }
+      }),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write(
+      "\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?2026l\x1b[13;4H\x1b[?25h",
+    );
+    manual.runNext();
+    parseCallbacks.shift()?.();
+
+    expect(terminal._core.refresh).toHaveBeenCalledWith(0, 13, true);
+    expect(frames).toHaveLength(1);
+    frames[0]?.(16);
+    expect(terminal._core.refresh).toHaveBeenCalledTimes(2);
+    writer.dispose();
+  });
+
+  it("automatically protects synchronized output without an Agent signal", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?25h");
+    writer.write("\x1b[?2026l");
+
+    expect(terminal.write).not.toHaveBeenCalled();
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      16,
+    );
+
+    writer.write("\x1b[13;4H\x1b[?25l\x1b[?25h");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledWith(
+      "\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?2026l\x1b[13;4H\x1b[?25l\x1b[?25h",
+    );
+  });
+
+  it("holds synchronized TUI frames and defers transient cursor shows", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write("\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[?25h");
+
+    expect(terminal.write).not.toHaveBeenCalled();
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      32,
+    );
+
+    writer.write("\x1b[13;4H\x1b[?2026l");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledTimes(1);
+    expect(terminal.write).toHaveBeenCalledWith(
+      "\x1b[?2026h\x1b[?25l\x1b[10;5HWorking\x1b[13;4H\x1b[?25h\x1b[?2026l",
+    );
+  });
+
+  it("coalesces a synchronized frame end with the next cursor restore chunk", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write("\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?25h");
+    writer.write("\x1b[?2026l");
+
+    expect(terminal.write).not.toHaveBeenCalled();
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      16,
+    );
+
+    writer.write("\x1b[13;4H\x1b[?25l\x1b[?25h");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledTimes(1);
+    expect(terminal.write).toHaveBeenCalledWith(
+      "\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?2026l\x1b[13;4H\x1b[?25l\x1b[?25h",
+    );
+  });
+
+  it("keeps post-frame cursor coalescing while an earlier write is in flight", () => {
+    const callbacks: Array<() => void> = [];
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => {
+        if (callback) {
+          callbacks.push(callback);
+        }
+      }),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+    writer.write("earlier output");
+    manual.runNext();
+
+    writer.write(
+      "\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?25h\x1b[?2026l",
+    );
+    expect(manual.pendingCount()).toBe(0);
+
+    callbacks.shift()?.();
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      16,
+    );
+    writer.write("\x1b[13;4H\x1b[?25l\x1b[?25h");
+    manual.runNext();
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual([
+      "earlier output",
+      "\x1b[?2026h\x1b[?25l\x1b[4;2HWorking\x1b[?2026l\x1b[13;4H\x1b[?25l\x1b[?25h",
+    ]);
+  });
+
+  it("safety-flushes an unclosed synchronized frame after 32ms", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write("\x1b[?2026hpartial frame");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledWith("\x1b[?2026hpartial frame");
+  });
+
+  it("releases a held synchronized frame when TUI protection is disabled", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+    writer.write("\x1b[?2026hpartial frame");
+
+    writer.setTuiCursorProtection!(false);
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledWith("\x1b[?2026hpartial frame");
+    expect(manual.scheduler.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("detects synchronized frame delimiters split across PTY chunks", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    writer.setTuiCursorProtection!(true);
+
+    writer.write("before\x1b[?20");
+    writer.write("26h\x1b[?25h\x1b[4;2Hinput\x1b[?202");
+    expect(terminal.write).not.toHaveBeenCalled();
+    writer.write("6l");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledWith(
+      "before\x1b[?2026h\x1b[4;2H\x1b[?25hinput\x1b[?2026l",
+    );
+  });
+
+  it("does not alter ordinary output when TUI protection is disabled", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      scheduler: manual.scheduler,
+    });
+    const output = "plain\x1b[?25h\x1b[3;2Hterminal output";
+
+    writer.write(output);
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledWith(output);
+  });
+
   it("coalesces small output chunks into one xterm write per frame", () => {
     const terminal = { write: vi.fn() };
     const manual = createManualScheduler();

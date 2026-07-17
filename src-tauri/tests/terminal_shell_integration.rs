@@ -164,7 +164,27 @@ fn disables_integration_for_custom_shell_args_and_preserves_bare_launch() {
 
     assert_eq!(plan.shell, "powershell.exe");
     assert_eq!(plan.args, args);
-    assert_eq!(plan.env, env);
+    assert_eq!(plan.env.get("CUSTOM").map(String::as_str), Some("value"));
+    assert_eq!(
+        plan.env.get(KERMINAL_TERMINAL_ENV).map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(
+        plan.env.get("TERM").map(String::as_str),
+        Some("xterm-256color")
+    );
+    assert_eq!(
+        plan.env.get("COLORTERM").map(String::as_str),
+        Some("truecolor")
+    );
+    assert_eq!(
+        plan.env.get("TERM_PROGRAM").map(String::as_str),
+        Some("Kerminal")
+    );
+    assert_eq!(
+        plan.env.get("TERM_PROGRAM_VERSION").map(String::as_str),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(
         plan.integration.status,
         TerminalShellIntegrationStatus::Disabled
@@ -415,7 +435,71 @@ fn kerminal_env_opt_out_disables_integration() {
         plan.integration.reason.as_deref(),
         Some("disabled by environment")
     );
-    assert_eq!(plan.env, env);
+    assert_eq!(
+        plan.env
+            .get(KERMINAL_SHELL_INTEGRATION_ENV)
+            .map(String::as_str),
+        Some("off")
+    );
+    assert_eq!(
+        plan.env.get(KERMINAL_TERMINAL_ENV).map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(
+        plan.env.get("TERM").map(String::as_str),
+        Some("xterm-256color")
+    );
+    assert_eq!(
+        plan.env.get("COLORTERM").map(String::as_str),
+        Some("truecolor")
+    );
+}
+
+#[test]
+fn bare_launch_preserves_explicit_terminal_capabilities() {
+    let temp = tempdir().unwrap();
+    let env = HashMap::from([
+        ("TERM".to_owned(), "screen-256color".to_owned()),
+        ("COLORTERM".to_owned(), "24bit".to_owned()),
+        ("TERM_PROGRAM".to_owned(), "explicit-terminal".to_owned()),
+        ("TERM_PROGRAM_VERSION".to_owned(), "9.1".to_owned()),
+        ("NO_COLOR".to_owned(), "1".to_owned()),
+        ("FORCE_COLOR".to_owned(), "0".to_owned()),
+        ("CLICOLOR".to_owned(), "0".to_owned()),
+    ]);
+
+    let plan = build_terminal_shell_launch_with_catalog(
+        "custom-shell",
+        &[],
+        &env,
+        temp.path(),
+        &catalog(ShellIntegrationPlatform::Unix, vec![]),
+    );
+
+    assert_eq!(
+        plan.integration.status,
+        TerminalShellIntegrationStatus::Disabled
+    );
+    assert_eq!(
+        plan.env.get("TERM").map(String::as_str),
+        Some("screen-256color")
+    );
+    assert_eq!(plan.env.get("COLORTERM").map(String::as_str), Some("24bit"));
+    assert_eq!(
+        plan.env.get("TERM_PROGRAM").map(String::as_str),
+        Some("explicit-terminal")
+    );
+    assert_eq!(
+        plan.env.get("TERM_PROGRAM_VERSION").map(String::as_str),
+        Some("9.1")
+    );
+    assert_eq!(plan.env.get("NO_COLOR").map(String::as_str), Some("1"));
+    assert_eq!(plan.env.get("FORCE_COLOR").map(String::as_str), Some("0"));
+    assert_eq!(plan.env.get("CLICOLOR").map(String::as_str), Some("0"));
+    assert_eq!(
+        plan.env.get(KERMINAL_TERMINAL_ENV).map(String::as_str),
+        Some("1")
+    );
 }
 
 fn catalog(

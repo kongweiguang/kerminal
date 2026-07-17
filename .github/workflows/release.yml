@@ -27,20 +27,20 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
     steps:
       - name: Checkout release refs
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
           run_install: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Verify release tag and versions
         id: release
@@ -140,21 +140,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.preflight.outputs.release_tag }}
           fetch-depth: 1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
           run_install: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -213,11 +213,11 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 新安装默认使用紧凑界面密度，在保持浅色、深色和跟随系统主题可读性的同时提升终端与工具面板的信息密度。
-            - 空工作区不再恢复陈旧的主机选择，Context Inspector 与右栏工具只展示当前真实终端目标。
-            - SFTP 传输工作台隐藏没有终端上下文的目录跟随入口；终端右栏继续保留紧凑控制和目标绑定能力。
-            - SSH 目录跟随新增标准 OSC 7、pane 初始目录和来源优先级兜底，协议目录建立后不再被 prompt 猜测覆盖。
-            - 修正 MCP HTTP 生命周期回归测试对临时端口回退契约的错误假设，降低 Windows 发布门禁的偶发失败。
+            - 修复 Codex 等 inline TUI 的同步帧合并、瞬态光标显示和前台渲染收敛，长回复与持续刷新不再产生光标漂移、重复字符或残影。
+            - 中文输入法候选窗改为跟随 xterm 公开 buffer 光标定位，并升级到匹配的 Xterm 6.1 beta 组件，改善中英文混输与宽字符渲染。
+            - inline TUI 命令色条改由交互信号和真实 buffer 状态共同判定，避免把全屏或持续交互界面误识别为普通命令块。
+            - 本地 PTY 统一声明 256 色、truecolor 与 Kerminal 终端能力，并隔离宿主进程的无色环境变量，恢复 Codex、Claude 等 CLI 的 ANSI 色彩。
+            - Kerminal 管理的 Codex Agent 会话自动携带已审查 hooks 的信任参数，减少重复信任确认；GitHub Actions 同步使用当前 Node 24 与新版官方 actions。
 
             macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true

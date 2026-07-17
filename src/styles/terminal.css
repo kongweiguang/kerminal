@@ -1,4 +1,15 @@
+/* @author kongweiguang */
 /* 终端表面沿用文档根节点上的浅色与深色主题变量。 */
+.xterm .xterm-helpers {
+  /* xterm.css 未设置 left，Windows Chromium 可能让 IME 候选窗产生水平偏移。 */
+  left: 0;
+}
+
+.xterm .xterm-helper-textarea {
+  /* Windows Chromium 可能在透明 textarea 上绘制原生 caret，造成第二个跳动光标。 */
+  caret-color: transparent;
+}
+
 .kerminal-terminal-surface {
   background: rgb(
     var(--surface-terminal-rgb) / var(--app-terminal-surface-opacity)

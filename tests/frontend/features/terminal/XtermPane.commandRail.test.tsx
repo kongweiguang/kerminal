@@ -2,11 +2,20 @@
  * @author kongweiguang
  */
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
-import { mocks, setTerminalBufferLines } from "../../support/terminal/XtermPane.testSupport.tsx";
+import {
+  mocks,
+  setTerminalBufferLines,
+} from "../../support/terminal/XtermPane.testSupport.tsx";
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
 import {
   getAgentSendRequestSnapshot,
@@ -69,9 +78,7 @@ describe("XtermPane command rail boundaries", () => {
 
     const commandRail = await screen.findByLabelText("折叠命令块 pwd");
     fireEvent.contextMenu(commandRail, { clientX: 24, clientY: 48 });
-    await user.click(
-      screen.getByRole("menuitem", { name: "复制文本块 pwd" }),
-    );
+    await user.click(screen.getByRole("menuitem", { name: "复制文本块 pwd" }));
 
     await waitFor(() =>
       expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
@@ -163,12 +170,12 @@ describe("XtermPane command rail boundaries", () => {
       source: "commandBlock",
       tabId: "tab-local",
     });
-    expect(getTerminalPaneSessionRecord("pane-local")?.commandBlockText).toContain(
-      "$ pwd",
-    );
-    expect(getTerminalPaneSessionRecord("pane-local")?.commandBlockText).toContain(
-      "C:\\\\Users\\\\24052",
-    );
+    expect(
+      getTerminalPaneSessionRecord("pane-local")?.commandBlockText,
+    ).toContain("$ pwd");
+    expect(
+      getTerminalPaneSessionRecord("pane-local")?.commandBlockText,
+    ).toContain("C:\\\\Users\\\\24052");
     expect(readXtermPanePromptSource("pane-local")?.commandBlockText).toContain(
       "$ pwd",
     );
@@ -249,9 +256,8 @@ describe("XtermPane command rail boundaries", () => {
       terminal.onWriteParsedCallback?.();
     });
     expect(screen.queryByLabelText("折叠命令块 pwd")).not.toBeInTheDocument();
-    const clearedPromptRail = await screen.findByLabelText(
-      "当前命令行色条 当前命令行",
-    );
+    const clearedPromptRail =
+      await screen.findByLabelText("当前命令行色条 当前命令行");
     expect(commandRailTop(clearedPromptRail as HTMLElement)).toBe(0);
 
     act(() => {
@@ -289,9 +295,8 @@ describe("XtermPane command rail boundaries", () => {
     expect(commandRailHeight(emptyEnterRail as HTMLElement)).toBeGreaterThan(
       17,
     );
-    const currentPromptRail = screen.getByLabelText(
-      "当前命令行色条 当前命令行",
-    );
+    const currentPromptRail =
+      screen.getByLabelText("当前命令行色条 当前命令行");
     expect(commandRailTop(currentPromptRail as HTMLElement)).toBeCloseTo(
       commandRailHeight(emptyEnterRail as HTMLElement),
     );
@@ -395,10 +400,9 @@ describe("XtermPane command rail boundaries", () => {
     });
 
     const terminal = mocks.terminalInstances[0];
-    const registerMarker = vi.spyOn(
-      terminal,
-      "registerMarker",
-    ) as unknown as { mock: { results: Array<{ value: unknown }> } };
+    const registerMarker = vi.spyOn(terminal, "registerMarker") as unknown as {
+      mock: { results: Array<{ value: unknown }> };
+    };
     setTerminalBufferLines(
       terminal,
       {
@@ -412,9 +416,8 @@ describe("XtermPane command rail boundaries", () => {
       terminal.onWriteParsedCallback?.();
     });
 
-    const firstPromptRail = await screen.findByLabelText(
-      "当前命令行色条 当前命令行",
-    );
+    const firstPromptRail =
+      await screen.findByLabelText("当前命令行色条 当前命令行");
     const rowHeight = commandRailHeight(firstPromptRail as HTMLElement);
     expect(commandRailTop(firstPromptRail as HTMLElement)).toBeCloseTo(
       rowHeight * 2,
@@ -438,15 +441,13 @@ describe("XtermPane command rail boundaries", () => {
     });
 
     const firstStartMarker = registerMarker.mock.results[0]?.value as
-      | { dispose: () => void }
-      | undefined;
+      { dispose: () => void } | undefined;
     act(() => {
       firstStartMarker?.dispose();
       terminal.onWriteParsedCallback?.();
     });
-    const backfilledFirstRail = await screen.findByLabelText(
-      "折叠命令块 空命令",
-    );
+    const backfilledFirstRail =
+      await screen.findByLabelText("折叠命令块 空命令");
     expect(commandRailTop(backfilledFirstRail as HTMLElement)).toBeCloseTo(
       rowHeight * 2,
     );
@@ -483,11 +484,8 @@ describe("XtermPane command rail boundaries", () => {
       ),
     ).toBeCloseTo(rowHeight * 4);
     expect(
-      (
-        screen.getByLabelText(
-          "当前命令行色条 当前命令行",
-        ) as HTMLElement
-      ).style.backgroundColor,
+      (screen.getByLabelText("当前命令行色条 当前命令行") as HTMLElement).style
+        .backgroundColor,
     ).not.toBe(emptyRailColors[1]);
   });
 
@@ -546,8 +544,12 @@ describe("XtermPane command rail boundaries", () => {
       terminal.onWriteParsedCallback?.();
     });
 
-    expect(await screen.findByLabelText("折叠命令块 printf")).toBeInTheDocument();
-    expect(screen.queryByLabelText("折叠命令块 空命令")).not.toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("折叠命令块 printf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("折叠命令块 空命令"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByLabelText("当前命令行色条 当前命令行"),
     ).toBeInTheDocument();
@@ -627,9 +629,8 @@ describe("XtermPane command rail boundaries", () => {
 
     const lsRail = await screen.findByLabelText("折叠命令块 ls");
     const lsColor = (lsRail as HTMLElement).style.backgroundColor;
-    const currentPromptRail = screen.getByLabelText(
-      "当前命令行色条 当前命令行",
-    );
+    const currentPromptRail =
+      screen.getByLabelText("当前命令行色条 当前命令行");
     expect(commandRailTop(currentPromptRail as HTMLElement)).toBeCloseTo(
       commandRailTop(lsRail as HTMLElement) +
         commandRailHeight(lsRail as HTMLElement),
@@ -661,6 +662,123 @@ describe("XtermPane command rail boundaries", () => {
     expect((submittedRail as HTMLElement).style.backgroundColor).not.toBe(
       lsColor,
     );
+  });
+
+  it("suppresses command rails for an inline Agent TUI launched through an alias", async () => {
+    const onAgentSignal = vi.fn();
+    render(
+      <XtermPane
+        focused
+        onAgentSignal={onAgentSignal}
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="dz"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      { 0: "PS C:\\dev\\rust\\kerminal> dz" },
+      0,
+    );
+    act(() => {
+      terminal.onDataCallback?.("dz\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "Agent TUI starting\r\n",
+        kind: "data",
+        sessionId: "session-1",
+      });
+      terminal.onWriteParsedCallback?.();
+    });
+    expect(await screen.findByLabelText("折叠命令块 dz")).toBeInTheDocument();
+
+    act(() => {
+      mocks.getLatestOutputHandler()?.({
+        agentSignal: {
+          agent: "codex",
+          agentSessionId: "agent-session-1",
+          status: "working",
+          terminalSessionId: "session-1",
+        },
+        data: "",
+        kind: "agentSignal",
+        sessionId: "session-1",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("命令块色条")).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("dz xterm 终端").parentElement).toHaveClass(
+      "pl-3",
+    );
+    expect(
+      getTerminalPaneSessionRecord("pane-local")?.commandBlockText,
+    ).toBeUndefined();
+    expect(onAgentSignal).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "working" }),
+    );
+    expect(terminal.options.cursorBlink).toBe(true);
+
+    setTerminalBufferLines(terminal, { 4: "Write tests for @filename" }, 4);
+    act(() => {
+      terminal.onDataCallback?.("Write tests for @filename\r");
+      terminal.onWriteParsedCallback?.();
+      mocks.getLatestOutputHandler()?.({
+        agentSignal: {
+          agent: "codex",
+          agentSessionId: "agent-session-1",
+          status: "finished",
+          terminalSessionId: "session-1",
+        },
+        data: "",
+        kind: "agentSignal",
+        sessionId: "session-1",
+      });
+    });
+    expect(screen.queryByLabelText("命令块色条")).not.toBeInTheDocument();
+    expect(
+      getTerminalPaneSessionRecord("pane-local")?.commandBlockText,
+    ).toBeUndefined();
+    expect(terminal.options.cursorBlink).toBe(true);
+
+    act(() => {
+      mocks.getLatestOutputHandler()?.({
+        agentSignal: {
+          agent: "codex",
+          agentSessionId: "agent-session-1",
+          status: "exited",
+          terminalSessionId: "session-1",
+        },
+        data: "",
+        kind: "agentSignal",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      { 6: "PS C:\\dev\\rust\\kerminal> pwd" },
+      6,
+    );
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      terminal.onWriteParsedCallback?.();
+    });
+
+    expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
+    expect(screen.getByLabelText("dz xterm 终端").parentElement).toHaveClass(
+      "pl-6",
+    );
+    expect(
+      getTerminalPaneSessionRecord("pane-local")?.commandBlockText,
+    ).toContain("$ pwd");
+    expect(terminal.options.cursorBlink).toBe(true);
   });
 });
 

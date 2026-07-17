@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
@@ -77,6 +78,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     setCommandBlockViews,
     setConnectionState,
     setGhostSuggestion,
+    setInlineTuiActive,
     setLogNotice,
     setLogState,
     setSearchResults,
@@ -150,6 +152,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     reduceShellIntegrationState: reduceShellIntegrationRuntimeState,
     setCommandBlockNotice,
     setCommandBlockViews,
+    setInlineTuiActive,
     shellIntegrationCommandBlockProtocolRef,
     syncCommandBlockViews,
     terminal,
@@ -314,6 +317,19 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   if (shouldEnableKittyKeyboardProtocol(inputCompatibilityMode)) {
     terminal.write(KITTY_KEYBOARD_PROTOCOL_ENABLE);
   }
+  const outputWriter = createTerminalOutputWriter(terminal, {
+    adaptive: TERMINAL_RENDERER_FEATURE_GATES.adaptiveOutputScheduler,
+    callbackMode: "auto",
+    cadence:
+      visibleRef?.current === false
+        ? "hidden"
+        : focusedRef.current
+          ? "focused"
+          : "visible",
+    telemetry: TERMINAL_RENDERER_FEATURE_GATES.performanceTelemetry
+      ? rendererTelemetry
+      : undefined,
+  });
   const runtimeEvents = registerXtermPaneRuntimeEvents({
     activityRuntimeRef,
     assistEnabled,
@@ -358,19 +374,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       shouldPreserveOriginEraseBelow: shouldPreserveCommandBlockForOriginEraseBelow,
     },
   );
-  const outputWriter = createTerminalOutputWriter(terminal, {
-    adaptive: TERMINAL_RENDERER_FEATURE_GATES.adaptiveOutputScheduler,
-    callbackMode: "auto",
-    cadence:
-      visibleRef?.current === false
-        ? "hidden"
-        : focusedRef.current
-          ? "focused"
-          : "visible",
-    telemetry: TERMINAL_RENDERER_FEATURE_GATES.performanceTelemetry
-      ? rendererTelemetry
-      : undefined,
-  });
   outputWriter.writeNow(outputHistoryRef.current ?? "");
   const outputHistoryBuffer = createTerminalOutputHistoryBuffer({
     flushDelayMs: () => terminalRuntimeLifecycleRef?.current?.outputHistoryFlushIntervalMs ?? 100,
