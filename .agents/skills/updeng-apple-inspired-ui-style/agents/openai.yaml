@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Apple-inspired UI Style"
+  short_description: "生产级 Apple-inspired UI 与 Liquid Glass 视觉规范"
+  default_prompt: "使用 $updeng-apple-inspired-ui-style 设计或改进生产级 Apple-inspired 界面，覆盖 Liquid Glass 材质、语义 token、克制层级、原生动效、可访问性降级和真实界面验证。"

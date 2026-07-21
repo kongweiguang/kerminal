@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Tauri 移动端开发"
+  short_description: "适配 Android/iOS、原生权限和真机行为"
+  default_prompt: "使用 $tauri-mobile-development 实现这项 Android/iOS 能力，并验证移动端权限、平台约束和真机行为。"

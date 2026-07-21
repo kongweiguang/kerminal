@@ -1,0 +1,98 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/skill_forced_eval.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/skill_forced_eval.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "评估项目 Skills",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|shell|apply_patch|functions\\.apply_patch|Edit|Write|NotebookEdit|exec_command|functions\\.exec|functions\\.exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/pre_tool_use.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/pre_tool_use.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "检查计划与文件归属",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|shell|apply_patch|functions\\.apply_patch|Edit|Write|NotebookEdit|exec_command|functions\\.exec|functions\\.exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/workflow_event.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/workflow_event.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "记录 Updeng 操作",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/workflow_event.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/workflow_event.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "收口 Updeng 运行状态",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/workflow_event.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/workflow_event.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "加载 Updeng 状态",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/workflow_event.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/workflow_event.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "登记 Updeng 子任务",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'd=\"$PWD\"; while [ \"$d\" != / ]; do hook=\"$d/.codex/hooks/workflow_event.mjs\"; marker=\"$d/.codex/updeng.json\"; if [ -f \"$hook\" ] && [ -f \"$marker\" ]; then exec node \"$hook\"; fi; d=\"$(dirname \"$d\")\"; done'",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$d=(Get-Location).Path; while ($true) { $hook=Join-Path $d '.codex/hooks/workflow_event.mjs'; $marker=Join-Path $d '.codex/updeng.json'; if ((Test-Path -LiteralPath $hook) -and (Test-Path -LiteralPath $marker)) { & node $hook; exit $LASTEXITCODE }; $parent=Split-Path -Parent $d; if (-not $parent -or $parent -eq $d) { exit 0 }; $d=$parent }\"",
+            "statusMessage": "关闭 Updeng 子任务",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

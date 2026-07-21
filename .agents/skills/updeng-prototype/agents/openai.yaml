@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "原型探索"
+  short_description: "用可删除原型验证状态、交互或技术可行性"
+  default_prompt: "使用 $updeng-prototype 定义明确学习目标，构建可运行且隔离的最小原型，并给出删除或吸收结论。"

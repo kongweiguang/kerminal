@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "架构深化评估"
+  short_description: "从真实摩擦识别深模块、测试缝隙与渐进迁移"
+  default_prompt: "使用 $updeng-architecture-deepening 基于调用链和测试证据评估架构候选，并给出可回滚的生产迁移切片。"

@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Tauri 应用能力"
+  short_description: "集成插件、权限、持久化、窗口与系统能力"
+  default_prompt: "使用 $tauri-app-capabilities 以最小权限实现这项 Tauri 插件或原生能力，并完成真实运行时验证。"

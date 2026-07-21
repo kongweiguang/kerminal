@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Tauri 开发"
+  short_description: "设计 Tauri 架构并实现可靠的类型化 IPC 调用链"
+  default_prompt: "使用 $tauri-development 按仓库现有边界实现这次 Tauri 架构或 IPC 变更，并完成真实调用链验证。"

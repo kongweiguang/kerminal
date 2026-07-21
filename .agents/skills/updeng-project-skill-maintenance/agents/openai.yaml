@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "项目技能维护"
+  short_description: "维护 Skill 结构、触发边界并人工沉淀历史经验"
+  default_prompt: "使用 $updeng-project-skill-maintenance 维护当前仓库的 Skills 或从证据中沉淀规则。"

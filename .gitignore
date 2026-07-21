@@ -29,37 +29,11 @@ dist-ssr
 *.sw?
 
 # BEGIN UPDENG
-AGENTS.md
-/.codex
+# @author kongweiguang
 /.updeng
-.codegraph/
-tmp/
-
-# Dependency and build outputs
-node_modules/
-dist/
-build/
-out/
-coverage/
-.next/
-.nuxt/
-.vite/
-target/
-src-tauri/target/
-
-# Python caches
-__pycache__/
-*.py[cod]
-.pytest_cache/
-
-# Java/JVM build outputs
-*.class
-*.jar
-*.war
-*.ear
-
-# Logs and local env
-*.log
+/.updeng/
+/.codegraph/
+/tmp/
 .env
 .env.*
 !.env.example

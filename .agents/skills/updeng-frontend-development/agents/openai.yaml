@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "前端开发能力"
+  short_description: "统一前端架构、页面交互、接口契约和浏览器验收"
+  default_prompt: "使用 $updeng-frontend-development 组织并交付当前前端需求。"

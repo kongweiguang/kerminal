@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Tauri 交付"
+  short_description: "打包、签名、更新并发布 Tauri 应用"
+  default_prompt: "使用 $tauri-delivery 按真实产物完成这次 Tauri 打包、更新或发布，并执行对应验证门禁。"
