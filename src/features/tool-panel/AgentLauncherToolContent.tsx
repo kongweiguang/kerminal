@@ -10,7 +10,6 @@ import {
   agentSessionRecordId,
   agentSessionRecordAgentId,
   agentSessionRecordTarget,
-  archiveAgentSession,
   getExternalAgentWorkspaceStatus,
   listAgentSessions,
   prepareExternalAgentWorkspace,
@@ -351,20 +350,6 @@ export function AgentLauncherToolContent({
         Object.entries(current).filter(([tabId]) => !removedTabIds.has(tabId)),
       ),
     );
-    void Promise.all(
-      cleanupPlan.agentSessionIds.map(async (agentSessionId) => {
-        try {
-          await archiveAgentSession(agentSessionId);
-        } catch (error) {
-          setActionError(
-            buildUserFacingError(error, {
-              recoveryAction: "请稍后重新整理会话。",
-              title: "无法归档 Agent 会话",
-            }),
-          );
-        }
-      }),
-    );
   }, [agentSidebarState, terminalTabIds, terminalTabIdsKey, terminalTabs]);
   const findAgentSessionId = (
     tabId: string | undefined,
@@ -379,6 +364,12 @@ export function AgentLauncherToolContent({
     )?.agentSessionId ?? null;
   const setTabView = useCallback(
     (tabId: string, nextView: AgentLauncherScreen) => {
+      if (
+        typeof document !== "undefined" &&
+        document.activeElement instanceof HTMLElement
+      ) {
+        document.activeElement.blur();
+      }
       setViewByTabId((current) => ({
         ...current,
         [tabId]: nextView,
@@ -592,8 +583,18 @@ export function AgentLauncherToolContent({
       permissionMode,
     );
     if (existingSessionId) {
-      setRestoreChoice(null);
-      activateAgentSessionForTab(activeAgentScopeId, existingSessionId);
+      const existingSession = agentSessions[existingSessionId];
+      if (existingSession) {
+        setRestoreChoice({
+          agentId,
+          permissionMode,
+          session: {
+            agentSessionId: existingSession.agentSessionId,
+            tabId: existingSession.tabId,
+            target: existingSession.target,
+          },
+        });
+      }
       return;
     }
 
@@ -657,6 +658,15 @@ export function AgentLauncherToolContent({
   };
 
   const continuePersistedAgentSession = (choice: AgentRestoreChoice) => {
+    const runningSession = agentSessions[choice.session.agentSessionId];
+    if (runningSession) {
+      setRestoreChoice(null);
+      activateAgentSessionForTab(
+        runningSession.tabId,
+        runningSession.agentSessionId,
+      );
+      return;
+    }
     void runAction(choice.agentId, async () => {
       await prepareAndLaunchAgent(choice.agentId, choice.session, {
         permissionMode: choice.permissionMode,
@@ -754,6 +764,7 @@ export function AgentLauncherToolContent({
         return (
           <div
             aria-hidden={view !== "terminal" || !active}
+            inert={view !== "terminal" || !active}
             className={cn(
               "absolute inset-0 transition-opacity duration-150",
               view === "terminal" && active

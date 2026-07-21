@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useCallback, useMemo, useState } from "react";
 import type {
   TerminalTab,
@@ -8,6 +9,7 @@ import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspac
 interface UseKerminalShellTabCloseOptions {
   closeTerminalTab: (tabId: string) => void;
   confirmTerminalClose: boolean;
+  onTabsClosed?: (tabIds: string[]) => void;
   terminalTabs: TerminalTab[];
   workspaceFileDirtyState: WorkspaceFileDirtyState;
 }
@@ -16,6 +18,7 @@ interface UseKerminalShellTabCloseOptions {
 export function useKerminalShellTabClose({
   closeTerminalTab,
   confirmTerminalClose,
+  onTabsClosed,
   terminalTabs,
   workspaceFileDirtyState,
 }: UseKerminalShellTabCloseOptions) {
@@ -25,6 +28,13 @@ export function useKerminalShellTabClose({
   const [pendingDirtyFileTabIds, setPendingDirtyFileTabIds] = useState<
     string[] | null
   >(null);
+  const closeTabs = useCallback(
+    (tabIds: string[]) => {
+      for (const tabId of tabIds) closeTerminalTab(tabId);
+      onTabsClosed?.(tabIds);
+    },
+    [closeTerminalTab, onTabsClosed],
+  );
 
   const requestCloseTabs = useCallback(
     (tabIds: string[], confirmedDirtyFiles = false) => {
@@ -43,10 +53,10 @@ export function useKerminalShellTabClose({
         setPendingTerminalTabIds(decision.tabIds);
         return;
       }
-      for (const tabId of decision.tabIds) closeTerminalTab(tabId);
+      closeTabs(decision.tabIds);
     },
     [
-      closeTerminalTab,
+      closeTabs,
       confirmTerminalClose,
       terminalTabs,
       workspaceFileDirtyState,
@@ -59,9 +69,9 @@ export function useKerminalShellTabClose({
   );
   const confirmTerminalTabs = useCallback(() => {
     if (!pendingTerminalTabIds) return;
-    for (const tabId of pendingTerminalTabIds) closeTerminalTab(tabId);
+    closeTabs(pendingTerminalTabIds);
     setPendingTerminalTabIds(null);
-  }, [closeTerminalTab, pendingTerminalTabIds]);
+  }, [closeTabs, pendingTerminalTabIds]);
   const confirmDirtyFileTabs = useCallback(() => {
     if (!pendingDirtyFileTabIds) return;
     requestCloseTabs(pendingDirtyFileTabIds, true);

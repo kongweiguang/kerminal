@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ExternalSshLaunchResolvedRequest } from "../../../../src/features/external-launch/externalSshLaunchModel";
 import {
@@ -48,7 +50,7 @@ describe("workspaceStore external SSH launch", () => {
     expect(state.selectedMachineId).toBe("external:launch-1");
   });
 
-  it("switches to the SFTP tool when the launch asks for SFTP", () => {
+  it("opens the SFTP transfer workbench for the external target", () => {
     useWorkspaceStore.getState().openExternalSshLaunch(
       createResolvedLaunch({
         displayName: "Jump host file view",
@@ -57,8 +59,16 @@ describe("workspaceStore external SSH launch", () => {
     );
 
     const state = useWorkspaceStore.getState();
-    expect(state.activeTool).toBe("sftp");
+    expect(state.activeTool).toBeNull();
     expect(state.terminalPanes[0]?.title).toBe("Jump host file view");
+    expect(state.terminalTabs).toHaveLength(2);
+    expect(state.terminalTabs[1]).toMatchObject({
+      id: state.activeTabId,
+      kind: "sftpTransfer",
+      machineId: "external:launch-1",
+      rightHostId: "external:launch-1",
+      title: "Jump host file view 传输",
+    });
   });
 
   it("removes only the requested temporary external SSH machine", () => {

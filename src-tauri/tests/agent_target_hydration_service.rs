@@ -14,7 +14,9 @@ use kerminal_lib::{
         agent_session_file_store::AgentSessionFileStore,
         agent_session_service::{AgentSessionIdGenerator, AgentSessionService},
         agent_target_hydration_service::hydrate_agent_target_binding,
-        terminal_session_binding_service::TerminalSessionBindingService,
+        terminal_session_binding_service::{
+            AgentTargetBindingRequest, TerminalSessionBindingService,
+        },
     },
 };
 use tempfile::tempdir;
@@ -167,6 +169,54 @@ fn hydrate_does_not_resurrect_closed_persisted_target() {
         .agent_target_binding(id.as_str())
         .expect("runtime query")
         .is_none());
+}
+
+#[test]
+fn hydrate_accepts_newer_runtime_rebind_after_persisted_target_closed() {
+    let temp = tempdir().expect("temp dir");
+    let agent_sessions = service_with_ids(temp.path(), &["ags_hydrate_reconnected"]);
+    let terminal_bindings = TerminalSessionBindingService::default();
+    let id = AgentSessionId::new("ags_hydrate_reconnected").expect("id");
+    agent_sessions
+        .create_session_at(
+            AgentSessionCreateRequest {
+                agent_id: AgentId::Codex,
+                title: Some("Reconnected target".to_owned()),
+                launch: None,
+                target: Some(target_with_status(AgentTargetLiveStatus::Closed)),
+                provider: None,
+                mcp_endpoint: None,
+            },
+            "100",
+        )
+        .expect("create session");
+    terminal_bindings
+        .save_agent_target_binding(AgentTargetBindingRequest {
+            agent_session_id: id.as_str().to_owned(),
+            target_terminal_session_id: "term-reconnected".to_owned(),
+            pane_id: "pane-live".to_owned(),
+            tab_id: Some("tab-a".to_owned()),
+            target_ref: Some("ssh:prod-a".to_owned()),
+            cwd: Some("/srv/app".to_owned()),
+            shell: Some("bash".to_owned()),
+        })
+        .expect("save newer runtime binding");
+
+    let hydrated = hydrate_agent_target_binding(
+        &agent_sessions,
+        &terminal_bindings,
+        &id,
+        ["term-reconnected"],
+    )
+    .expect("hydrate reconnected target");
+
+    let target = hydrated.session.target.expect("target");
+    assert_eq!(target.live_status, AgentTargetLiveStatus::Ready);
+    assert_eq!(
+        target.target_terminal_session_id.as_deref(),
+        Some("term-reconnected")
+    );
+    assert_ne!(target.binding_id.as_deref(), Some("persisted-binding"));
 }
 
 fn service_with_ids(root: &Path, ids: &[&str]) -> AgentSessionService {

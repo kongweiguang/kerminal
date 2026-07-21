@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { StateCreator } from "zustand";
 import type { TerminalProfile } from "../../lib/profileApi";
 import {
@@ -86,41 +88,7 @@ export function createWorkspaceTabSlice(
         };
       }),
     openSftpTransferTab: (options) =>
-      set((state) => {
-        const leftHost = options?.leftHostId
-          ? findMachine(state.machineGroups, options.leftHostId)
-          : undefined;
-        const lockedLeftHost = options?.lockedLeftHostId
-          ? findMachine(state.machineGroups, options.lockedLeftHostId)
-          : undefined;
-        const rightHost = options?.rightHostId
-          ? findMachine(state.machineGroups, options.rightHostId)
-          : undefined;
-        const leftHostId = leftHost?.kind === "ssh" ? leftHost.id : undefined;
-        const lockedLeftHostId =
-          lockedLeftHost?.kind === "ssh" ? lockedLeftHost.id : undefined;
-        const rightHostId = rightHost?.kind === "ssh" ? rightHost.id : undefined;
-        const tabId = counters.nextTabId("tab-sftp-transfer");
-        const primaryHostId = rightHostId ?? lockedLeftHostId ?? leftHostId;
-        const primaryHost = primaryHostId
-          ? findMachine(state.machineGroups, primaryHostId)
-          : undefined;
-        const tab: SftpTransferWorkspaceTab = {
-          id: tabId,
-          kind: "sftpTransfer",
-          leftHostId: lockedLeftHostId ?? leftHostId,
-          lockedLeftHostId,
-          machineId: primaryHostId ?? "sftp-transfer",
-          rightHostId,
-          title: primaryHost ? `${primaryHost.name} 传输` : "SFTP 传输",
-        };
-        return {
-          activeTabId: tabId,
-          focusedPaneId: "",
-          selectedMachineId: primaryHostId ?? state.selectedMachineId,
-          terminalTabs: [...state.terminalTabs, tab],
-        };
-      }),
+      set((state) => openSftpTransferTabState(state, options, counters)),
     openWorkspaceFileTab: (options) =>
       set((state) => openWorkspaceFileTabState(state, options, counters)),
     setWorkspaceFileTabDirty: (tabId, dirty) =>
@@ -130,6 +98,50 @@ export function createWorkspaceTabSlice(
         revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
       ),
   });
+}
+
+/** 创建并聚焦 SFTP 传输工作台，供导航入口与外部启动复用同一标签语义。 */
+export function openSftpTransferTabState(
+  state: Pick<
+    WorkspaceState,
+    "machineGroups" | "selectedMachineId" | "terminalTabs"
+  >,
+  options: OpenSftpTransferTabOptions | undefined,
+  counters: Pick<WorkspaceStoreCounterRuntime, "nextTabId">,
+) {
+  const leftHost = options?.leftHostId
+    ? findMachine(state.machineGroups, options.leftHostId)
+    : undefined;
+  const lockedLeftHost = options?.lockedLeftHostId
+    ? findMachine(state.machineGroups, options.lockedLeftHostId)
+    : undefined;
+  const rightHost = options?.rightHostId
+    ? findMachine(state.machineGroups, options.rightHostId)
+    : undefined;
+  const leftHostId = leftHost?.kind === "ssh" ? leftHost.id : undefined;
+  const lockedLeftHostId =
+    lockedLeftHost?.kind === "ssh" ? lockedLeftHost.id : undefined;
+  const rightHostId = rightHost?.kind === "ssh" ? rightHost.id : undefined;
+  const tabId = counters.nextTabId("tab-sftp-transfer");
+  const primaryHostId = rightHostId ?? lockedLeftHostId ?? leftHostId;
+  const primaryHost = primaryHostId
+    ? findMachine(state.machineGroups, primaryHostId)
+    : undefined;
+  const tab: SftpTransferWorkspaceTab = {
+    id: tabId,
+    kind: "sftpTransfer",
+    leftHostId: lockedLeftHostId ?? leftHostId,
+    lockedLeftHostId,
+    machineId: primaryHostId ?? "sftp-transfer",
+    rightHostId,
+    title: primaryHost ? `${primaryHost.name} 传输` : "SFTP 传输",
+  };
+  return {
+    activeTabId: tabId,
+    focusedPaneId: "",
+    selectedMachineId: primaryHostId ?? state.selectedMachineId,
+    terminalTabs: [...state.terminalTabs, tab],
+  };
 }
 
 function openWorkspaceFileTabState(

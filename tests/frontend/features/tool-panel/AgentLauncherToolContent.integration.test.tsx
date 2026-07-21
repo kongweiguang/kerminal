@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -214,7 +215,7 @@ describe("AgentLauncherToolContent", () => {
     vi.clearAllMocks();
   });
 
-  it("archives and removes the agent terminal when its workspace tab closes", async () => {
+  it("removes the mounted agent terminal when its workspace tab closes", async () => {
     const user = userEvent.setup();
     const tabA = terminalTab("tab-a");
     const tabB = terminalTab("tab-b");
@@ -240,9 +241,6 @@ describe("AgentLauncherToolContent", () => {
       <AgentLauncherToolContent activeTab={tabB} terminalTabs={[tabB]} />,
     );
 
-    await waitFor(() => {
-      expect(apiMocks.archiveAgentSession).toHaveBeenCalledWith("ags-codex");
-    });
     expect(screen.queryByTestId("agent-xterm")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Codex" })).toBeInTheDocument();
   });

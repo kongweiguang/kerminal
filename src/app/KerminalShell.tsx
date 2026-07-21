@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+// @author kongweiguang
+import { useCallback, useRef, useState } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
 import { resolveThemeMode } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
@@ -34,6 +35,7 @@ import {
 import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
 import { useKerminalShellSnippetBridge } from "./useKerminalShellSnippetBridge";
 import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
+import { archiveAgentSessionsForClosedTabs } from "./agentSessionTabCloseCleanup";
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -174,6 +176,11 @@ export function KerminalShell() {
     resolvedTheme,
     settings,
   });
+  const handleTabsClosed = useCallback((tabIds: string[]) => {
+    void archiveAgentSessionsForClosedTabs(tabIds).catch((error) => {
+      console.error("Failed to archive Agent sessions for closed tabs", error);
+    });
+  }, []);
   const { defaultRemoteGroupId, defaultRemoteHostId } =
     useKerminalShellRemoteTargetModel(machineGroups);
   const {
@@ -199,6 +206,7 @@ export function KerminalShell() {
   } = useKerminalShellTabClose({
     closeTerminalTab,
     confirmTerminalClose: settings.terminal.confirmCloseTab,
+    onTabsClosed: handleTabsClosed,
     terminalTabs,
     workspaceFileDirtyState,
   });

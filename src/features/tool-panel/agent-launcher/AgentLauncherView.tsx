@@ -1,3 +1,4 @@
+// @author kongweiguang
 import {
   useEffect,
   useRef,
@@ -177,6 +178,7 @@ export function AgentLauncherView({
   return (
     <div
       aria-hidden={!visible}
+      inert={!visible}
       className={cn(
         "absolute inset-0 flex min-h-0 flex-col px-3 py-3 transition-opacity duration-150",
         visible ? "opacity-100" : "pointer-events-none select-none opacity-0",

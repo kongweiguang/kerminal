@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useKerminalShellTabClose } from "../../../src/app/useKerminalShellTabClose";
@@ -61,16 +62,40 @@ describe("useKerminalShellTabClose", () => {
 
   it("closes immediately when terminal confirmation is disabled", () => {
     const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
     const { result } = renderHook(() =>
       useKerminalShellTabClose({
         closeTerminalTab,
         confirmTerminalClose: false,
+        onTabsClosed,
         terminalTabs: [terminalTab],
         workspaceFileDirtyState: {},
       }),
     );
     act(() => result.current.requestCloseTab(terminalTab.id));
     expect(closeTerminalTab).toHaveBeenCalledWith(terminalTab.id);
+    expect(onTabsClosed).toHaveBeenCalledWith([terminalTab.id]);
     expect(result.current.pendingTerminalTabCount).toBe(0);
+  });
+
+  it("notifies the lifecycle owner only after confirmed tabs close", () => {
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        terminalTabs: [terminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() => result.current.requestCloseTab(terminalTab.id));
+    expect(onTabsClosed).not.toHaveBeenCalled();
+
+    act(() => result.current.confirmTerminalTabs());
+    expect(onTabsClosed).toHaveBeenCalledTimes(1);
+    expect(onTabsClosed).toHaveBeenCalledWith([terminalTab.id]);
   });
 });

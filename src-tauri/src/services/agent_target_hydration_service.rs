@@ -39,9 +39,6 @@ where
     let Some(target) = record.session.target.clone() else {
         return Ok(record);
     };
-    if matches!(target.live_status, AgentTargetLiveStatus::Closed) {
-        return Ok(record);
-    }
     let Some(target_terminal_session_id) =
         normalize_optional_string(target.target_terminal_session_id.clone())
     else {
@@ -51,10 +48,13 @@ where
         return Ok(record);
     };
 
-    if terminal_session_bindings
-        .agent_target_binding(agent_session_id.as_str())?
-        .is_none()
-    {
+    let runtime_binding =
+        terminal_session_bindings.agent_target_binding(agent_session_id.as_str())?;
+    if runtime_binding.is_none() {
+        // 磁盘中的 Closed 在没有更新运行态证据时仍是终态，不能因应用重启被复活。
+        if matches!(target.live_status, AgentTargetLiveStatus::Closed) {
+            return Ok(record);
+        }
         terminal_session_bindings.save_agent_target_binding(AgentTargetBindingRequest {
             agent_session_id: agent_session_id.as_str().to_owned(),
             target_terminal_session_id,

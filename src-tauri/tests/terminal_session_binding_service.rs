@@ -1,3 +1,7 @@
+//! Terminal session 与 Agent target binding 生命周期回归测试。
+//!
+//! @author kongweiguang
+
 use kerminal_lib::services::terminal_session_binding_service::{
     AgentTargetBindingRequest, AgentTargetBindingStatus, TerminalSessionBindingCapabilityUse,
     TerminalSessionBindingEventKind, TerminalSessionBindingMetadata, TerminalSessionBindingService,
@@ -568,4 +572,124 @@ fn agent_target_closed_terminal_has_explicit_write_error() {
     assert!(!closed.live);
     assert!(!closed.stale);
     assert!(error.to_string().contains("closed"));
+}
+
+#[test]
+fn replacement_session_for_same_pane_and_target_migrates_agent_binding() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let metadata = || TerminalSessionBindingMetadata {
+        tab_id: Some("tab-a".to_owned()),
+        target_ref: Some("ssh:prod-a".to_owned()),
+        target_kind: Some("ssh".to_owned()),
+        remote_host_id: Some("host-a".to_owned()),
+        profile_id: None,
+        cwd: Some("/srv/app".to_owned()),
+        shell: Some("bash".to_owned()),
+    };
+    let original = service
+        .register_at_with_metadata("pane-a", "session-old", Some(metadata()), 10)
+        .expect("register original terminal");
+    let original_agent = service
+        .bind_agent_target_to_terminal_binding_at("agent-a", &original, 20)
+        .expect("bind agent to original terminal");
+
+    service
+        .closed_at("pane-a", "session-old", 30)
+        .expect("close original terminal");
+    service
+        .register_at_with_metadata("pane-a", "session-new", Some(metadata()), 40)
+        .expect("register replacement terminal");
+
+    let migrated = service
+        .resolve_agent_target("agent-a", ["session-new"])
+        .expect("resolve migrated agent target");
+    assert_eq!(migrated.status, AgentTargetBindingStatus::Live);
+    assert_eq!(migrated.target_terminal_session_id, "session-new");
+    assert_eq!(migrated.pane_id, "pane-a");
+    assert_eq!(migrated.target_ref.as_deref(), Some("ssh:prod-a"));
+    assert!(migrated.generation > original_agent.generation);
+    assert_ne!(migrated.binding_id, original_agent.binding_id);
+}
+
+#[test]
+fn late_close_from_replaced_session_does_not_close_migrated_agent_binding() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let metadata = || TerminalSessionBindingMetadata {
+        tab_id: Some("tab-a".to_owned()),
+        target_ref: Some("ssh:prod-a".to_owned()),
+        target_kind: Some("ssh".to_owned()),
+        remote_host_id: Some("host-a".to_owned()),
+        profile_id: None,
+        cwd: None,
+        shell: None,
+    };
+    let original = service
+        .register_at_with_metadata("pane-a", "session-old", Some(metadata()), 10)
+        .expect("register original terminal");
+    service
+        .bind_agent_target_to_terminal_binding_at("agent-a", &original, 20)
+        .expect("bind agent to original terminal");
+
+    service
+        .register_at_with_metadata("pane-a", "session-new", Some(metadata()), 30)
+        .expect("register replacement before old close arrives");
+    assert!(!service
+        .closed_at("pane-a", "session-old", 40)
+        .expect("ignore late close for replaced terminal"));
+
+    let migrated = service
+        .resolve_agent_target("agent-a", ["session-new"])
+        .expect("resolve migrated agent target");
+    assert_eq!(migrated.status, AgentTargetBindingStatus::Live);
+    assert_eq!(migrated.target_terminal_session_id, "session-new");
+}
+
+#[test]
+fn replacement_session_for_different_target_does_not_migrate_agent_binding() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let original = service
+        .register_at_with_metadata(
+            "pane-a",
+            "session-old",
+            Some(TerminalSessionBindingMetadata {
+                tab_id: Some("tab-a".to_owned()),
+                target_ref: Some("ssh:prod-a".to_owned()),
+                target_kind: Some("ssh".to_owned()),
+                remote_host_id: Some("host-a".to_owned()),
+                profile_id: None,
+                cwd: None,
+                shell: None,
+            }),
+            10,
+        )
+        .expect("register original terminal");
+    service
+        .bind_agent_target_to_terminal_binding_at("agent-a", &original, 20)
+        .expect("bind agent to original terminal");
+    service
+        .closed_at("pane-a", "session-old", 30)
+        .expect("close original terminal");
+
+    service
+        .register_at_with_metadata(
+            "pane-a",
+            "session-other",
+            Some(TerminalSessionBindingMetadata {
+                tab_id: Some("tab-a".to_owned()),
+                target_ref: Some("ssh:prod-b".to_owned()),
+                target_kind: Some("ssh".to_owned()),
+                remote_host_id: Some("host-b".to_owned()),
+                profile_id: None,
+                cwd: None,
+                shell: None,
+            }),
+            40,
+        )
+        .expect("register different target");
+
+    let closed = service
+        .resolve_agent_target("agent-a", ["session-other"])
+        .expect("resolve original agent target");
+    assert_eq!(closed.status, AgentTargetBindingStatus::Closed);
+    assert_eq!(closed.target_terminal_session_id, "session-old");
 }

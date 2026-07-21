@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { StateCreator } from "zustand";
 import type { TerminalProfile } from "../../lib/profileApi";
 import { sshTarget } from "../../lib/targetModel";
@@ -13,6 +15,7 @@ import {
 } from "../external-launch";
 import { addMachineToGroup, findMachine } from "./workspaceMachineModel";
 import type { OpenSshCommandTerminalOptions } from "./workspaceStoreContract";
+import { openSftpTransferTabState } from "./workspaceTabSlice";
 import {
   createContainerTerminalOpenState,
   createLocalTerminalOpenState,
@@ -144,14 +147,31 @@ export function createWorkspaceTerminalOpenActions(
           machine,
           undefined,
         );
-        return {
-          ...createSshTerminalOpenState({ ...state, machineGroups }, machine, {
+        const terminalState = createSshTerminalOpenState(
+          { ...state, machineGroups },
+          machine,
+          {
             paneId: counters.nextPaneId("pane-ssh"),
             remoteCommand: launch.options.remoteCommand,
             tabId: counters.nextTabId("tab-ssh"),
             title: machine.name,
-          }),
-          ...(launch.options.openSftp ? { activeTool: "sftp" as const } : {}),
+          },
+        );
+        if (launch.options.openSftp) {
+          const transferState = openSftpTransferTabState(
+            { ...state, ...terminalState, machineGroups },
+            { rightHostId: machineId },
+            counters,
+          );
+          return {
+            ...terminalState,
+            ...transferState,
+            activeTool: null,
+            machineGroups,
+          };
+        }
+        return {
+          ...terminalState,
           machineGroups,
         };
       }),

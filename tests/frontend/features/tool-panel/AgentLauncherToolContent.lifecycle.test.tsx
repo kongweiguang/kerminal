@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -357,7 +358,7 @@ describe("AgentLauncherToolContent", () => {
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
   });
 
-  it("returns to the launcher without closing the active agent terminal", async () => {
+  it("offers to continue or replace the active session after returning", async () => {
     const user = userEvent.setup();
 
     renderAgentLauncher();
@@ -387,12 +388,34 @@ describe("AgentLauncherToolContent", () => {
 
     await user.click(screen.getByRole("button", { name: "Open Codex" }));
 
+    expect(
+      await screen.findByRole("button", { name: "继续上次" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新会话" })).toBeInTheDocument();
+    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
+      "data-focused",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: "继续上次" }));
+
     expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
         "data-focused",
         "true",
       );
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: "Back to agent launcher" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await user.click(await screen.findByRole("button", { name: "新会话" }));
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(2);
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -466,6 +489,9 @@ describe("AgentLauncherToolContent", () => {
       screen.getByRole("button", { name: "Back to agent launcher" }),
     );
     await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await user.click(
+      await screen.findByRole("button", { name: "继续上次" }),
+    );
 
     expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(2);
     await waitFor(() => {
