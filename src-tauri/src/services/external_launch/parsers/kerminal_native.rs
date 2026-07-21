@@ -8,15 +8,15 @@ use url::Url;
 use crate::error::{AppError, AppResult};
 
 use super::common::{
-    build_request, find_any_named_option, find_generic_host_option, find_option_index,
-    required_generic_host_option, required_named_option, should_parse,
+    build_request, build_request_with_intent, find_any_named_option, find_generic_host_option,
+    find_option_index, required_generic_host_option, required_named_option, should_parse,
 };
 use crate::services::external_launch::{
     destination::parse_port,
     model::{
-        ExternalLaunchParseInput, ExternalLaunchSourceTool, ExternalSecretKind, ExternalSecretSlot,
-        ExternalSecretSource, ExternalSshAuth, ExternalSshLaunchOptions, ExternalSshLaunchRequest,
-        ExternalSshTarget,
+        ExternalLaunchIntent, ExternalLaunchParseInput, ExternalLaunchSourceTool,
+        ExternalSecretKind, ExternalSecretSlot, ExternalSecretSource, ExternalSshAuth,
+        ExternalSshLaunchOptions, ExternalSshLaunchRequest, ExternalSshTarget,
     },
     parser::ExternalLaunchParser,
     redaction::redact_kerminal_json_secrets,
@@ -47,12 +47,24 @@ impl ExternalLaunchParser for KerminalNativeParser {
                 input, raw_url, url_index,
             )?));
         }
+        if let Some((url_index, raw_url)) = input
+            .argv
+            .iter()
+            .enumerate()
+            .find(|(_, token)| token.starts_with("kerminal://sftp"))
+        {
+            return Ok(Some(parse_kerminal_sftp_protocol_url(
+                input, raw_url, url_index,
+            )?));
+        }
         if let Some(json_index) = find_option_index(&input.argv, &["--external-ssh-json"]) {
             let raw_json =
                 super::common::option_value(&input.argv, json_index, "--external-ssh-json")?;
             return Ok(Some(parse_kerminal_json(input, raw_json, json_index)?));
         }
-        let explicit_external_marker = input.argv.iter().any(|token| token == "--external-ssh");
+        let explicit_sftp_marker = input.argv.iter().any(|token| token == "--external-sftp");
+        let explicit_external_marker =
+            explicit_sftp_marker || input.argv.iter().any(|token| token == "--external-ssh");
         if !explicit_external_marker && find_generic_host_option(&input.argv).is_none() {
             return Ok(None);
         }
@@ -80,16 +92,90 @@ impl ExternalLaunchParser for KerminalNativeParser {
             None => host.to_owned(),
         });
         let target = ExternalSshTarget::new(host, port, username)?;
-        Ok(Some(build_request(
+        let intent = if explicit_sftp_marker {
+            ExternalLaunchIntent::SftpTransfer {
+                remote_path: find_any_named_option(&input.argv, &["--remote-path", "--path"])
+                    .map(validate_sftp_path)
+                    .transpose()?,
+                selected_entry: None,
+                host_key_assertion: None,
+            }
+        } else {
+            ExternalLaunchIntent::SshTerminal
+        };
+        Ok(Some(build_request_with_intent(
             input,
             self.tool(),
-            "kerminal-native-flags",
+            if explicit_sftp_marker {
+                "kerminal-native-sftp-flags"
+            } else {
+                "kerminal-native-flags"
+            },
             target,
             ExternalSshAuth::default(),
             options,
+            intent,
             input.argv.clone(),
         )))
     }
+}
+
+fn parse_kerminal_sftp_protocol_url(
+    input: &ExternalLaunchParseInput,
+    raw_url: &str,
+    url_index: usize,
+) -> AppResult<ExternalSshLaunchRequest> {
+    let url = Url::parse(raw_url)
+        .map_err(|error| AppError::InvalidInput(format!("invalid Kerminal SFTP URL: {error}")))?;
+    if url.scheme() != "kerminal" || url.host_str() != Some("sftp") {
+        return Err(AppError::InvalidInput(
+            "Kerminal external SFTP URL must start with kerminal://sftp".to_owned(),
+        ));
+    }
+    const ALLOWED: &[&str] = &["host", "port", "user", "username", "path"];
+    for (key, _) in url.query_pairs() {
+        if !ALLOWED.contains(&key.as_ref()) {
+            return Err(AppError::InvalidInput(format!(
+                "unsupported or unsafe Kerminal SFTP protocol parameter: {key}"
+            )));
+        }
+    }
+    let host = required_query_param(&url, "host")?;
+    let port = query_param(&url, "port")
+        .map(|value| parse_port(&value))
+        .transpose()?
+        .unwrap_or(22);
+    let username = query_param(&url, "user").or_else(|| query_param(&url, "username"));
+    let target = ExternalSshTarget::new(host, port, username)?;
+    let mut redacted = input.argv.clone();
+    redacted[url_index] = redact_kerminal_protocol_url(&url);
+    Ok(build_request_with_intent(
+        input,
+        ExternalLaunchSourceTool::KerminalNative,
+        "kerminal-native-sftp-protocol",
+        target,
+        ExternalSshAuth::default(),
+        ExternalSshLaunchOptions::default(),
+        ExternalLaunchIntent::SftpTransfer {
+            remote_path: query_param(&url, "path")
+                .as_deref()
+                .map(validate_sftp_path)
+                .transpose()?,
+            selected_entry: None,
+            host_key_assertion: None,
+        },
+        redacted,
+    ))
+}
+
+fn validate_sftp_path(path: &str) -> AppResult<String> {
+    if !path.starts_with('/') || path.chars().any(char::is_control) {
+        return Err(AppError::InvalidInput(
+            "external SFTP path must be absolute and must not contain control characters"
+                .to_owned(),
+        ));
+    }
+    Ok(path.to_owned())
 }
 
 fn parse_kerminal_json(

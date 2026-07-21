@@ -1,6 +1,9 @@
-import { act, renderHook } from "@testing-library/react";
+// @author kongweiguang
+
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useKerminalShellTabClose } from "../../../src/app/useKerminalShellTabClose";
+import { registerExternalSftpTabCloseHandler } from "../../../src/features/sftp/externalSftpLaunchLifecycle";
 import type { TerminalTab } from "../../../src/features/workspace/types";
 
 const terminalTab: TerminalTab = {
@@ -18,6 +21,14 @@ const fileTab: TerminalTab = {
   source: "sftp",
   target: { hostId: "host-1", kind: "ssh" },
   title: "app.toml",
+};
+const externalSftpTab: TerminalTab = {
+  externalLaunchId: "launch-sftp",
+  id: "tab-external-sftp",
+  kind: "sftpTransfer",
+  machineId: "external:launch-sftp",
+  rightHostId: "external:launch-sftp",
+  title: "临时堡垒机传输",
 };
 
 describe("useKerminalShellTabClose", () => {
@@ -72,5 +83,60 @@ describe("useKerminalShellTabClose", () => {
     act(() => result.current.requestCloseTab(terminalTab.id));
     expect(closeTerminalTab).toHaveBeenCalledWith(terminalTab.id);
     expect(result.current.pendingTerminalTabCount).toBe(0);
+  });
+
+  it("removes an external SFTP tab while its cleanup is still pending", async () => {
+    let resolveCleanup: (() => void) | undefined;
+    const cleanup = new Promise<void>((resolve) => {
+      resolveCleanup = resolve;
+    });
+    const unregister = registerExternalSftpTabCloseHandler(
+      externalSftpTab.id,
+      () => ({ canClose: true, cleanup }),
+    );
+    const closeTerminalTab = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        removeSidebarMachine,
+        terminalTabs: [externalSftpTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() => result.current.requestCloseTab(externalSftpTab.id));
+
+    await waitFor(() =>
+      expect(closeTerminalTab).toHaveBeenCalledWith(externalSftpTab.id),
+    );
+    expect(removeSidebarMachine).toHaveBeenCalledWith(externalSftpTab.machineId);
+    resolveCleanup?.();
+    unregister();
+  });
+
+  it("keeps an external SFTP tab when active-transfer confirmation is cancelled", async () => {
+    const unregister = registerExternalSftpTabCloseHandler(
+      externalSftpTab.id,
+      () => ({ canClose: false }),
+    );
+    const closeTerminalTab = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        removeSidebarMachine,
+        terminalTabs: [externalSftpTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    await act(async () => result.current.requestCloseTab(externalSftpTab.id));
+
+    expect(closeTerminalTab).not.toHaveBeenCalled();
+    expect(removeSidebarMachine).not.toHaveBeenCalled();
+    unregister();
   });
 });

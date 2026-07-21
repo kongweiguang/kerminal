@@ -21,7 +21,7 @@ use crate::{
         ssh_runtime::{
             auth_broker::{
                 session_secret_prompt_id, SshAuthBroker, SshAuthBrokerResolution,
-                SshSessionSecretInput, SshSessionSecretReceipt,
+                SshAuthPromptPlan, SshSessionSecretInput, SshSessionSecretReceipt,
             },
             SshAuthSecretKind,
         },
@@ -31,8 +31,8 @@ use crate::{
 use super::{
     intake::ExternalLaunchIntake,
     model::{
-        ExternalLaunchSourceTool, ExternalSecretKind, ExternalSessionSecretRef,
-        ExternalSshLaunchRequest,
+        ExternalLaunchIntent, ExternalLaunchSourceTool, ExternalSecretKind,
+        ExternalSessionSecretRef, ExternalSshLaunchRequest,
     },
 };
 
@@ -105,6 +105,29 @@ impl ExternalSessionMaterializer {
                 .as_deref()
                 .is_some_and(|value| !value.trim().is_empty())
         );
+        match self.materialize_outcome(paths, launch_id, username_override)? {
+            ExternalMaterializeOutcome::Ready(target) => Ok(target),
+            ExternalMaterializeOutcome::PromptRequired(prompt_plan) => {
+                Err(AppError::Credential(format!(
+                    "external SSH launch still requires authentication: prompt_count={} kinds={}",
+                    prompt_plan.prompts.len(),
+                    prompt_plan
+                        .prompts
+                        .iter()
+                        .map(|prompt| prompt.secret_kind.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )))
+            }
+        }
+    }
+
+    pub fn materialize_outcome(
+        &self,
+        paths: &KerminalPaths,
+        launch_id: &str,
+        username_override: Option<String>,
+    ) -> AppResult<ExternalMaterializeOutcome> {
         let request = self
             .inner
             .intake
@@ -115,7 +138,10 @@ impl ExternalSessionMaterializer {
                     super::redaction::opaque_id_hash(launch_id)
                 ))
             })?;
-        let target = self.materialize_request(paths, request, username_override)?;
+        let outcome = self.materialize_request_outcome(paths, request, username_override)?;
+        let ExternalMaterializeOutcome::Ready(target) = outcome else {
+            return Ok(outcome);
+        };
         tauri_plugin_log::log::info!(
             target: "external_launch.materializer",
             "materialized request_hash={} auth_type={:?} route_hops={} safety={:?}",
@@ -126,7 +152,7 @@ impl ExternalSessionMaterializer {
         );
         self.targets()?
             .insert(target.host_id.clone(), target.clone());
-        Ok(target)
+        Ok(ExternalMaterializeOutcome::Ready(target))
     }
 
     pub fn resolve_target(&self, host_id: &str) -> AppResult<Option<ExternalMaterializedTarget>> {
@@ -156,18 +182,18 @@ impl ExternalSessionMaterializer {
         Ok(ExternalMaterializerSnapshot { target_ids })
     }
 
-    fn materialize_request(
+    fn materialize_request_outcome(
         &self,
         paths: &KerminalPaths,
         request: ExternalSshLaunchRequest,
         username_override: Option<String>,
-    ) -> AppResult<ExternalMaterializedTarget> {
+    ) -> AppResult<ExternalMaterializeOutcome> {
         let username = resolve_username(&request, username_override)?;
         let mut receipts = Vec::new();
         let safety = self.resolve_target_safety(&request, &username);
         let mut host = request_to_remote_host(&request, &username, safety.is_restricted());
 
-        let result = (|| -> AppResult<ExternalMaterializedTarget> {
+        let result = (|| -> AppResult<ExternalMaterializeOutcome> {
             if let Some(password) = request.auth.password.as_ref() {
                 let secret_ref = password.as_session_ref().ok_or_else(|| {
                     AppError::Credential("external password was not protected".to_owned())
@@ -239,32 +265,25 @@ impl ExternalSessionMaterializer {
             let resolved_auth = match self.inner.auth_broker.resolve_route_auth(&resolved_auth)? {
                 SshAuthBrokerResolution::Ready { auth } => auth,
                 SshAuthBrokerResolution::PromptRequired { prompt_plan, .. } => {
-                    return Err(AppError::Credential(format!(
-                    "external SSH launch still requires authentication: prompt_count={} kinds={}",
-                    prompt_plan.prompts.len(),
-                    prompt_plan
-                        .prompts
-                        .iter()
-                        .map(|prompt| prompt.secret_kind.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )));
+                    return Ok(ExternalMaterializeOutcome::PromptRequired(prompt_plan));
                 }
             };
             let runtime_host =
                 SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved_auth);
-            Ok(ExternalMaterializedTarget {
-                display_name: display_name(&request, &runtime_host),
-                host: runtime_host,
-                host_id: external_target_id(&request.id),
-                launch_id: request.id,
-                route_auth: resolved_auth,
-                safety,
-                session_secret_receipts: std::mem::take(&mut receipts),
-                source_tool: request.source.tool,
-            })
+            Ok(ExternalMaterializeOutcome::Ready(
+                ExternalMaterializedTarget {
+                    display_name: display_name(&request, &runtime_host),
+                    host: runtime_host,
+                    host_id: external_target_id(&request.id),
+                    launch_id: request.id,
+                    route_auth: resolved_auth,
+                    safety,
+                    session_secret_receipts: std::mem::take(&mut receipts),
+                    source_tool: request.source.tool,
+                },
+            ))
         })();
-        if result.is_err() {
+        if !matches!(result, Ok(ExternalMaterializeOutcome::Ready(_))) {
             for receipt in &receipts {
                 self.inner
                     .auth_broker
@@ -304,6 +323,13 @@ impl ExternalSessionMaterializer {
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("external materialized targets"))
     }
+}
+
+/// Structured materialization result used by trusted UI authentication prompts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalMaterializeOutcome {
+    Ready(ExternalMaterializedTarget),
+    PromptRequired(SshAuthPromptPlan),
 }
 
 /// A temporary SSH target generated from an external launch.
@@ -400,6 +426,11 @@ fn request_to_remote_host(
         RemoteHostAuthType::Password
     } else if request.auth.identity_file.is_some() {
         RemoteHostAuthType::Key
+    } else if matches!(request.intent, ExternalLaunchIntent::SftpTransfer { .. })
+        && !request.auth.agent
+    {
+        // 外部 SFTP 临时目标缺少显式凭据时只做 session-only 补录，不能静默假设 agent。
+        RemoteHostAuthType::Password
     } else {
         RemoteHostAuthType::Agent
     };

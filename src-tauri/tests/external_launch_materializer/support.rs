@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 #![allow(unused_imports)]
 pub use std::sync::{Arc, Mutex};
 
@@ -19,7 +21,7 @@ pub use kerminal_lib::{
         external_launch::{
             external_target_id, external_target_safety_for_saved_hosts,
             ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint, ExternalLaunchIntake,
-            ExternalSessionMaterializer, ExternalTargetSafety,
+            ExternalMaterializeOutcome, ExternalSessionMaterializer, ExternalTargetSafety,
         },
         mcp_tool_executor_service::{McpToolExecutionContext, McpToolExecutionStatus},
         port_forward_service::PortForwardService,

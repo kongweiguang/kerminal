@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   ArrowLeftRight,
   HardDrive,
@@ -15,6 +17,12 @@ import {
 import { Button } from "../../components/ui/button";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
+import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
+import {
+  cancelSftpTransfer,
+  listSftpTransfers,
+} from "../../lib/sftpApi";
+import { sshTarget } from "../../lib/targetModel";
 import { defaultDesktopNotificationSettings } from "../settings/defaults/index";
 import type {
   DesktopNotificationSettings,
@@ -37,8 +45,10 @@ import {
   type SftpWorkbenchLocalClipboard,
 } from "./sftpTransferClipboardModel";
 import {
+  activeTransferCount,
   canClearFinishedTransfers,
 } from "./sftpTransferModel";
+import { registerExternalSftpTabCloseHandler } from "./externalSftpLaunchLifecycle";
 import {
   collectSshMachines,
   createHostTab,
@@ -64,6 +74,9 @@ export interface SftpTransferWorkbenchProps {
   desktopNotifications?: DesktopNotificationSettings;
   groups: MachineGroup[];
   initialRightHostId?: string;
+  initialRightPath?: string;
+  initialRightSelection?: string;
+  externalLaunchId?: string;
   interfaceDensity?: InterfaceDensity;
   lockedLeftHostId?: string;
   onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
@@ -87,6 +100,9 @@ export function SftpTransferWorkbench({
   desktopNotifications = defaultDesktopNotificationSettings,
   groups,
   initialRightHostId,
+  initialRightPath,
+  initialRightSelection,
+  externalLaunchId,
   interfaceDensity = "comfortable",
   lockedLeftHostId,
   onCreateSshHost,
@@ -142,6 +158,7 @@ export function SftpTransferWorkbench({
     setTransfers,
     transfers,
   } = useSftpTransferQueueSync({ active, viewScope: transferViewScope });
+  const transfersRef = useRef(transfers);
 
   useSftpTransferNotifications({
     active,
@@ -150,6 +167,47 @@ export function SftpTransferWorkbench({
     notificationKeyPrefix: transferViewScope,
     transfers,
   });
+
+  transfersRef.current = transfers;
+
+  useEffect(() => {
+    if (!externalLaunchId || !workspaceTabId) {
+      return;
+    }
+    return registerExternalSftpTabCloseHandler(workspaceTabId, () => {
+      const activeTransfers = transfersRef.current.filter(
+        (transfer) =>
+          transfer.status === "queued" || transfer.status === "running",
+      );
+      if (
+        activeTransfers.length > 0 &&
+        !window.confirm(
+          `当前工作台仍有 ${activeTransfers.length} 个活动传输。关闭将取消这些任务，是否继续？`,
+        )
+      ) {
+        return { canClose: false };
+      }
+
+      const cleanup = (async () => {
+        try {
+          await Promise.all(
+            activeTransfers.map((transfer) =>
+              cancelSftpTransfer({
+                transferId: transfer.id,
+                viewScope: transferViewScope,
+              }),
+            ),
+          );
+          await waitForTransferScopeIdle(transferViewScope);
+          await closeExternalSshLaunch(externalLaunchId);
+        } catch (nextError) {
+          setQueueError(buildSftpTransferQueueError(nextError));
+          throw nextError;
+        }
+      })();
+      return { canClose: true, cleanup };
+    });
+  }, [externalLaunchId, setQueueError, transferViewScope, workspaceTabId]);
 
   useEffect(() => {
     setLeftTabs((current) =>
@@ -316,8 +374,20 @@ export function SftpTransferWorkbench({
     ? machinesById.get(rightActiveTab.hostId)
     : undefined;
   const rightCurrentPath = rightActiveTab
-    ? (rightCurrentPaths[rightActiveTab.id] ?? "/")
+    ? (rightCurrentPaths[rightActiveTab.id] ?? initialRightPath ?? "/")
     : undefined;
+  const initialRightRevealRequest = useMemo(
+    () =>
+      initialRightSelection && initialRightPath && rightMachine
+        ? {
+            directoryPath: initialRightPath,
+            filePath: `${initialRightPath.replace(/\/?$/, "/")}${initialRightSelection}`,
+            id: 1,
+            target: sshTarget(rightMachine.id),
+          }
+        : undefined,
+    [initialRightPath, initialRightSelection, rightMachine],
+  );
   const leftTransferTarget = useMemo<SftpTransferTarget | undefined>(
     () => {
       if (isLeftLocalActive) {
@@ -467,6 +537,7 @@ export function SftpTransferWorkbench({
           onClipboardChange={handleRemoteClipboardChange}
           onCloseTab={closeRightHostTab}
           onPathChange={updateRightPath}
+          revealRequest={initialRightRevealRequest}
           side="right"
           title="右侧服务器"
           transferTarget={leftTransferTarget}
@@ -487,6 +558,18 @@ export function SftpTransferWorkbench({
       />
     </section>
   );
+}
+
+async function waitForTransferScopeIdle(viewScope: string) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const transfers = await listSftpTransfers({ viewScope });
+    if (activeTransferCount(transfers) === 0) {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  throw new Error("等待传输任务取消超时，外部 SFTP 工作台尚未关闭。");
 }
 
 function LeftPane({
@@ -649,6 +732,7 @@ function HostPane({
   onClipboardChange,
   onCloseTab,
   onPathChange,
+  revealRequest,
   side,
   title,
   transferTarget,
@@ -668,6 +752,7 @@ function HostPane({
   onClipboardChange: (clipboard: SftpClipboard | null) => void;
   onCloseTab: (tabId: string) => void;
   onPathChange: (tabId: string, path: string) => void;
+  revealRequest?: import("../workspace/contracts/index").WorkspaceFileRevealRequest;
   side: SftpTransferHostSide;
   title: string;
   transferTarget?: SftpTransferTarget;
@@ -727,6 +812,7 @@ function HostPane({
           machinesById={machinesById}
           onClipboardChange={onClipboardChange}
           onPathChange={onPathChange}
+          revealRequest={revealRequest}
           transferTarget={transferTarget}
           transferViewScope={transferViewScope}
         />

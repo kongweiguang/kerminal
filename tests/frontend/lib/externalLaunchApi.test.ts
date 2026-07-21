@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
@@ -144,8 +146,11 @@ describe("externalLaunchApi", () => {
     await expect(
       materializeExternalSshLaunch({ launchId: "launch-1", username: "deploy" }),
     ).resolves.toMatchObject({
-      targetId: "external:launch-1",
-      username: "deploy",
+      status: "ready",
+      target: {
+        targetId: "external:launch-1",
+        username: "deploy",
+      },
     });
     await expect(getExternalLaunchSnapshot()).resolves.toMatchObject({
       intake: {

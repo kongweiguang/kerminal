@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   ExternalLaunchMaterializedTarget,
   ExternalSshLaunchRequest,
@@ -15,6 +17,7 @@ const sourceToolLabels: Record<
   "kerminal-native": "Kerminal",
   mobaxterm: "MobaXterm",
   openssh: "OpenSSH",
+  "sftp-client": "SFTP 客户端",
   putty: "PuTTY",
   securecrt: "SecureCRT",
   xshell: "Xshell",

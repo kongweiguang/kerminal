@@ -199,6 +199,7 @@ export function RemoteHostPaneBody({
   machinesById,
   onClipboardChange,
   onPathChange,
+  revealRequest,
   transferTarget,
   transferViewScope,
 }: {
@@ -211,6 +212,7 @@ export function RemoteHostPaneBody({
   machinesById: Map<string, Machine>;
   onClipboardChange: (clipboard: SftpClipboard | null) => void;
   onPathChange: (tabId: string, path: string) => void;
+  revealRequest?: import("../workspace/contracts/index").WorkspaceFileRevealRequest;
   transferTarget?: SftpTransferTarget;
   transferViewScope: string;
 }) {
@@ -241,6 +243,7 @@ export function RemoteHostPaneBody({
       interfaceDensity={interfaceDensity}
       onCurrentPathChange={reportCurrentPath}
       onSftpClipboardChange={onClipboardChange}
+      sftpRevealRequest={revealRequest}
       selectedMachine={selectedMachine}
       showLocalTransferActions={!transferTarget}
       showTerminalDirectoryControls={false}

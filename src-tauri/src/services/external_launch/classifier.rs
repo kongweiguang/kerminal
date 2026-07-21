@@ -14,6 +14,20 @@ pub(crate) fn infer_source_tool_from_args(argv: &[String]) -> Option<ExternalLau
     {
         return Some(ExternalLaunchSourceTool::KerminalNative);
     }
+    if has_token(argv, "--external-sftp")
+        || argv
+            .iter()
+            .any(|token| token.starts_with("kerminal://sftp"))
+    {
+        return Some(ExternalLaunchSourceTool::KerminalNative);
+    }
+    if argv.iter().skip(1).any(|token| {
+        token.to_ascii_lowercase().starts_with("sftp://")
+            || token.eq_ignore_ascii_case("--site")
+            || token.eq_ignore_ascii_case("--logontype")
+    }) {
+        return Some(ExternalLaunchSourceTool::SftpClient);
+    }
     let argv0_tool = argv
         .first()
         .and_then(|argv0| infer_source_tool_from_argv0(argv0));

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { SshOptions } from "../../lib/remoteHostApi";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
@@ -67,6 +69,9 @@ export interface SftpTransferWorkspaceTab {
   leftHostId?: string;
   lockedLeftHostId?: string;
   rightHostId?: string;
+  externalLaunchId?: string;
+  initialRightPath?: string;
+  initialRightSelection?: string;
 }
 
 export type WorkspaceFileAccess = "readonly" | "editable";

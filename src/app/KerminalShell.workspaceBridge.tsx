@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { MachineSidebar } from "../features/machine-sidebar/MachineSidebar";
 import type { MachineSidebarProps } from "../features/machine-sidebar/MachineSidebar.shared";
@@ -230,7 +232,10 @@ export function WorkspaceTerminalSurface({
             createdHostTarget={createdSftpHostTarget}
             desktopNotifications={desktopNotifications}
             groups={machineGroups}
+            externalLaunchId={tab.externalLaunchId}
             initialRightHostId={tab.rightHostId}
+            initialRightPath={tab.initialRightPath}
+            initialRightSelection={tab.initialRightSelection}
             interfaceDensity={interfaceDensity}
             lockedLeftHostId={tab.lockedLeftHostId}
             onCreateSshHost={onCreateSftpHost}

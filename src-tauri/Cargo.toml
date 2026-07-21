@@ -38,6 +38,7 @@ which = "8.0.4"
 rmcp = { version = "1.7.0", features = ["transport-streamable-http-server", "transport-streamable-http-server-session"] }
 keyring = "4.1.1"
 url = "2.5.7"
+percent-encoding = "2.3"
 regex = "1.12.4"
 sha2 = "0.10"
 hmac = "0.12"

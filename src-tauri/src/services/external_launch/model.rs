@@ -22,6 +22,7 @@ pub enum ExternalLaunchSourceTool {
     Xshell,
     Securecrt,
     Openssh,
+    SftpClient,
     KerminalNative,
 }
 
@@ -33,6 +34,7 @@ impl ExternalLaunchSourceTool {
             Self::Xshell => "xshell",
             Self::Securecrt => "securecrt",
             Self::Openssh => "openssh",
+            Self::SftpClient => "sftp-client",
             Self::KerminalNative => "kerminal-native",
         }
     }
@@ -44,10 +46,55 @@ impl ExternalLaunchSourceTool {
             "xshell" => Ok(Self::Xshell),
             "securecrt" => Ok(Self::Securecrt),
             "openssh" | "ssh" => Ok(Self::Openssh),
+            "sftp-client" | "sftp" | "winscp" | "filezilla" | "flashfxp" => Ok(Self::SftpClient),
             "kerminal" | "kerminal-native" => Ok(Self::KerminalNative),
             other => Err(AppError::InvalidInput(format!(
                 "unsupported external launch tool: {other}"
             ))),
+        }
+    }
+}
+
+/// Workspace behavior requested by an external launch.
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ExternalLaunchIntent {
+    SshTerminal,
+    SftpTransfer {
+        #[serde(default)]
+        remote_path: Option<String>,
+        #[serde(default)]
+        selected_entry: Option<String>,
+        /// Vendor fingerprint is an assertion only; it never grants trust.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host_key_assertion: Option<String>,
+    },
+}
+
+impl Default for ExternalLaunchIntent {
+    fn default() -> Self {
+        Self::SshTerminal
+    }
+}
+
+impl fmt::Debug for ExternalLaunchIntent {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SshTerminal => formatter.write_str("SshTerminal"),
+            Self::SftpTransfer {
+                remote_path,
+                selected_entry,
+                host_key_assertion,
+            } => formatter
+                .debug_struct("SftpTransfer")
+                .field("remote_path_present", &remote_path.is_some())
+                .field("selected_entry_present", &selected_entry.is_some())
+                .field("host_key_assertion_present", &host_key_assertion.is_some())
+                .finish(),
         }
     }
 }
@@ -473,6 +520,7 @@ pub struct ExternalSshLaunchRequest {
     pub source: ExternalLaunchSource,
     pub received_at: String,
     pub target: ExternalSshTarget,
+    pub intent: ExternalLaunchIntent,
     pub auth: ExternalSshAuth,
     pub options: ExternalSshLaunchOptions,
     pub diagnostics: ExternalLaunchRequestDiagnostics,
@@ -486,6 +534,7 @@ impl fmt::Debug for ExternalSshLaunchRequest {
             .field("source", &self.source)
             .field("received_at", &self.received_at)
             .field("target", &self.target)
+            .field("intent", &self.intent)
             .field("auth", &self.auth)
             .field("options", &self.options)
             .field("diagnostics", &self.diagnostics)
@@ -509,10 +558,16 @@ impl ExternalSshLaunchRequest {
             source,
             received_at: unix_timestamp(),
             target,
+            intent: ExternalLaunchIntent::SshTerminal,
             auth,
             options,
             diagnostics,
         }
+    }
+
+    pub fn with_intent(mut self, intent: ExternalLaunchIntent) -> Self {
+        self.intent = intent;
+        self
     }
 }
 

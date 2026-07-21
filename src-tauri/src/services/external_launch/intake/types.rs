@@ -149,6 +149,7 @@ impl From<ExternalLaunchToolSetting> for ExternalLaunchSourceTool {
             ExternalLaunchToolSetting::Xshell => Self::Xshell,
             ExternalLaunchToolSetting::Securecrt => Self::Securecrt,
             ExternalLaunchToolSetting::Openssh => Self::Openssh,
+            ExternalLaunchToolSetting::SftpClient => Self::SftpClient,
             ExternalLaunchToolSetting::KerminalNative => Self::KerminalNative,
         }
     }

@@ -7,13 +7,42 @@ use std::fs;
 use kerminal_lib::{
     commands::external_launch::{
         external_launch_snapshot_to_dto, external_ssh_launch_request_to_dto,
+        ExternalLaunchMaterializeOutcomeDto,
     },
     services::external_launch::{
         ExternalLaunchEntrypoint, ExternalLaunchIntake, ExternalLaunchParseInput,
         ExternalLaunchParserRegistry, ExternalLaunchPolicy, ExternalLaunchSecretBroker,
         ExternalLaunchSourceTool, ExternalLaunchTaskSnapshot,
     },
+    services::ssh_runtime::auth_broker::SshAuthPromptPlan,
 };
+
+#[test]
+fn sftp_intent_and_materialize_outcome_use_camel_case_fields() {
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::SftpClient,
+            vec![
+                "kerminal.exe".to_owned(),
+                "sftp://deploy@example.internal/releases/artifact.zip".to_owned(),
+            ],
+        ))
+        .expect("parse SFTP launch");
+    let request_json = serde_json::to_value(external_ssh_launch_request_to_dto(request))
+        .expect("serialize SFTP request dto");
+    assert_eq!(request_json["intent"]["kind"], "sftpTransfer");
+    assert_eq!(request_json["intent"]["remotePath"], "/releases/");
+    assert_eq!(request_json["intent"]["selectedEntry"], "artifact.zip");
+    assert!(request_json["intent"].get("remote_path").is_none());
+
+    let outcome = ExternalLaunchMaterializeOutcomeDto::PromptRequired {
+        prompt_plan: SshAuthPromptPlan { prompts: vec![] },
+    };
+    let outcome_json = serde_json::to_value(outcome).expect("serialize materialize outcome");
+    assert_eq!(outcome_json["status"], "promptRequired");
+    assert_eq!(outcome_json["promptPlan"]["prompts"], serde_json::json!([]));
+    assert!(outcome_json.get("prompt_plan").is_none());
+}
 #[test]
 fn command_dto_exposes_only_redacted_auth_metadata() {
     let registry = ExternalLaunchParserRegistry::new();

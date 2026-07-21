@@ -10,7 +10,7 @@ use super::{ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint, ExternalLaunc
 
 /// Windows 动态注册使用的唯一协议名；安装包不会默认抢占该协议。
 pub const EXTERNAL_LAUNCH_DEEP_LINK_SCHEME: &str = "kerminal";
-const EXTERNAL_LAUNCH_DEEP_LINK_ACTION: &str = "ssh";
+const EXTERNAL_LAUNCH_DEEP_LINK_ACTIONS: &[&str] = &["ssh", "sftp"];
 
 /// 从系统交付的 argv 中识别唯一的 Kerminal 协议 URL。
 ///
@@ -66,12 +66,14 @@ fn validate_external_launch_protocol_url(raw_url: &str) -> AppResult<()> {
     let url = Url::parse(raw_url)
         .map_err(|error| AppError::InvalidInput(format!("invalid Kerminal URL: {error}")))?;
     if url.scheme() != EXTERNAL_LAUNCH_DEEP_LINK_SCHEME
-        || url.host_str() != Some(EXTERNAL_LAUNCH_DEEP_LINK_ACTION)
+        || !url
+            .host_str()
+            .is_some_and(|action| EXTERNAL_LAUNCH_DEEP_LINK_ACTIONS.contains(&action))
         || url.path() != ""
         || url.fragment().is_some()
     {
         return Err(AppError::InvalidInput(
-            "Kerminal protocol only supports kerminal://ssh".to_owned(),
+            "Kerminal protocol only supports kerminal://ssh and kerminal://sftp".to_owned(),
         ));
     }
     if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {

@@ -4,6 +4,8 @@ import { resolveThemeMode } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
 import { resolveDesktopPlatform } from "../lib/desktopPlatform";
+// @author kongweiguang
+
 import {
   createRemoteHostGroup,
   updateRemoteHost,
@@ -199,6 +201,7 @@ export function KerminalShell() {
   } = useKerminalShellTabClose({
     closeTerminalTab,
     confirmTerminalClose: settings.terminal.confirmCloseTab,
+    removeSidebarMachine,
     terminalTabs,
     workspaceFileDirtyState,
   });
