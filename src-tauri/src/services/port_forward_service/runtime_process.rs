@@ -96,6 +96,16 @@ impl ManagedForwardProcess {
         }
     }
 
+    pub(super) fn take_recent_failure(&mut self) -> AppResult<Option<String>> {
+        match self {
+            Self::Managed(tunnel) => match tunnel.as_mut() {
+                Some(tunnel) => tunnel.take_recent_failure(),
+                None => Ok(None),
+            },
+            Self::Process(_) | Self::Pty(_) => Ok(None),
+        }
+    }
+
     pub(super) fn kill(&mut self) -> AppResult<()> {
         match self {
             Self::Managed(tunnel) => {

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PortForwardSessionList } from "../../../../src/features/tool-panel/port-forward/PortForwardSessionList";
@@ -73,6 +75,31 @@ describe("PortForwardSessionList", () => {
     expect(screen.queryByText(/OpenSSH process/)).not.toBeInTheDocument();
     expect(screen.queryByText(/SSH 端口转发进程已退出/)).not.toBeInTheDocument();
   });
+
+  it("shows a non-terminal direct-tcpip failure on a running tunnel", () => {
+    render(
+      <PortForwardSessionList
+        canInject={false}
+        injectDisabledReason="not focused"
+        loading={false}
+        onCopy={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        onInject={vi.fn()}
+        onStart={vi.fn()}
+        onStop={vi.fn()}
+        onToggleAutoUse={vi.fn()}
+        sessions={[runningFailedForward]}
+      />,
+    );
+
+    const failure = screen.getByRole("alert", {
+      name: "最近一次转发失败",
+    });
+    expect(failure).toHaveTextContent("最近一次连接失败，隧道仍在监听");
+    expect(failure).toHaveTextContent("administratively prohibited");
+    expect(screen.getByText("运行中")).toBeInTheDocument();
+  });
 });
 
 const localForward: PortForwardSummary = {
@@ -117,4 +144,19 @@ const legacyFallbackForward: PortForwardSummary = {
     tunnelKind: "local",
   },
   status: "exited",
+};
+
+const runningFailedForward: PortForwardSummary = {
+  ...localForward,
+  id: "forward-running-failed",
+  name: "Bastion tunnel",
+  runtime: {
+    backend: "native-russh",
+    cleanupStatus: "active",
+    managedChannelKind: "direct-tcpip",
+    mode: "managedSshRuntime",
+    recentFailure:
+      "受管 SSH local forward direct-tcpip 失败: channel open failure: administratively prohibited",
+    tunnelKind: "local",
+  },
 };

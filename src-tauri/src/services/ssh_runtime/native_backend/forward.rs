@@ -1,4 +1,9 @@
+//! Native managed SSH forwarding tasks.
+//!
+//! @author kongweiguang
+
 use std::{
+    fmt,
     io::ErrorKind,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener as StdTcpListener},
     sync::{
@@ -53,8 +58,33 @@ struct NativeForwardConnectionContext {
     remote_forwards: NativeRemoteForwardRegistry,
 }
 
+#[derive(Default)]
+struct NativeForwardFailureState(std::sync::Mutex<Option<String>>);
+
+impl fmt::Debug for NativeForwardFailureState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("NativeForwardFailureState(<redacted>)")
+    }
+}
+
+impl NativeForwardFailureState {
+    fn record(&self, failure: String) {
+        if let Ok(mut recent_failure) = self.0.lock() {
+            *recent_failure = Some(failure);
+        }
+    }
+
+    fn take(&self) -> AppResult<Option<String>> {
+        self.0
+            .lock()
+            .map(|mut recent_failure| recent_failure.take())
+            .map_err(|_| AppError::StateLockPoisoned("native SSH forward recent failure"))
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct NativeLocalForwardTask {
+    failures: Arc<NativeForwardFailureState>,
     id: String,
     shutdown: Option<oneshot::Sender<()>>,
     status: Receiver<String>,
@@ -74,6 +104,7 @@ impl NativeLocalForwardTask {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let (status_tx, status_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::channel();
+        let failures = Arc::new(NativeForwardFailureState::default());
         let thread_name = format!("kerminal-ssh-forward-{id}");
         let context = NativeForwardConnectionContext {
             connection,
@@ -81,6 +112,7 @@ impl NativeLocalForwardTask {
             host_key_policy,
             remote_forwards,
         };
+        let worker_failures = Arc::clone(&failures);
         let worker = thread::Builder::new()
             .name(thread_name)
             .spawn(move || {
@@ -94,6 +126,7 @@ impl NativeLocalForwardTask {
                         context,
                         request,
                         ready_tx,
+                        worker_failures,
                     )),
                     Err(error) => {
                         let status = format!("无法启动受管 SSH local forward 运行时: {error}");
@@ -109,6 +142,7 @@ impl NativeLocalForwardTask {
 
         match ready_rx.recv_timeout(Duration::from_secs(30)) {
             Ok(Ok(())) => Ok(Self {
+                failures,
                 id,
                 shutdown: Some(shutdown_tx),
                 status: status_rx,
@@ -145,6 +179,10 @@ impl SshRuntimeForwardTask for NativeLocalForwardTask {
         }
     }
 
+    fn take_recent_failure(&mut self) -> AppResult<Option<String>> {
+        self.failures.take()
+    }
+
     fn kill(&mut self) -> AppResult<()> {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
@@ -178,6 +216,7 @@ async fn run_local_forward_listener(
     context: NativeForwardConnectionContext,
     request: SshRuntimeLocalForwardRequest,
     ready: mpsc::Sender<Result<(), String>>,
+    failures: Arc<NativeForwardFailureState>,
 ) -> String {
     let listener = match TcpListener::from_std(listener) {
         Ok(listener) => listener,
@@ -198,16 +237,21 @@ async fn run_local_forward_listener(
                     Ok((stream, peer_addr)) => {
                             let context = context.clone();
                             let request = request.clone();
+                            let failures = Arc::clone(&failures);
                             tokio::spawn(async move {
                             let originator_host = peer_addr.ip().to_string();
                             let originator_port = peer_addr.port();
-                            let _ = proxy_local_forward_connection(
+                            if let Err(error) = proxy_local_forward_connection(
                                 context,
                                 request,
                                 stream,
                                 originator_host,
                                 originator_port,
-                            ).await;
+                            ).await {
+                                failures.record(format!(
+                                    "受管 SSH local forward direct-tcpip 失败: {error}"
+                                ));
+                            }
                         });
                     }
                     Err(error) if is_recoverable_listener_accept_error(&error) => {
@@ -259,6 +303,7 @@ async fn proxy_local_forward_connection(
 
 #[derive(Debug)]
 pub(super) struct NativeDynamicForwardTask {
+    failures: Arc<NativeForwardFailureState>,
     id: String,
     shutdown: Option<oneshot::Sender<()>>,
     status: Receiver<String>,
@@ -278,6 +323,7 @@ impl NativeDynamicForwardTask {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let (status_tx, status_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::channel();
+        let failures = Arc::new(NativeForwardFailureState::default());
         let thread_name = format!("kerminal-ssh-forward-{id}");
         let context = NativeForwardConnectionContext {
             connection,
@@ -285,6 +331,7 @@ impl NativeDynamicForwardTask {
             host_key_policy,
             remote_forwards,
         };
+        let worker_failures = Arc::clone(&failures);
         let worker = thread::Builder::new()
             .name(thread_name)
             .spawn(move || {
@@ -297,6 +344,7 @@ impl NativeDynamicForwardTask {
                         shutdown_rx,
                         context,
                         ready_tx,
+                        worker_failures,
                     )),
                     Err(error) => {
                         let status = format!("无法启动受管 SSH dynamic forward 运行时: {error}");
@@ -312,6 +360,7 @@ impl NativeDynamicForwardTask {
 
         match ready_rx.recv_timeout(Duration::from_secs(30)) {
             Ok(Ok(())) => Ok(Self {
+                failures,
                 id,
                 shutdown: Some(shutdown_tx),
                 status: status_rx,
@@ -348,6 +397,10 @@ impl SshRuntimeForwardTask for NativeDynamicForwardTask {
         }
     }
 
+    fn take_recent_failure(&mut self) -> AppResult<Option<String>> {
+        self.failures.take()
+    }
+
     fn kill(&mut self) -> AppResult<()> {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
@@ -382,6 +435,7 @@ async fn run_dynamic_forward_listener(
     mut shutdown: oneshot::Receiver<()>,
     context: NativeForwardConnectionContext,
     ready: mpsc::Sender<Result<(), String>>,
+    failures: Arc<NativeForwardFailureState>,
 ) -> String {
     let listener = match TcpListener::from_std(listener) {
         Ok(listener) => listener,
@@ -401,15 +455,20 @@ async fn run_dynamic_forward_listener(
                 match accepted {
                     Ok((stream, peer_addr)) => {
                         let context = context.clone();
+                        let failures = Arc::clone(&failures);
                         tokio::spawn(async move {
                             let originator_host = peer_addr.ip().to_string();
                             let originator_port = peer_addr.port();
-                            let _ = proxy_dynamic_forward_connection(
+                            if let Err(error) = proxy_dynamic_forward_connection(
                                 context,
                                 stream,
                                 originator_host,
                                 originator_port,
-                            ).await;
+                            ).await {
+                                failures.record(format!(
+                                    "受管 SSH dynamic forward direct-tcpip 失败: {error}"
+                                ));
+                            }
                         });
                     }
                     Err(error) if is_recoverable_listener_accept_error(&error) => {

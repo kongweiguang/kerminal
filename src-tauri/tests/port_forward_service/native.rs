@@ -1,3 +1,7 @@
+// @author kongweiguang
+
+use std::time::Instant;
+
 use super::fixtures::*;
 
 #[test]
@@ -226,6 +230,39 @@ fn local_forward_target_failure_keeps_cached_connection_alive() {
 
     trigger_local_forward_attempt(source_port);
     wait_for_atomic_count(&ssh_server.auth_attempts, 1);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let failed_summary = loop {
+        let summary = state
+            .port_forwards()
+            .list(state.storage())
+            .expect("list native managed forwards")
+            .into_iter()
+            .find(|candidate| candidate.id == summary.id)
+            .expect("failed forward summary");
+        if summary
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.recent_failure.as_ref())
+            .is_some()
+        {
+            break summary;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "direct-tcpip failure should become observable"
+        );
+        thread::sleep(Duration::from_millis(20));
+    };
+
+    assert_eq!(failed_summary.status, PortForwardStatus::Running);
+    let recent_failure = failed_summary
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.recent_failure.as_deref())
+        .expect("recent direct-tcpip failure");
+    assert!(recent_failure.contains("direct-tcpip"));
+    assert_eq!(failed_summary.last_error.as_deref(), Some(recent_failure));
+
     trigger_local_forward_attempt(source_port);
     thread::sleep(Duration::from_millis(200));
 

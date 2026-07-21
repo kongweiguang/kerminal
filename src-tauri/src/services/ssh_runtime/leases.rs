@@ -427,6 +427,13 @@ impl ManagedSshForwardTunnel {
         }
     }
 
+    pub fn take_recent_failure(&mut self) -> AppResult<Option<String>> {
+        let Some(task) = self.task.as_mut() else {
+            return Ok(None);
+        };
+        task.take_recent_failure()
+    }
+
     pub fn kill(&mut self) -> AppResult<()> {
         if let Some(task) = self.task.as_mut() {
             task.kill()?;

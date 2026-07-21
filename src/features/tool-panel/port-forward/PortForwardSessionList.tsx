@@ -1,4 +1,7 @@
+// @author kongweiguang
+
 import {
+  AlertTriangle,
   ChevronDown,
   Copy,
   Network,
@@ -138,6 +141,8 @@ function PortForwardSessionRow({
     [session],
   );
   const route = sessionRoute(session);
+  const recentFailure =
+    session.status === "running" ? session.runtime?.recentFailure : undefined;
   return (
     <article className="kerminal-muted-surface rounded-xl border p-3">
       <div className="flex items-start gap-3">
@@ -160,6 +165,21 @@ function PortForwardSessionRow({
             </span>
             <span className="truncate">{route.to}</span>
           </div>
+          {recentFailure ? (
+            <div
+              aria-label="最近一次转发失败"
+              className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-2 text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100"
+              role="alert"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                最近一次连接失败，隧道仍在监听
+              </div>
+              <p className="mt-1 break-words font-mono text-[11px] leading-4">
+                {recentFailure}
+              </p>
+            </div>
+          ) : null}
           {detailsOpen ? (
             <div className="mt-3 space-y-2" id={detailsId}>
               <div className="grid gap-2 text-xs min-[520px]:grid-cols-2">

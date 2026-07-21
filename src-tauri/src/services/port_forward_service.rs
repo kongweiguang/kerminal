@@ -164,9 +164,9 @@ impl PortForwardService {
 
     /// 列出当前端口转发。
     pub fn list(&self, storage: &RuntimeFileStore) -> AppResult<Vec<PortForwardSummary>> {
-        let (runtime_summaries, exited_updates) = {
+        let (runtime_summaries, persisted_updates) = {
             let mut sessions = self.sessions()?;
-            let mut exited_updates = Vec::new();
+            let mut persisted_updates = Vec::new();
             for session in sessions.values_mut() {
                 if session.summary.status != PortForwardStatus::Running {
                     continue;
@@ -182,17 +182,25 @@ impl PortForwardService {
                     );
                     session.summary.pid = None;
                     session.cleanup_paths.cleanup_now();
-                    exited_updates.push(session.summary.clone());
+                    persisted_updates.push(session.summary.clone());
+                    continue;
+                }
+                if let Some(recent_failure) = session.process.take_recent_failure()? {
+                    session.summary.last_error = Some(recent_failure.clone());
+                    if let Some(runtime) = &mut session.summary.runtime {
+                        runtime.recent_failure = Some(recent_failure);
+                    }
+                    persisted_updates.push(session.summary.clone());
                 }
             }
             let runtime_summaries = sessions
                 .values()
                 .map(|session| session.summary.clone())
                 .collect::<Vec<_>>();
-            (runtime_summaries, exited_updates)
+            (runtime_summaries, persisted_updates)
         };
 
-        for summary in exited_updates {
+        for summary in persisted_updates {
             storage.upsert_port_forward_summary(&summary)?;
         }
 

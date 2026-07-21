@@ -94,6 +94,11 @@ pub trait SshRuntimeForwardTask: Send + fmt::Debug {
 
     fn try_wait(&mut self) -> AppResult<Option<String>>;
 
+    /// 取走最近一次不会终止隧道的连接级失败。
+    fn take_recent_failure(&mut self) -> AppResult<Option<String>> {
+        Ok(None)
+    }
+
     fn kill(&mut self) -> AppResult<()>;
 
     fn wait(&mut self);
