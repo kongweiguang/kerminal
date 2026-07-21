@@ -10,12 +10,14 @@ use crate::{
     error::AppError,
     models::{
         profile::TerminalProfile,
-        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostGroup, SshOptions},
+        remote_host::{
+            RemoteHost, RemoteHostAuthType, RemoteHostGroup, RemoteHostProtocol, SshOptions,
+        },
         settings::AppSettings,
         snippet::{CommandSnippet, SnippetScope},
         workflow::{CommandWorkflow, CommandWorkflowStep, WorkflowScope},
     },
-    storage::file_store::{FileStoreResult, TomlDocument, TomlParseError},
+    storage::file_store::{FileStoreError, FileStoreResult, TomlDocument, TomlParseError},
 };
 
 use super::{
@@ -483,6 +485,8 @@ impl From<RemoteHostGroupTomlEntry> for RemoteHostGroup {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct RemoteHostTomlDocument {
     schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    protocol: Option<RemoteHostProtocol>,
     id: String,
     group_id: Option<String>,
     name: String,
@@ -514,7 +518,12 @@ impl RemoteHostTomlDocument {
             jump_host.key_passphrase_secret = None;
         }
         Self {
-            schema_version: CONFIG_FILE_SCHEMA_VERSION,
+            schema_version: if host.protocol == RemoteHostProtocol::Sftp {
+                2
+            } else {
+                CONFIG_FILE_SCHEMA_VERSION
+            },
+            protocol: (host.protocol == RemoteHostProtocol::Sftp).then_some(host.protocol),
             id: host.id,
             group_id: host.group_id,
             name: host.name,
@@ -535,7 +544,38 @@ impl RemoteHostTomlDocument {
     }
 
     pub(super) fn into_host(self) -> FileStoreResult<RemoteHost> {
-        validate_schema_version(self.schema_version)?;
+        let protocol = match self.schema_version {
+            CONFIG_FILE_SCHEMA_VERSION => {
+                if self.protocol.is_some() {
+                    return Err(remote_host_schema_error(
+                        "host schema v1 must not declare protocol",
+                        "Remove protocol or set schema_version = 2 for an SFTP-only host.",
+                    ));
+                }
+                RemoteHostProtocol::from_legacy_tags(&self.tags)
+            }
+            2 => match self.protocol {
+                Some(RemoteHostProtocol::Sftp) => RemoteHostProtocol::Sftp,
+                Some(_) => {
+                    return Err(remote_host_schema_error(
+                        "host schema v2 currently supports only protocol = \"sftp\"",
+                        "Use schema_version = 1 for SSH, RDP, Telnet, or Serial hosts.",
+                    ))
+                }
+                None => {
+                    return Err(remote_host_schema_error(
+                        "host schema v2 requires protocol = \"sftp\"",
+                        "Add protocol = \"sftp\" or restore schema_version = 1.",
+                    ))
+                }
+            },
+            version => {
+                return Err(remote_host_schema_error(
+                    &format!("unsupported host schema_version: {version}, expected 1 or 2"),
+                    "Set schema_version = 1 for legacy hosts or 2 for an SFTP-only host.",
+                ))
+            }
+        };
         let secret_ref = self.secret_ref;
         let key_passphrase_ref = self.key_passphrase_ref;
         let ssh_options = normalize_jump_host_credential_statuses(self.ssh_options);
@@ -548,6 +588,7 @@ impl RemoteHostTomlDocument {
             host: self.host,
             port: self.port,
             username: self.username,
+            protocol,
             auth_type: self.auth_type,
             credential_ref: self.credential_ref,
             secret_ref,
@@ -563,6 +604,14 @@ impl RemoteHostTomlDocument {
             updated_at: self.updated_at,
         })
     }
+}
+
+fn remote_host_schema_error(message: &str, recovery: &str) -> FileStoreError {
+    FileStoreError::TomlParse(
+        TomlParseError::single(1, 1, message)
+            .with_key("schema_version")
+            .with_recovery(recovery),
+    )
 }
 
 impl TomlDocument for RemoteHostTomlDocument {

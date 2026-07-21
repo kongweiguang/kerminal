@@ -160,7 +160,7 @@ export function evaluateConnectionCheck({
       : { ok: true, testRequest: { host: request, mode: "serial" } };
   }
 
-  if (mode !== "ssh") {
+  if (mode !== "ssh" && mode !== "sftp") {
     return { error: `${selectedProtocolLabel} 暂未支持测试。`, ok: false };
   }
 
@@ -176,9 +176,10 @@ export function evaluateConnectionCheck({
     sshOptions,
     tags,
     username,
+    protocol: mode,
   });
   const validationError = validateSshRequest(request);
   return validationError
     ? { error: validationError, ok: false }
-    : { ok: true, testRequest: { host: request, mode: "ssh" } };
+    : { ok: true, testRequest: { host: request, mode } };
 }

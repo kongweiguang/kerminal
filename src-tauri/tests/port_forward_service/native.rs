@@ -30,6 +30,7 @@ fn create_local_forward_with_native_runtime_proxies_bytes_over_direct_tcpip() {
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();
@@ -109,6 +110,7 @@ fn create_local_forward_with_native_runtime_proxies_http_assets_over_direct_tcpi
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();
@@ -204,6 +206,7 @@ fn local_forward_target_failure_keeps_cached_connection_alive() {
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();
@@ -304,6 +307,7 @@ fn create_dynamic_forward_with_native_runtime_proxies_socks5_over_direct_tcpip()
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();
@@ -384,6 +388,7 @@ fn create_remote_forward_with_native_runtime_proxies_bytes_over_forwarded_tcpip(
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();
@@ -463,6 +468,7 @@ fn create_remote_dynamic_socks5_with_native_runtime_proxies_bytes() {
             ssh_options: Default::default(),
             tags: Vec::new(),
             username: "jump".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback SSH host");
     let source_port = unused_local_port();

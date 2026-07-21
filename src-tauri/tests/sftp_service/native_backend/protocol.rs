@@ -1,6 +1,98 @@
 use super::*;
 
 #[tokio::test]
+async fn sftp_only_host_browses_files_and_rejects_command_before_transport() {
+    let server_root = tempdir().expect("server root");
+    fs::write(server_root.path().join("sftp-only.txt"), b"files only")
+        .await
+        .expect("seed SFTP-only file");
+    fs::create_dir_all(server_root.path().join("delete-me/nested"))
+        .await
+        .expect("seed nested SFTP-only directory");
+    fs::write(
+        server_root.path().join("delete-me/nested/file.txt"),
+        b"delete through SFTP",
+    )
+    .await
+    .expect("seed nested SFTP-only file");
+    let server = start_loopback_sftp_only_server(server_root.path().to_path_buf()).await;
+    let (_home, state) = test_state();
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("secret".to_owned()),
+            group_id: None,
+            host: "127.0.0.1".to_owned(),
+            name: "sftp-only".to_owned(),
+            port: server.addr.port(),
+            production: false,
+            protocol: RemoteHostProtocol::Sftp,
+            ssh_options: SshOptions::default(),
+            tags: vec!["sftp-only".to_owned()],
+            username: "deploy".to_owned(),
+        })
+        .expect("create SFTP-only host");
+
+    trust_loopback_host(&state, &host.id).await;
+    let listing = state
+        .sftp()
+        .list_directory(
+            state.paths(),
+            SftpListDirectoryRequest {
+                host_id: host.id.clone(),
+                path: "/".to_owned(),
+            },
+        )
+        .await
+        .expect("browse SFTP-only host");
+    assert!(listing
+        .entries
+        .iter()
+        .any(|entry| entry.name == "sftp-only.txt"));
+
+    state
+        .sftp()
+        .delete(
+            state.paths(),
+            SftpDeleteRequest {
+                directory: true,
+                host_id: host.id.clone(),
+                path: "/delete-me".to_owned(),
+            },
+        )
+        .await
+        .expect("delete nested directory without shell exec");
+    assert!(!server_root.path().join("delete-me").exists());
+
+    let authenticated_before_command = server
+        .auth_successes
+        .load(std::sync::atomic::Ordering::SeqCst);
+    let error = state
+        .ssh_commands()
+        .execute_native(
+            state.paths(),
+            SshCommandRequest {
+                host_id: host.id,
+                command: "true".to_owned(),
+                timeout_seconds: Some(1),
+                max_output_bytes: Some(256),
+            },
+        )
+        .await
+        .expect_err("SFTP-only host rejects SSH command");
+    assert!(error.to_string().contains("host_capability_not_supported"));
+    assert_eq!(
+        server
+            .auth_successes
+            .load(std::sync::atomic::Ordering::SeqCst),
+        authenticated_before_command,
+        "capability rejection must happen before another SSH transport is opened"
+    );
+}
+
+#[tokio::test]
 async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
     let server_root = tempdir().expect("server root");
     fs::write(

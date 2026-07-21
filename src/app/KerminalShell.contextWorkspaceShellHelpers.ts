@@ -21,7 +21,5 @@ export function shellQuote(value: string): string {
 }
 
 export function isSftpCapableRemoteHost(host: RemoteHost): boolean {
-  return !host.tags.some((tag) =>
-    ["rdp", "telnet", "serial"].includes(tag.trim().toLowerCase()),
-  );
+  return host.protocol === "ssh" || host.protocol === "sftp";
 }

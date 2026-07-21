@@ -44,6 +44,7 @@ fn remote_host_with_credentials(
         host: "dev.internal".to_owned(),
         port: 2222,
         username: "deploy".to_owned(),
+        protocol: Default::default(),
         auth_type,
         credential_ref,
         secret_ref: None,

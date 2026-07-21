@@ -54,6 +54,7 @@ impl SmokeHarness {
                 ssh_options: Default::default(),
                 tags: vec!["smoke".to_owned(), "command-suggestion".to_owned()],
                 username: config.username.clone(),
+                protocol: Default::default(),
             })
             .expect("create temporary remote host")
     }

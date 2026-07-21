@@ -12,6 +12,8 @@ use super::remote_host::RemoteHostCreateRequest;
 pub enum ConnectionTestMode {
     /// SSH 连接测试。
     Ssh,
+    /// SFTP subsystem 与初始目录测试。
+    Sftp,
     /// RDP TCP 端口连通测试。
     Rdp,
     /// Telnet TCP 端口连通测试。
@@ -26,6 +28,8 @@ pub enum ConnectionTestMode {
 pub enum ConnectionTestRequest {
     /// 测试未保存的 SSH 主机表单。
     Ssh { host: RemoteHostCreateRequest },
+    /// 测试未保存的 SFTP 主机表单。
+    Sftp { host: RemoteHostCreateRequest },
     /// 测试 RDP 主机端口连通，不启动系统 RDP 客户端。
     Rdp { request: RdpOpenRequest },
     /// 测试 Telnet 主机端口连通。

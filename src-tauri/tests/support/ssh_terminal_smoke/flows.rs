@@ -105,6 +105,7 @@ pub fn create_remote_host(state: &AppState, config: &PasswordSmokeConfig) -> Str
             ssh_options: Default::default(),
             tags: vec!["smoke".to_owned()],
             username: config.username.clone(),
+        protocol: Default::default(),
         })
         .expect("create password smoke remote host")
         .id
@@ -127,6 +128,7 @@ pub fn create_remote_host_with_password_jump(
         ssh_options: Default::default(),
         tags: vec!["smoke".to_owned(), "jump".to_owned()],
         username: config.username.clone(),
+    protocol: Default::default(),
     };
     request.ssh_options.jump_hosts.push(SshJumpHostOptions {
         auth_type: RemoteHostAuthType::Password,

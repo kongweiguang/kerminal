@@ -250,6 +250,18 @@ async fn test_connection(
                 ),
             ))
         }
+        ConnectionTestRequest::Sftp { host } => {
+            let host = remote_host_from_create_request("SFTP", host)?;
+            state.sftp().test_connection(state.paths(), &host).await?;
+            Ok(connection_test_result(
+                ConnectionTestMode::Sftp,
+                started,
+                format!(
+                    "SFTP 连接测试通过：{}@{}:{}",
+                    host.username, host.host, host.port
+                ),
+            ))
+        }
         ConnectionTestRequest::Rdp { request } => {
             validate_rdp_request(&request)?;
             test_tcp_endpoint("RDP", &request.host, request.port, 10).await?;
@@ -340,8 +352,8 @@ fn remote_host_from_create_request(
         return Err(AppError::InvalidInput(format!("{label} 端口必须大于 0")));
     }
     let username = request.username.trim().to_owned();
-    if label == "SSH" && username.is_empty() {
-        return Err(AppError::InvalidInput("SSH 用户名不能为空".to_owned()));
+    if matches!(label, "SSH" | "SFTP") && username.is_empty() {
+        return Err(AppError::InvalidInput(format!("{label} 用户名不能为空")));
     }
     let (credential_ref, credential_secret) = normalize_test_credential(
         request.auth_type,
@@ -356,6 +368,7 @@ fn remote_host_from_create_request(
         host,
         port: request.port,
         username,
+        protocol: request.protocol,
         auth_type: request.auth_type,
         credential_ref,
         secret_ref: None,

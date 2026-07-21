@@ -83,7 +83,9 @@ export function buildMachineGroups(
             left.name.localeCompare(right.name),
         )
         .map((host) => {
-          const kind = isSerialRemoteHost(host)
+          const kind = host.protocol === "sftp"
+            ? ("sftp" as const)
+            : isSerialRemoteHost(host)
             ? ("serial" as const)
             : isTelnetRemoteHost(host)
               ? ("telnet" as const)
@@ -102,6 +104,8 @@ export function buildMachineGroups(
                   ? telnetMachineDescription(host)
                   : kind === "serial"
                     ? serialMachineDescription(host)
+                  : kind === "sftp"
+                    ? `SFTP · ${host.username}@${host.host}:${host.port}`
                     : `${host.username}@${host.host}:${host.port}`,
             host: host.host,
             id: host.id,
@@ -114,7 +118,7 @@ export function buildMachineGroups(
             sshOptions: host.sshOptions,
             status: host.production ? ("warning" as const) : ("offline" as const),
             target:
-              kind === "ssh"
+              kind === "ssh" || kind === "sftp"
                 ? sshTarget(host.id)
                 : kind === "telnet"
                   ? telnetTarget(host.id)

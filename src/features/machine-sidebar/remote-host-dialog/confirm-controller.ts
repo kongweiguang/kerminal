@@ -117,19 +117,22 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
       recoveryAction: "请检查串口设备和通信参数后重试。",
       title: editingHost ? "无法更新串口连接" : "无法创建串口连接",
     };
-  } else if (mode === "ssh") {
+  } else if (mode === "ssh" || mode === "sftp") {
     request = buildSshRequest({
       authType: input.authType, credentialRef: input.credentialRef,
       credentialSecret: input.credentialSecret, groupId: input.groupId,
       host: input.host, name: input.name, port: input.port,
       production: input.production, sshOptions: input.sshOptions,
       tags: input.tags, username: input.username,
+      protocol: mode,
     });
     validationError = validateSshRequest(request);
     failure = {
-      detail: "当前 SSH 连接配置尚未保存。",
+      detail: `当前 ${mode === "sftp" ? "SFTP" : "SSH"} 连接配置尚未保存。`,
       recoveryAction: "请检查地址、网络和认证信息后重试。",
-      title: editingHost ? "无法更新 SSH 连接" : "无法创建 SSH 连接",
+      title: editingHost
+        ? `无法更新 ${mode === "sftp" ? "SFTP" : "SSH"} 连接`
+        : `无法创建 ${mode === "sftp" ? "SFTP" : "SSH"} 连接`,
     };
   } else {
     setError(`${input.selectedProtocolLabel} 暂未支持创建。`);

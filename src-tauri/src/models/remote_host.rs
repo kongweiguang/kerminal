@@ -4,6 +4,53 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 保存主机的协议语义；SFTP 使用 SSH transport，但不具备 shell 能力。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteHostProtocol {
+    /// SSH 终端与 SSH 派生能力。
+    #[default]
+    Ssh,
+    /// 仅 SFTP 文件能力。
+    Sftp,
+    /// 系统 RDP 客户端连接。
+    Rdp,
+    /// Telnet 终端连接。
+    Telnet,
+    /// 本地串口连接。
+    Serial,
+}
+
+impl RemoteHostProtocol {
+    /// 从 schema v1 的保留标签推导协议，保持旧配置行为。
+    pub fn from_legacy_tags(tags: &[String]) -> Self {
+        if has_protocol_tag(tags, "serial") {
+            Self::Serial
+        } else if has_protocol_tag(tags, "telnet") {
+            Self::Telnet
+        } else if has_protocol_tag(tags, "rdp") {
+            Self::Rdp
+        } else {
+            Self::Ssh
+        }
+    }
+
+    /// 是否允许 SFTP 文件能力。
+    pub fn supports_sftp(self) -> bool {
+        matches!(self, Self::Ssh | Self::Sftp)
+    }
+
+    /// 是否允许 shell、远程命令、端口转发及其派生能力。
+    pub fn supports_shell(self) -> bool {
+        matches!(self, Self::Ssh)
+    }
+}
+
+fn has_protocol_tag(tags: &[String], expected: &str) -> bool {
+    tags.iter()
+        .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
+}
+
 /// SSH 认证方式。
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -372,6 +419,8 @@ pub struct RemoteHost {
     pub port: u16,
     /// SSH 用户名。
     pub username: String,
+    /// 主机协议；schema v1 由保留标签推导，SFTP-only 使用显式值。
+    pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
     /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
@@ -524,6 +573,9 @@ pub struct RemoteHostCreateRequest {
     pub port: u16,
     /// SSH 用户名。
     pub username: String,
+    /// 主机协议；旧 IPC 调用缺省为 SSH。
+    #[serde(default)]
+    pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
     /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
@@ -559,6 +611,9 @@ pub struct RemoteHostUpdateRequest {
     pub port: u16,
     /// SSH 用户名。
     pub username: String,
+    /// 主机协议；编辑保存时不得改变已有协议。
+    #[serde(default)]
+    pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
     /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。

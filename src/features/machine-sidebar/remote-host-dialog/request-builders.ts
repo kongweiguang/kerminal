@@ -3,6 +3,7 @@ import {
   type RemoteHost,
   type RemoteHostAuthType,
   type RemoteHostCreateRequest,
+  type RemoteHostProtocol,
   type SshJumpHostOptions,
   type SshOptions,
   type SshTunnelOptions,
@@ -181,6 +182,7 @@ export function buildSshRequest({
   sshOptions,
   tags,
   username,
+  protocol,
 }: {
   authType: RemoteHostAuthType;
   credentialRef: string;
@@ -193,6 +195,7 @@ export function buildSshRequest({
   sshOptions: SshOptions;
   tags: string;
   username: string;
+  protocol?: Extract<RemoteHostProtocol, "ssh" | "sftp">;
 }): RemoteHostCreateRequest {
   return {
     authType,
@@ -203,6 +206,7 @@ export function buildSshRequest({
     host: host.trim(),
     name: name.trim(),
     port: Number(port),
+    protocol: protocol ?? "ssh",
     production,
     sshOptions: normalizeSshOptionsForRequest(sshOptions),
     tags: parseTags(tags),
@@ -275,6 +279,7 @@ export function buildRdpHostRequest({
     host: host.trim(),
     name: name.trim(),
     port: Number(port),
+    protocol: "rdp",
     production,
     tags: ensureTag(parseTags(tags), "rdp"),
     username: username.trim(),
@@ -304,6 +309,7 @@ export function buildTelnetHostRequest({
     host: host.trim(),
     name: name.trim(),
     port: Number(port),
+    protocol: "telnet",
     production,
     tags: ensureTag(parseTags(tags), "telnet"),
     username: "",
@@ -347,6 +353,7 @@ export function buildSerialHostRequest({
     host: normalizedSerialPort,
     name: name.trim(),
     port: 1,
+    protocol: "serial",
     production,
     tags: buildSerialTags(parseTags(tags), {
       baud: normalizedBaud,

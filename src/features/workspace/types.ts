@@ -7,7 +7,14 @@ import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 export type MachineStatus = "online" | "offline" | "warning";
 
 export type MachineKind =
-  "local" | "ssh" | "telnet" | "serial" | "rdp" | "dockerContainer" | "group";
+  | "local"
+  | "ssh"
+  | "sftp"
+  | "telnet"
+  | "serial"
+  | "rdp"
+  | "dockerContainer"
+  | "group";
 
 export interface Machine {
   id: string;

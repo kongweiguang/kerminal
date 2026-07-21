@@ -56,6 +56,14 @@ const machineGroups: MachineGroup[] = [
         status: "offline",
         tags: ["ssh"],
       },
+      {
+        description: "SFTP · upload@files.internal:22",
+        id: "host-files",
+        kind: "sftp",
+        name: "files-only",
+        status: "offline",
+        tags: ["files"],
+      },
     ],
     title: "备份",
   },
@@ -69,6 +77,7 @@ describe("sftpTransferWorkbenchModel", () => {
     expect(sshMachines.map((machine) => machine.id)).toEqual([
       "host-left",
       "host-backup",
+      "host-files",
     ]);
     expect(firstValidHostId(hostIds, "missing", undefined, "host-backup")).toBe(
       "host-backup",

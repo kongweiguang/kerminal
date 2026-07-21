@@ -36,6 +36,7 @@ pub(crate) fn create_password_remote_host_without_credentials(
         host: "127.0.0.1".to_owned(),
         port,
         username: "deploy".to_owned(),
+        protocol: Default::default(),
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
         secret_ref: None,
@@ -87,6 +88,7 @@ pub(crate) fn create_password_remote_host_with_credentials(
             ssh_options,
             tags: vec!["loopback".to_owned()],
             username: username.to_owned(),
+            protocol: Default::default(),
         })
         .expect("create loopback remote host")
         .id

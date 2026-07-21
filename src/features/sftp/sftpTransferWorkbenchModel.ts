@@ -24,7 +24,9 @@ export type SftpTransferHostTabIdFactory = (params: {
 
 export function collectSshMachines(groups: MachineGroup[]) {
   return groups.flatMap((group) =>
-    group.machines.filter((machine) => machine.kind === "ssh"),
+    group.machines.filter(
+      (machine) => machine.kind === "ssh" || machine.kind === "sftp",
+    ),
   );
 }
 

@@ -680,6 +680,7 @@ fn create_test_remote_host(state: &AppState) -> String {
             ssh_options: Default::default(),
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create test host")
         .id

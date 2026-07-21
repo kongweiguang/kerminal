@@ -11,7 +11,8 @@ use std::{
 use crate::{
     error::{AppError, AppResult},
     models::remote_host::{
-        RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, SshJumpHostOptions, SshOptions,
+        RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, RemoteHostProtocol,
+        SshJumpHostOptions, SshOptions,
     },
     paths::KerminalPaths,
     services::{
@@ -454,6 +455,11 @@ fn request_to_remote_host(
         name: display_name_from_request(request),
         port: request.target.port,
         production,
+        protocol: if matches!(request.intent, ExternalLaunchIntent::SftpTransfer { .. }) {
+            RemoteHostProtocol::Sftp
+        } else {
+            RemoteHostProtocol::Ssh
+        },
         secret_ref: None,
         sort_order: 0,
         ssh_options: request_ssh_options(request, username),

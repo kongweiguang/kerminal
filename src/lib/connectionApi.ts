@@ -1,10 +1,11 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { RemoteHostCreateRequest } from "./remoteHostApi";
 
-type ConnectionTestMode = "ssh" | "rdp" | "telnet" | "serial";
+type ConnectionTestMode = "ssh" | "sftp" | "rdp" | "telnet" | "serial";
 
 export type ConnectionTestRequest =
   | { host: RemoteHostCreateRequest; mode: "ssh" }
+  | { host: RemoteHostCreateRequest; mode: "sftp" }
   | { mode: "rdp"; request: RdpOpenRequest }
   | { host: RemoteHostCreateRequest; mode: "telnet" }
   | { host: RemoteHostCreateRequest; mode: "serial" };

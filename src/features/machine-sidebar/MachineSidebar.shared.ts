@@ -5,7 +5,7 @@ export type MachineSidebarViewMode = "hosts" | "containers";
 
 export type ConnectionOpenOptions = {
   groupId?: string;
-  mode?: "local" | "rdp" | "ssh" | "telnet" | "serial";
+  mode?: "local" | "rdp" | "ssh" | "sftp" | "telnet" | "serial";
 };
 
 export interface MachineSidebarProps {

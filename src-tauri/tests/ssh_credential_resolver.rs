@@ -559,6 +559,7 @@ fn base_host(id: &str, auth_type: RemoteHostAuthType) -> RemoteHost {
         host: "target.internal".to_owned(),
         port: 22,
         username: "deploy".to_owned(),
+        protocol: Default::default(),
         auth_type,
         credential_ref: None,
         secret_ref: None,

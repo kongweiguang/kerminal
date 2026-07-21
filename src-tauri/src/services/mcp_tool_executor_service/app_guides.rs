@@ -63,7 +63,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 "inspectTool": "kerminal.runtime_snapshot",
                 "snapshotPath": "managedSsh",
                 "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
-                "sharedSessionRule": "SSH terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools should reuse the same authenticated ManagedSshSession for a host route when available.",
+                "sharedSessionRule": "SSH hosts may reuse one authenticated ManagedSshSession across terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools. SFTP-only hosts may use only SFTP channels; shell-derived capability families fail closed before transport.",
                 "channelRule": "Reuse does not mean a single blocking stream: shell, SFTP, exec, and forwarding use separate managed channels with counts, queue depth, timeout, cancel, cleanup, and recent-failure diagnostics.",
                 "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures must remain managed runtime errors.",
                 "secretBoundary": "managedSsh diagnostics are redacted and must not expose passwords, private keys, key passphrases, raw env, or vault refs."
@@ -71,8 +71,8 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
             "runtimeToolFamilies": [
                 capability_family("agentSession", "Use the current Kerminal Agent session and bound target safely.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
                 capability_family("terminal", "Read and write existing terminal sessions; creation and UI focus stay in the app/UI host.", &exposed_tools, &["terminal."]),
-                capability_family("ssh", "Run non-interactive SSH commands through the managed SSH exec facade; inspect kerminal.runtime_snapshot.managedSsh when debugging session reuse.", &exposed_tools, &["ssh."]),
-                capability_family("sftp", "Browse, preview, transfer, and manage remote files through the managed SSH SFTP subsystem/runtime.", &exposed_tools, &["sftp."]),
+                capability_family("ssh", "Run non-interactive commands on saved SSH hosts through the managed SSH exec facade; SFTP-only hosts are rejected before transport.", &exposed_tools, &["ssh."]),
+                capability_family("sftp", "Browse, preview, transfer, and manage remote files for saved SSH or SFTP-only hosts through the managed SSH SFTP subsystem/runtime.", &exposed_tools, &["sftp."]),
                 capability_family("tmux", "Probe, list, create, rename, kill, inspect, capture, and attach-plan tmux sessions through managed exec on SSH targets.", &exposed_tools, &["tmux."]),
                 capability_family("container", "List, inspect, tail logs, read stats, manage lifecycle, and browse, edit, transfer, or manage files for SSH-host Docker/Podman containers through managed SSH exec/SFTP capabilities.", &exposed_tools, &["container."]),
                 capability_family("portForward", "Create, list, and close managed SSH port forwards and local proxy entries; runtime diagnostics show session/channel/tunnel ownership.", &exposed_tools, &["port_forward."]),
@@ -252,7 +252,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
             "applicationSurfaces": [
                 {
                     "surface": "machineSidebar",
-                    "userSees": "Saved Local/SSH/RDP/Telnet/Serial targets, groups, tags, connection entry points, and host context actions.",
+                    "userSees": "Saved Local/SSH/SFTP/RDP/Telnet/Serial targets, groups, tags, connection entry points, and host context actions. Double-clicking an SFTP-only host opens the central transfer workbench without creating a terminal.",
                     "aiCanDo": [
                         "Read or update host/profile/group files directly when the user asks for configuration changes.",
                         "Run non-interactive SSH commands through saved credentials.",
@@ -263,6 +263,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "boundaries": [
                         "Do not expect remote_host.* CRUD/list MCP tools.",
                         "Do not read secrets/vault*.toml directly.",
+                        "SFTP-only hosts expose file operations only; SSH command, terminal, tmux, container, server-info, and port-forward tools reject them with host_capability_not_supported.",
                         "Ask for user/host approval before production writes or destructive remote commands."
                     ]
                 },
@@ -371,8 +372,8 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 app_task_route("understand-current-state", "Call kerminal.runtime_snapshot, then terminal.list or kerminal.agent.target_context if terminal context matters.", &discovery_tools),
                 app_task_route("discover-mcp-capabilities", "Call kerminal.capabilities to read the current tool map, recommended first calls, file-first configuration boundary, and deliberately absent tool families.", &discovery_tools),
                 app_task_route("operate-terminal", "Use terminal.list/snapshot/write on an explicit live terminal; in Agent sessions use kerminal.agent.target_context first.", &terminal_tools),
-                app_task_route("run-ssh-command", "Identify host id from target context or hosts/*.toml, inspect managedSsh runtime reuse, then use ssh.command_on_resolved_host or ssh.command.", &remote_tools),
-                app_task_route("manage-remote-files", "Inspect managedSsh runtime reuse, then use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
+                app_task_route("run-ssh-command", "Identify a protocol=ssh host id from target context or hosts/*.toml, inspect managedSsh runtime reuse, then use ssh.command_on_resolved_host or ssh.command. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
+                app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host, inspect managedSsh runtime reuse, then use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
                 app_task_route("manage-containers", "Inspect managedSsh runtime reuse, then use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
                 app_task_route("manage-tmux", "Inspect managedSsh runtime reuse, then probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
                 app_task_route("manage-port-forwarding", "Inspect managedSsh runtime reuse, then use port_forward.list before create or close; keep risky remote exposure behind user approval.", &port_forward_tools),

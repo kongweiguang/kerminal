@@ -37,10 +37,6 @@ pub(super) fn normalize_tags(tags: Vec<String>) -> Vec<String> {
     normalized
 }
 
-pub(super) fn allows_empty_username(tags: &[String]) -> bool {
-    has_tag(tags, "telnet") || has_tag(tags, "serial")
-}
-
 pub(super) fn has_tag(tags: &[String], expected: &str) -> bool {
     tags.iter()
         .any(|tag| tag.trim().eq_ignore_ascii_case(expected))

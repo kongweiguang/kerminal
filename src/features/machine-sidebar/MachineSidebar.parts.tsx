@@ -677,6 +677,64 @@ export function MachineContextMenuItems({
     );
   }
 
+  if (machine.kind === "sftp") {
+    return (
+      <>
+        <ContextMenuItem
+          disabled={!onOpenSftp}
+          icon={<FolderOpen className="h-4 w-4" />}
+          label="打开文件传输"
+          menuAction="openSftp"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onOpenSftp?.(machine.id))}
+        />
+        <ContextMenuItem
+          disabled={!onOpenSftpTransferWorkbench}
+          icon={<ArrowLeftRight className="h-4 w-4" />}
+          label="新建传输 Tab"
+          menuAction="openSftpTransferWorkbench"
+          menuDomain={machineMenuDomain}
+          onClick={() =>
+            runMenuAction(() => onOpenSftpTransferWorkbench?.(machine.id))
+          }
+        />
+        <ContextMenuItem
+          disabled={!onEditMachine}
+          icon={<Pencil className="h-4 w-4" />}
+          label="编辑连接配置"
+          menuAction="editMachine"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
+        />
+        <ContextMenuItem
+          disabled={!onDuplicateMachine}
+          icon={<Copy className="h-4 w-4" />}
+          label="复制为 SSH 主机"
+          menuAction="duplicateMachine"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
+        />
+        <ContextMenuItem
+          disabled={!onAddMachine}
+          icon={<Plus className="h-4 w-4" />}
+          label="添加同组连接"
+          menuAction="addMachineToGroup"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
+        />
+        <ContextMenuItem
+          danger
+          disabled={!onDeleteMachine}
+          icon={<Trash2 className="h-4 w-4" />}
+          label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <ContextMenuItem

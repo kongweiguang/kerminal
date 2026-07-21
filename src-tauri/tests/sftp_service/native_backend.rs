@@ -1,15 +1,25 @@
 use super::support::{
     create_password_remote_host, create_password_remote_host_without_credentials,
-    loopback::{start_loopback_sftp_server, start_loopback_sftp_server_with_symlinks},
+    loopback::{
+        start_loopback_sftp_only_server, start_loopback_sftp_server,
+        start_loopback_sftp_server_with_symlinks,
+    },
     test_state,
 };
 use kerminal_lib::{
     error::AppError,
-    models::sftp::{
-        SftpArchiveDownloadRequest, SftpChmodRequest, SftpDeleteRequest, SftpEntryKind,
-        SftpListDirectoryRequest, SftpPathRequest, SftpPreviewRequest, SftpReadTextFileRequest,
-        SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferConflictPolicy, SftpTransferKind,
-        SftpTransferRequest, SftpTransferStatus, SftpTrustHostKeyRequest, SftpWriteTextFileRequest,
+    models::{
+        remote_host::{
+            RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostProtocol, SshOptions,
+        },
+        sftp::{
+            SftpArchiveDownloadRequest, SftpChmodRequest, SftpDeleteRequest, SftpEntryKind,
+            SftpListDirectoryRequest, SftpPathRequest, SftpPreviewRequest, SftpReadTextFileRequest,
+            SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferConflictPolicy, SftpTransferKind,
+            SftpTransferRequest, SftpTransferStatus, SftpTrustHostKeyRequest,
+            SftpWriteTextFileRequest,
+        },
+        ssh_command::SshCommandRequest,
     },
     services::ssh_runtime::{auth_broker::SshSessionSecretInput, SshAuthSecretKind},
     state::AppState,

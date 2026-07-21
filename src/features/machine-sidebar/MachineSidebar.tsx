@@ -382,6 +382,10 @@ export function MachineSidebar({
       return;
     }
     onSelectMachine(machine.id);
+    if (machine.kind === "sftp") {
+      onOpenSftpTransferWorkbench?.(machine.id);
+      return;
+    }
     if (machine.kind === "ssh") {
       onOpenSshTerminal?.(machine.id);
       return;

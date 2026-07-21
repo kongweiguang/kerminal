@@ -29,7 +29,11 @@ export function resolveFileTarget(machine: Machine | undefined): SftpFileTarget 
     });
   }
 
-  if (machine.target?.kind === "ssh" || machine.kind === "ssh") {
+  if (
+    machine.target?.kind === "ssh" ||
+    machine.kind === "ssh" ||
+    machine.kind === "sftp"
+  ) {
     const hostId = machine.target?.kind === "ssh" ? machine.target.hostId : machine.id;
     return {
       hostId,

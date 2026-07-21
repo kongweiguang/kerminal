@@ -27,6 +27,7 @@ use crate::{
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalSessionMaterializer,
         process_command::silent_command,
+        remote_host_capability::{ensure_remote_host_capability, RemoteHostCapability},
         remote_host_service::RemoteHostService,
         ssh_command_plan::{cleanup_paths, resolve_openssh_executable},
         ssh_credential_resolver::{
@@ -405,13 +406,16 @@ impl PortForwardService {
     ) -> AppResult<crate::models::remote_host::RemoteHost> {
         if let Some(external_targets) = &self.external_targets {
             if let Some(target) = external_targets.resolve_target(host_id)? {
+                ensure_remote_host_capability(&target.host, RemoteHostCapability::Shell)?;
                 return Ok(target.host);
             }
         }
         if is_external_runtime_target_id(host_id) {
             return Err(external_target_not_available_error(host_id));
         }
-        remote_hosts.require_host(host_id)
+        let host = remote_hosts.require_host(host_id)?;
+        ensure_remote_host_capability(&host, RemoteHostCapability::Shell)?;
+        Ok(host)
     }
 
     fn resolve_runtime_host(
@@ -425,6 +429,7 @@ impl PortForwardService {
     )> {
         if let Some(external_targets) = &self.external_targets {
             if let Some(target) = external_targets.resolve_target(host_id)? {
+                ensure_remote_host_capability(&target.host, RemoteHostCapability::Shell)?;
                 return Ok((target.host, Some(target.route_auth)));
             }
         }
@@ -433,6 +438,7 @@ impl PortForwardService {
         }
 
         let host = remote_hosts.require_host(host_id)?;
+        ensure_remote_host_capability(&host, RemoteHostCapability::Shell)?;
         let Some(paths) = paths else {
             return Ok((host, None));
         };

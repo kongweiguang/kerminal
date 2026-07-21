@@ -152,6 +152,7 @@ fn persist_target_host_secret(
         host: host.host,
         port: host.port,
         username: host.username,
+        protocol: host.protocol,
         auth_type,
         credential_ref,
         credential_secret: Some(value.to_owned()),

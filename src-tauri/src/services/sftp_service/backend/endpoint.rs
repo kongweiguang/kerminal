@@ -7,6 +7,7 @@ use crate::{
     services::{
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalSessionMaterializer,
+        remote_host_capability::{ensure_remote_host_capability, RemoteHostCapability},
         ssh_credential_resolver::{ResolvedSshRouteAuth, SshCredentialResolver},
         ssh_identity_file::resolve_identity_file_path,
         ssh_runtime::{
@@ -106,6 +107,7 @@ pub(crate) fn resolve_endpoint_with_auth_broker(
 ) -> AppResult<SftpEndpoint> {
     if let Some(external_targets) = external_targets {
         if let Some(target) = external_targets.resolve_target(host_id)? {
+            ensure_remote_host_capability(&target.host, RemoteHostCapability::Sftp)?;
             let auth = resolve_auth_material(&target.host)?;
             return Ok(SftpEndpoint {
                 host: target.host,
@@ -164,10 +166,28 @@ pub(crate) fn resolve_host(paths: &KerminalPaths, host_id: &str) -> AppResult<Re
     if is_external_runtime_target_id(host_id) {
         return Err(external_target_not_available_error(host_id));
     }
-    ConfigFileStore::new(paths.root.clone())
+    let host = ConfigFileStore::new(paths.root.clone())
         .remote_host_by_id(host_id)
         .map_err(config_file_error)?
-        .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
+        .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))?;
+    ensure_remote_host_capability(&host, RemoteHostCapability::Sftp)?;
+    Ok(host)
+}
+
+pub(crate) fn resolve_transient_endpoint(
+    paths: &KerminalPaths,
+    host: &RemoteHost,
+) -> AppResult<SftpEndpoint> {
+    ensure_remote_host_capability(host, RemoteHostCapability::Sftp)?;
+    let resolver = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()));
+    let resolved = resolver.resolve_runtime_host(host)?;
+    let auth = resolve_auth_material(&resolved.host)?;
+    Ok(SftpEndpoint {
+        host: resolved.host,
+        auth,
+        known_hosts_path: paths.root.join("known_hosts"),
+        route_auth: resolved.auth,
+    })
 }
 
 fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {

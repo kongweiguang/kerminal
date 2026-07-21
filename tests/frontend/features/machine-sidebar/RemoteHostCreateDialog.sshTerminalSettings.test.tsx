@@ -99,6 +99,7 @@ describe("RemoteHostCreateDialog SSH terminal settings", () => {
       name: "keepalive-dev",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: {
         ...createDefaultSshOptions(),
         terminal: {

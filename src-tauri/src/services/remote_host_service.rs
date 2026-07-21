@@ -13,9 +13,7 @@ use credential_persistence::{
     password_required_message, persist_secret_ref, reusable_secret_ref_for_kind,
     SecretPersistenceInput,
 };
-use normalization::{
-    allows_empty_username, has_tag, normalize_host, normalize_port, normalize_tags,
-};
+use normalization::{has_tag, normalize_host, normalize_port, normalize_tags};
 
 use crate::{
     error::{AppError, AppResult},
@@ -23,7 +21,8 @@ use crate::{
         RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostCredentialReveal,
         RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus, RemoteHostGroup,
         RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
-        RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions, SshProxyProtocol, SshTunnelKind,
+        RemoteHostProtocol, RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions,
+        SshProxyProtocol, SshTunnelKind,
     },
     paths::KerminalPaths,
     services::{
@@ -143,6 +142,8 @@ impl RemoteHostService {
 
     /// 创建远程主机配置。
     pub fn create_host(&self, request: RemoteHostCreateRequest) -> AppResult<RemoteHost> {
+        let tags = normalize_tags(request.tags);
+        let protocol = resolve_request_protocol(request.protocol, &tags);
         let group_id = normalize_optional_text(request.group_id);
         ensure_group_exists(self, group_id.as_deref())?;
         let sort_order = self
@@ -150,7 +151,7 @@ impl RemoteHostService {
             .next_remote_host_sort_order(group_id.as_deref())
             .map_err(config_file_error)?;
         let id = Uuid::new_v4().to_string();
-        let tags = normalize_tags(request.tags);
+        let tags = normalize_protocol_tags(protocol, tags)?;
         let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
@@ -163,7 +164,8 @@ impl RemoteHostService {
             name: normalize_required_text("主机名称", request.name)?,
             host: normalize_host(request.host)?,
             port: normalize_port(request.port)?,
-            username: normalize_username(request.username, &tags)?,
+            username: normalize_username(protocol, request.username)?,
+            protocol,
             auth_type: request.auth_type,
             credential_ref: credential.credential_ref,
             secret_ref: None,
@@ -173,7 +175,7 @@ impl RemoteHostService {
             credential_status: Default::default(),
             tags,
             production: request.production,
-            ssh_options: normalize_ssh_options(request.ssh_options)?,
+            ssh_options: normalize_protocol_ssh_options(protocol, request.ssh_options)?,
             sort_order,
             created_at: timestamp.clone(),
             updated_at: timestamp,
@@ -190,10 +192,12 @@ impl RemoteHostService {
 
     /// 更新远程主机配置。
     pub fn update_host(&self, request: RemoteHostUpdateRequest) -> AppResult<RemoteHost> {
+        let tags = normalize_tags(request.tags);
+        let protocol = resolve_request_protocol(request.protocol, &tags);
         let group_id = normalize_optional_text(request.group_id);
         ensure_group_exists(self, group_id.as_deref())?;
         let id = normalize_required_text("主机 ID", request.id)?;
-        let tags = normalize_tags(request.tags);
+        let tags = normalize_protocol_tags(protocol, tags)?;
         let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
@@ -202,8 +206,8 @@ impl RemoteHostService {
         let name = normalize_required_text("主机名称", request.name)?;
         let host_address = normalize_host(request.host)?;
         let port = normalize_port(request.port)?;
-        let username = normalize_username(request.username, &tags)?;
-        let ssh_options = normalize_ssh_options(request.ssh_options)?;
+        let username = normalize_username(protocol, request.username)?;
+        let ssh_options = normalize_protocol_ssh_options(protocol, request.ssh_options)?;
         let vault = self.vault_service();
         vault.run_unit_of_work("remote-host-update", |unit, transaction| {
             // existing 必须在同一锁内读取，避免并发删除后被旧快照重新创建。
@@ -212,6 +216,11 @@ impl RemoteHostService {
                 .remote_host_by_id_in_transaction(transaction, &id)
                 .map_err(config_file_error)?
                 .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {id}")))?;
+            if protocol != existing.protocol {
+                return Err(AppError::InvalidInput(
+                    "已保存主机不能直接更改协议；请复制为新的连接".to_owned(),
+                ));
+            }
             let host = RemoteHost {
                 id: id.clone(),
                 group_id,
@@ -219,6 +228,7 @@ impl RemoteHostService {
                 host: host_address,
                 port,
                 username,
+                protocol,
                 auth_type: request.auth_type,
                 credential_ref: credential.credential_ref,
                 secret_ref: existing.secret_ref.clone(),
@@ -429,9 +439,64 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
         .filter(|item| !item.is_empty())
 }
 
-fn normalize_username(value: String, tags: &[String]) -> AppResult<String> {
+fn normalize_protocol_ssh_options(
+    protocol: RemoteHostProtocol,
+    options: SshOptions,
+) -> AppResult<SshOptions> {
+    let mut options = normalize_ssh_options(options)?;
+    if protocol == RemoteHostProtocol::Sftp {
+        options.transfer.enabled = true;
+        options.tunnels.clear();
+    }
+    Ok(options)
+}
+
+fn normalize_protocol_tags(
+    protocol: RemoteHostProtocol,
+    mut tags: Vec<String>,
+) -> AppResult<Vec<String>> {
+    if protocol == RemoteHostProtocol::Sftp {
+        return Ok(tags);
+    }
+
+    let expected = match protocol {
+        RemoteHostProtocol::Ssh => None,
+        RemoteHostProtocol::Rdp => Some("rdp"),
+        RemoteHostProtocol::Telnet => Some("telnet"),
+        RemoteHostProtocol::Serial => Some("serial"),
+        RemoteHostProtocol::Sftp => unreachable!("SFTP returned above"),
+    };
+    for reserved in ["rdp", "telnet", "serial"] {
+        if has_tag(&tags, reserved) && expected != Some(reserved) {
+            return Err(AppError::InvalidInput(format!(
+                "标签 {reserved} 与主机协议 {:?} 冲突",
+                protocol
+            )));
+        }
+    }
+    if let Some(expected) = expected {
+        if !has_tag(&tags, expected) {
+            tags.push(expected.to_owned());
+        }
+    }
+    Ok(tags)
+}
+
+fn resolve_request_protocol(requested: RemoteHostProtocol, tags: &[String]) -> RemoteHostProtocol {
+    if requested == RemoteHostProtocol::Ssh {
+        RemoteHostProtocol::from_legacy_tags(tags)
+    } else {
+        requested
+    }
+}
+
+fn normalize_username(protocol: RemoteHostProtocol, value: String) -> AppResult<String> {
     let value = value.trim().to_owned();
-    if value.is_empty() && !allows_empty_username(tags) {
+    let username_optional = matches!(
+        protocol,
+        RemoteHostProtocol::Telnet | RemoteHostProtocol::Serial
+    );
+    if value.is_empty() && !username_optional {
         return Err(AppError::InvalidInput("用户名不能为空".to_owned()));
     }
     Ok(value)
@@ -593,7 +658,7 @@ fn persist_primary_credential(
 }
 
 fn primary_credential_secret_kind(host: &RemoteHost) -> &'static str {
-    if has_tag(&host.tags, "rdp") {
+    if host.protocol == RemoteHostProtocol::Rdp || has_tag(&host.tags, "rdp") {
         "rdp-host"
     } else {
         "ssh-host"
