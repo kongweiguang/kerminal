@@ -1,7 +1,7 @@
 {
   "name": "kerminal",
   "private": true,
-  "version": "0.3.9",
+  "version": "0.3.10",
   "type": "module",
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.33.0",

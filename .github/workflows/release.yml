@@ -213,11 +213,11 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复 Codex 等 inline TUI 的同步帧合并、瞬态光标显示和前台渲染收敛，长回复与持续刷新不再产生光标漂移、重复字符或残影。
-            - 中文输入法候选窗改为跟随 xterm 公开 buffer 光标定位，并升级到匹配的 Xterm 6.1 beta 组件，改善中英文混输与宽字符渲染。
-            - inline TUI 命令色条改由交互信号和真实 buffer 状态共同判定，避免把全屏或持续交互界面误识别为普通命令块。
-            - 本地 PTY 统一声明 256 色、truecolor 与 Kerminal 终端能力，并隔离宿主进程的无色环境变量，恢复 Codex、Claude 等 CLI 的 ANSI 色彩。
-            - Kerminal 管理的 Codex Agent 会话自动携带已审查 hooks 的信任参数，减少重复信任确认；GitHub Actions 同步使用当前 Node 24 与新版官方 actions。
+            - 端口转发会话现在会显示运行中 `direct-tcpip` 的最近失败，同时保持监听器可继续接受后续重试。
+            - FileZilla、WinSCP、FlashFXP 等外部 SFTP 启动会进入独立传输工作台，并正确处理堡垒机包装引号、无尾斜杠根路径和关闭清理。
+            - 标签切换或临时卸载不再误释放外部 SSH 会话；只有用户真正关闭对应标签时才清理临时目标与凭据引用。
+            - SFTP 传输工作台接入中央文件工作区，可从远端主机窗格打开可编辑文件，并保留既有传输与双栏行为。
+            - 外部启动诊断增加仅记录参数类别的脱敏形状与稳定错误码，便于排查厂商参数差异且不记录主机、用户名、密码或完整路径。
 
             macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
