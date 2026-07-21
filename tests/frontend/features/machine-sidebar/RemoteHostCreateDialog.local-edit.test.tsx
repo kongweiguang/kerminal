@@ -112,7 +112,7 @@ describe("RemoteHostCreateDialog", () => {
       Array.from(protocolBar?.children ?? []).map((child) =>
         child.textContent?.trim(),
       ),
-    ).toEqual(["SSH", "Local", "RDP", "Telnet", "Serial"]);
+    ).toEqual(["SSH", "SFTP", "Local", "RDP", "Telnet", "Serial"]);
     expect(screen.getByLabelText("标签")).toHaveValue("");
     expect(
       screen.queryByText("多个标签可用逗号或空格分隔。"),
@@ -443,6 +443,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "ubuntu-prod",
       port: 22,
       production: true,
+      protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       sortOrder: 10,
       tags: ["ssh", "ubuntu"],

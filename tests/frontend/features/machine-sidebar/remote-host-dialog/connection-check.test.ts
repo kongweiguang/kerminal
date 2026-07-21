@@ -56,6 +56,7 @@ describe("evaluateConnectionCheck", () => {
           name: "Dev Host",
           port: 22,
           production: false,
+          protocol: "ssh",
           sshOptions: createDefaultSshOptions(),
           tags: [],
           username: "root",

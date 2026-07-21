@@ -285,6 +285,96 @@ describe("MachineSidebar", () => {
     expect(onOpenLocalTerminal).toHaveBeenNthCalledWith(2, "local-powershell");
   });
 
+  it("opens an SFTP transfer tab on SFTP host double click", async () => {
+    const user = userEvent.setup();
+    const onOpenSftpTransferWorkbench = vi.fn();
+    const onSelectMachine = vi.fn();
+
+    render(
+      <MachineSidebar
+        groups={[
+          {
+            id: "files",
+            machines: [
+              {
+                authType: "agent",
+                description: "SFTP · upload@files.internal:22",
+                host: "files.internal",
+                id: "sftp-1",
+                kind: "sftp",
+                name: "files-only",
+                port: 22,
+                status: "offline",
+                tags: ["files"],
+                target: { hostId: "sftp-1", kind: "ssh" },
+                username: "upload",
+              },
+            ],
+            title: "文件主机",
+          },
+        ]}
+        onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
+        onSearchChange={vi.fn()}
+        onSelectMachine={onSelectMachine}
+        search=""
+        selectedMachineId=""
+      />,
+    );
+
+    await user.dblClick(screen.getByRole("button", { name: /files-only/i }));
+
+    expect(onSelectMachine).toHaveBeenCalledWith("sftp-1");
+    expect(onOpenSftpTransferWorkbench).toHaveBeenCalledWith("sftp-1");
+  });
+
+  it("offers SFTP-only file tools and a separate transfer tab action", async () => {
+    const user = userEvent.setup();
+    const onOpenSftp = vi.fn();
+    const onOpenSftpTransferWorkbench = vi.fn();
+    const groups = [
+      {
+        id: "files",
+        machines: [
+          {
+            authType: "agent" as const,
+            description: "SFTP · upload@files.internal:22",
+            host: "files.internal",
+            id: "sftp-1",
+            kind: "sftp" as const,
+            name: "files-only",
+            port: 22,
+            status: "offline" as const,
+            tags: ["files"],
+            target: { hostId: "sftp-1", kind: "ssh" as const },
+            username: "upload",
+          },
+        ],
+        title: "文件主机",
+      },
+    ];
+
+    render(
+      <MachineSidebar
+        groups={groups}
+        onOpenSftp={onOpenSftp}
+        onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="sftp-1"
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /files-only/i }));
+    await user.click(screen.getByRole("menuitem", { name: "打开文件传输" }));
+    expect(onOpenSftp).toHaveBeenCalledWith("sftp-1");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /files-only/i }));
+    await user.click(screen.getByRole("menuitem", { name: "新建传输 Tab" }));
+    expect(onOpenSftpTransferWorkbench).toHaveBeenCalledWith("sftp-1");
+    expect(screen.queryByRole("menuitem", { name: /终端|容器/ })).not.toBeInTheDocument();
+  });
+
   it("opens settings from the lower-left control", async () => {
     const user = userEvent.setup();
     const onOpenSettings = vi.fn();

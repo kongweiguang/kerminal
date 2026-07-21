@@ -54,8 +54,8 @@ use self::archive::{
 };
 
 use self::backend::{
-    load_sftp_runtime_settings, resolve_endpoint_with_auth_broker, resolve_host, RusshSftpBackend,
-    SftpBackend, SftpEndpoint, SftpRuntimeSettings,
+    load_sftp_runtime_settings, resolve_endpoint_with_auth_broker, resolve_host,
+    resolve_transient_endpoint, RusshSftpBackend, SftpBackend, SftpEndpoint, SftpRuntimeSettings,
 };
 use self::native_ssh::trust_native_host_key;
 use self::runtime_tasks::{
@@ -117,6 +117,31 @@ impl SftpService {
     /// 创建 SFTP 服务。
     pub fn new() -> Self {
         Self::with_backend(Arc::new(RusshSftpBackend::default()))
+    }
+
+    /// 测试未保存的 SFTP 主机能否完成认证、打开 subsystem 并访问初始目录。
+    pub async fn test_connection(
+        &self,
+        paths: &KerminalPaths,
+        host: &crate::models::remote_host::RemoteHost,
+    ) -> AppResult<()> {
+        let endpoint = resolve_transient_endpoint(paths, host)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let path = if host
+            .ssh_options
+            .transfer
+            .remote_start_directory
+            .trim()
+            .is_empty()
+        {
+            "/".to_owned()
+        } else {
+            normalize_remote_path(&host.ssh_options.transfer.remote_start_directory)?
+        };
+        self.backend
+            .list_directory(endpoint, path, settings)
+            .await
+            .map(|_| ())
     }
 
     /// 创建接入受管 SSH 运行时的 SFTP 服务。

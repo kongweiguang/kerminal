@@ -53,6 +53,7 @@ fn dropping_service_releases_all_managed_forward_channels() {
             ssh_options: Default::default(),
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create saved password host")
         .id;

@@ -1,5 +1,6 @@
 import {
   Cable,
+  FolderKey,
   Monitor,
   Network,
   PanelTop,
@@ -49,6 +50,7 @@ export interface RemoteHostCreateDialogProps {
 
 export type ConnectionMode =
   | "ssh"
+  | "sftp"
   | "local"
   | "rdp"
   | "telnet"
@@ -119,6 +121,7 @@ export const protocolTabs: Array<{
   label: string;
 }> = [
   { Icon: SquareTerminal, id: "ssh", label: "SSH" },
+  { Icon: FolderKey, id: "sftp", label: "SFTP" },
   { Icon: Terminal, id: "local", label: "Local" },
   { Icon: Monitor, id: "rdp", label: "RDP" },
   { Icon: Cable, id: "telnet", label: "Telnet" },
@@ -132,6 +135,12 @@ export const sectionTabsByMode: Partial<Record<ConnectionMode, SectionTab[]>> =
       { Icon: Waypoints, id: "proxy", label: "代理" },
       { Icon: Network, id: "jump", label: "跳板机" },
       { Icon: Terminal, id: "terminal", label: "终端" },
+    ],
+    sftp: [
+      { Icon: Settings, id: "properties", label: "属性" },
+      { Icon: Waypoints, id: "proxy", label: "代理" },
+      { Icon: Network, id: "jump", label: "跳板机" },
+      { Icon: FolderKey, id: "transfer", label: "传输" },
     ],
     local: [
       { Icon: Monitor, id: "properties", label: "属性" },

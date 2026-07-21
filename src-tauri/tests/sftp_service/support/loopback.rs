@@ -123,12 +123,14 @@ impl russh::server::Handler for LoopbackSftpJumpSession {
 
 #[derive(Clone)]
 struct LoopbackSshServer {
+    allow_shell: bool,
     auth_successes: Arc<AtomicUsize>,
     root: PathBuf,
     symlinks: Arc<HashMap<String, String>>,
 }
 
 struct LoopbackSshSession {
+    allow_shell: bool,
     auth_successes: Arc<AtomicUsize>,
     root: PathBuf,
     symlinks: Arc<HashMap<String, String>>,
@@ -141,6 +143,7 @@ impl russh::server::Server for LoopbackSshServer {
 
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
         LoopbackSshSession {
+            allow_shell: self.allow_shell,
             auth_successes: Arc::clone(&self.auth_successes),
             root: self.root.clone(),
             symlinks: self.symlinks.clone(),
@@ -192,6 +195,10 @@ impl russh::server::Handler for LoopbackSshSession {
         channel: ChannelId,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if !self.allow_shell {
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
         session.channel_success(channel)?;
         session.data(
             channel,
@@ -229,6 +236,10 @@ impl russh::server::Handler for LoopbackSshSession {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if !self.allow_shell {
+            session.channel_failure(channel_id)?;
+            return Ok(());
+        }
         if data != b"sh -s" {
             session.channel_failure(channel_id)?;
             return Ok(());

@@ -98,6 +98,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "ubuntu-dev",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: ["ssh", "ubuntu"],
       username: "ubuntu",
@@ -249,6 +250,7 @@ describe("RemoteHostCreateDialog", () => {
           name: "test-dev",
           port: 22,
           production: false,
+          protocol: "ssh",
           sshOptions: createDefaultSshOptions(),
           tags: [],
           username: "root",
@@ -338,6 +340,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "password-dev",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: [],
       username: "deploy",
@@ -381,6 +384,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "ungrouped-dev",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: [],
       username: "ubuntu",
@@ -433,6 +437,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "prod-edge",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: {
         ...defaultSshOptions,
         jumpHosts: [
@@ -509,6 +514,7 @@ describe("RemoteHostCreateDialog", () => {
       name: "app-prod",
       port: 22,
       production: false,
+      protocol: "ssh",
       sshOptions: {
         ...createDefaultSshOptions(),
         jumpHosts: [

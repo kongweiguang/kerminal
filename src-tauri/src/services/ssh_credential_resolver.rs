@@ -71,6 +71,7 @@ impl SshCredentialResolver {
             host.auth_type,
             host.credential_ref.as_deref(),
             host.secret_ref.as_deref(),
+            host.credential_secret.as_deref(),
             host.key_passphrase_ref.as_deref(),
             host.key_passphrase_secret.as_deref(),
         )?;
@@ -94,6 +95,7 @@ impl SshCredentialResolver {
             jump.auth_type,
             jump.credential_ref.as_deref(),
             jump.secret_ref.as_deref(),
+            jump.credential_secret.as_deref(),
             jump.key_passphrase_ref.as_deref(),
             jump.key_passphrase_secret.as_deref(),
         )?;
@@ -112,6 +114,7 @@ impl SshCredentialResolver {
         auth_type: RemoteHostAuthType,
         credential_ref: Option<&str>,
         secret_ref: Option<&str>,
+        credential_secret: Option<&str>,
         key_passphrase_ref: Option<&str>,
         key_passphrase_secret: Option<&str>,
     ) -> AppResult<ResolvedSshAuthMaterial> {
@@ -119,10 +122,13 @@ impl SshCredentialResolver {
             RemoteHostAuthType::Agent => Ok(ResolvedSshAuthMaterial::Agent {
                 source: ResolvedSshCredentialSource::Agent,
             }),
-            RemoteHostAuthType::Password => self.resolve_password(role, secret_ref),
+            RemoteHostAuthType::Password => {
+                self.resolve_password(role, secret_ref, credential_secret)
+            }
             RemoteHostAuthType::Key => self.resolve_private_key(
                 credential_ref,
                 secret_ref,
+                credential_secret,
                 key_passphrase_ref,
                 key_passphrase_secret,
             ),
@@ -133,7 +139,16 @@ impl SshCredentialResolver {
         &self,
         role: ResolvedSshHopRole,
         secret_ref: Option<&str>,
+        credential_secret: Option<&str>,
     ) -> AppResult<ResolvedSshAuthMaterial> {
+        if let Some(value) = normalized(credential_secret) {
+            return Ok(ResolvedSshAuthMaterial::Password {
+                value: value.to_owned(),
+                source: ResolvedSshCredentialSource::SessionOnly {
+                    prompt_id: "<runtime-password>".to_owned(),
+                },
+            });
+        }
         if let Some(secret_ref) = normalized(secret_ref) {
             return Ok(ResolvedSshAuthMaterial::Password {
                 value: self.decrypt_secret_ref(secret_ref, "password")?,
@@ -150,10 +165,20 @@ impl SshCredentialResolver {
         &self,
         credential_ref: Option<&str>,
         secret_ref: Option<&str>,
+        credential_secret: Option<&str>,
         key_passphrase_ref: Option<&str>,
         key_passphrase_secret: Option<&str>,
     ) -> AppResult<ResolvedSshAuthMaterial> {
         let passphrase = self.resolve_key_passphrase(key_passphrase_ref, key_passphrase_secret)?;
+        if let Some(content) = normalized(credential_secret) {
+            return Ok(ResolvedSshAuthMaterial::PrivateKeyPem {
+                content: content.to_owned(),
+                passphrase,
+                source: ResolvedSshCredentialSource::SessionOnly {
+                    prompt_id: "<runtime-private-key>".to_owned(),
+                },
+            });
+        }
         if let Some(path) = normalized(credential_ref) {
             return Ok(ResolvedSshAuthMaterial::PrivateKeyPath {
                 path: PathBuf::from(path),

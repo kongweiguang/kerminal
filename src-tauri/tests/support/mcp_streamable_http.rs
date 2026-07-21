@@ -187,6 +187,23 @@ pub fn assert_app_guide_payload(app_guide_payload: &Value) {
                     })
         })));
     assert!(app_guide_payload
+        .pointer("/data/applicationSurfaces")
+        .and_then(Value::as_array)
+        .is_some_and(|surfaces| surfaces.iter().any(|surface| {
+            surface.pointer("/surface").and_then(Value::as_str) == Some("machineSidebar")
+                && surface
+                    .pointer("/boundaries")
+                    .and_then(Value::as_array)
+                    .is_some_and(|boundaries| {
+                        boundaries.iter().any(|boundary| {
+                            boundary.as_str().is_some_and(|rule| {
+                                rule.contains("SFTP-only")
+                                    && rule.contains("host_capability_not_supported")
+                            })
+                        })
+                    })
+        })));
+    assert!(app_guide_payload
         .pointer("/data/taskRoutes")
         .and_then(Value::as_array)
         .is_some_and(|routes| routes.iter().any(|route| {

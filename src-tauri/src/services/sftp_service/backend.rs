@@ -21,7 +21,7 @@ use std::{
 use async_trait::async_trait;
 use russh_sftp::{
     client::{Config as NativeSftpConfig, SftpSession},
-    protocol::FileAttributes,
+    protocol::{FileAttributes, FileType},
 };
 use tokio::{
     io::AsyncReadExt,
@@ -31,7 +31,8 @@ use tokio::{
 
 pub(super) use contract::SftpBackend;
 pub(super) use endpoint::{
-    resolve_endpoint_with_auth_broker, resolve_host, SftpAuthMaterial, SftpEndpoint, SftpPrivateKey,
+    resolve_endpoint_with_auth_broker, resolve_host, resolve_transient_endpoint, SftpAuthMaterial,
+    SftpEndpoint, SftpPrivateKey,
 };
 pub(super) use errors::{io_sftp_error, native_sftp_error};
 pub(super) use settings::{load_sftp_runtime_settings, SftpRuntimeSettings};
@@ -376,8 +377,24 @@ impl SftpBackend for RusshSftpBackend {
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
         if directory {
-            remove_remote_directory_with_shell(&endpoint, &path, settings, self.managed_runtime())
+            if endpoint.host.protocol == crate::models::remote_host::RemoteHostProtocol::Sftp {
+                let session = connect_native_sftp(
+                    &endpoint,
+                    settings,
+                    self.managed_runtime(),
+                    SftpManagedSessionLane::Browser,
+                )
                 .await?;
+                remove_remote_directory_with_sftp(&session.sftp, &path).await?;
+            } else {
+                remove_remote_directory_with_shell(
+                    &endpoint,
+                    &path,
+                    settings,
+                    self.managed_runtime(),
+                )
+                .await?;
+            }
             self.forget_external_directory_parent(&endpoint, &path)?;
             self.forget_external_directory_listing(&endpoint, &path)?;
             return Ok(());
@@ -613,6 +630,36 @@ impl SftpBackend for RusshSftpBackend {
         self.forget_external_directory_listing(&target_endpoint, &target_remote_path)?;
         Ok(())
     }
+}
+
+/// SFTP-only 主机不能依赖远端 shell；后序遍历保证目录在子项删除后再移除。
+async fn remove_remote_directory_with_sftp(sftp: &SftpSession, root: &str) -> AppResult<()> {
+    let mut stack = vec![(root.to_owned(), false)];
+    while let Some((path, visited)) = stack.pop() {
+        if visited {
+            sftp.remove_dir(path).await.map_err(native_sftp_error)?;
+            continue;
+        }
+
+        let entries = sftp
+            .read_dir(path.clone())
+            .await
+            .map_err(native_sftp_error)?;
+        stack.push((path, true));
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let child = entry.path();
+            if entry.file_type() == FileType::Dir {
+                stack.push((child, false));
+            } else {
+                sftp.remove_file(child).await.map_err(native_sftp_error)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn external_directory_list_cache_key(endpoint: &SftpEndpoint, path: &str) -> String {

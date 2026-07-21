@@ -181,6 +181,17 @@ export function buildMachineSidebarMachineMenuItems(
     ]);
   }
 
+  if (machine.kind === "sftp") {
+    return withMachineAssetDomain([
+      { action: "openSftp", label: "打开文件传输" },
+      { action: "openSftpTransferWorkbench", label: "新建传输 Tab" },
+      { action: "editMachine", label: "编辑连接配置" },
+      { action: "duplicateMachine", label: "复制为 SSH 主机" },
+      { action: "addMachineToGroup", label: "添加同组连接" },
+      { action: "deleteMachine", danger: true, label: "删除连接" },
+    ]);
+  }
+
   return withMachineAssetDomain([
     { action: "openSshTerminal", label: "打开 SSH 终端" },
     { action: "openHostContainers", label: "容器" },

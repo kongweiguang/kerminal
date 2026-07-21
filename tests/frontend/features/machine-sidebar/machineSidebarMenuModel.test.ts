@@ -122,6 +122,22 @@ describe("machineSidebarMenuModel", () => {
       "addMachineToGroup",
       "deleteMachine",
     ]);
+    const sftpItems = buildMachineSidebarMachineMenuItems({ kind: "sftp" });
+    expect(actions(sftpItems)).toEqual([
+      "openSftp",
+      "openSftpTransferWorkbench",
+      "editMachine",
+      "duplicateMachine",
+      "addMachineToGroup",
+      "deleteMachine",
+    ]);
+    expect(sftpItems.find((item) => item.action === "duplicateMachine")?.label).toBe(
+      "复制为 SSH 主机",
+    );
+    expect(sftpItems.slice(0, 2).map((item) => item.label)).toEqual([
+      "打开文件传输",
+      "新建传输 Tab",
+    ]);
   });
 
   it("keeps host-asset actions disjoint from SFTP file-panel actions", () => {

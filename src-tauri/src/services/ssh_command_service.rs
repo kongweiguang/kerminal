@@ -16,6 +16,7 @@ use crate::{
     services::{
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalSessionMaterializer,
+        remote_host_capability::{ensure_remote_host_capability, RemoteHostCapability},
         ssh_credential_resolver::{
             NativeSshRouteMaterial, ResolvedSshRouteAuth, SshCredentialResolver,
         },
@@ -190,6 +191,7 @@ impl SshCommandService {
     ) -> AppResult<(RemoteHost, ResolvedSshRouteAuth)> {
         if let Some(external_targets) = &self.external_targets {
             if let Some(target) = external_targets.resolve_target(host_id)? {
+                ensure_remote_host_capability(&target.host, RemoteHostCapability::Shell)?;
                 return Ok((target.host, target.route_auth));
             }
         }
@@ -197,6 +199,7 @@ impl SshCommandService {
             return Err(external_target_not_available_error(host_id));
         }
         let host = resolve_remote_host_from_files(paths, host_id)?;
+        ensure_remote_host_capability(&host, RemoteHostCapability::Shell)?;
         let resolver = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()));
         let resolved_auth = resolver.resolve_host(&host)?;
         let resolved_auth = match &self.auth_broker {

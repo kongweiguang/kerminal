@@ -345,6 +345,7 @@ fn seed_rendered_config_files(root: &Path) {
                 host: "127.0.0.1".to_owned(),
                 port: 22,
                 username: "smoke".to_owned(),
+                protocol: Default::default(),
                 auth_type: RemoteHostAuthType::Agent,
                 credential_ref: None,
                 secret_ref: None,

@@ -234,6 +234,7 @@ export function registerSessionAndToolTests() {
       id: "host-created-from-transfer",
       name: "transfer-dev",
       port: 22,
+      protocol: "sftp",
       production: false,
       sshOptions: testSshOptions,
       sortOrder: 30,
@@ -279,6 +280,7 @@ export function registerSessionAndToolTests() {
         expect.objectContaining({
           host: "10.0.0.9",
           name: "transfer-dev",
+          protocol: "sftp",
           username: "deploy",
         }),
       );

@@ -58,6 +58,7 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       name: "lab telnet",
       port: 2323,
       production: false,
+      protocol: "telnet",
       tags: ["telnet"],
       username: "",
     });
@@ -122,6 +123,7 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       name: "console serial",
       port: 1,
       production: false,
+      protocol: "serial",
       tags: [
         "serial",
         "serial-port:COM9",

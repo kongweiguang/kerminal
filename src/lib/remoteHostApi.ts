@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type RemoteHostAuthType = "password" | "key" | "agent";
+export type RemoteHostProtocol = "ssh" | "sftp" | "rdp" | "telnet" | "serial";
 export type SshProxyProtocol = "none" | "http" | "socks5";
 export type SshTunnelKind = "local" | "remote" | "dynamic";
 
@@ -77,6 +78,7 @@ export interface RemoteHost {
   host: string;
   port: number;
   username: string;
+  protocol: RemoteHostProtocol;
   authType: RemoteHostAuthType;
   credentialRef?: string;
   secretRef?: string;
@@ -130,6 +132,7 @@ export interface RemoteHostCreateRequest {
   host: string;
   port?: number;
   username: string;
+  protocol?: RemoteHostProtocol;
   authType?: RemoteHostAuthType;
   credentialRef?: string;
   credentialSecret?: string;
@@ -171,6 +174,7 @@ const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] =
               id: "prod-api",
               name: "生产 API",
               port: 22,
+              protocol: "ssh",
               production: true,
               sortOrder: 10,
               sshOptions: createDefaultSshOptions(),
@@ -491,6 +495,7 @@ function normalizeRemoteHostRequest(
       : undefined,
     groupId: request.groupId?.trim() || undefined,
     port: request.port ?? 22,
+    protocol: request.protocol ?? "ssh",
     production: request.production ?? false,
     sshOptions: normalizeSshOptions(request.sshOptions),
     tags: request.tags ?? [],

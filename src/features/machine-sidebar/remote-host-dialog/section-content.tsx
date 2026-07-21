@@ -58,6 +58,7 @@ interface RemoteHostDialogSectionContentProps {
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
+  production: boolean;
   rdpFullscreen: boolean;
   rdpHeight: string;
   rdpNote: string;
@@ -86,6 +87,7 @@ interface RemoteHostDialogSectionContentProps {
   setLocalTitle: StringSetter;
   setName: StringSetter;
   setPort: StringSetter;
+  setProduction: BooleanSetter;
   setRdpFullscreen: BooleanSetter;
   setRdpHeight: StringSetter;
   setRdpNote: StringSetter;
@@ -132,6 +134,7 @@ export function RemoteHostDialogSectionContent({
   name,
   onCreateGroupClick,
   port,
+  production,
   rdpFullscreen,
   rdpHeight,
   rdpNote,
@@ -160,6 +163,7 @@ export function RemoteHostDialogSectionContent({
   setLocalTitle,
   setName,
   setPort,
+  setProduction,
   setRdpFullscreen,
   setRdpHeight,
   setRdpNote,
@@ -302,7 +306,7 @@ export function RemoteHostDialogSectionContent({
         section={activeSectionDefinition}
       />
     )
-  ) : mode === "ssh" && activeSection === "properties" ? (
+  ) : (mode === "ssh" || mode === "sftp") && activeSection === "properties" ? (
     <SshPropertiesPanel
       authType={authType}
       credentialRef={credentialRef}
@@ -312,6 +316,8 @@ export function RemoteHostDialogSectionContent({
       name={name}
       onCreateGroupClick={onCreateGroupClick}
       port={port}
+      production={production}
+      protocolLabel={mode === "sftp" ? "SFTP" : "SSH"}
       groupOptions={groupOptions}
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
@@ -321,16 +327,17 @@ export function RemoteHostDialogSectionContent({
       setHost={setHost}
       setName={setName}
       setPort={setPort}
+      setProduction={setProduction}
       setTags={setTags}
       setUsername={setUsername}
       tags={tags}
       username={username}
     />
-  ) : mode === "ssh" && activeSection === "proxy" ? (
+  ) : (mode === "ssh" || mode === "sftp") && activeSection === "proxy" ? (
     <SshProxyPanel options={sshOptions} setOptions={updateSshOptions} />
   ) : mode === "ssh" && activeSection === "tunnel" ? (
     <SshTunnelPanel options={sshOptions} setOptions={updateSshOptions} />
-  ) : mode === "ssh" && activeSection === "jump" ? (
+  ) : (mode === "ssh" || mode === "sftp") && activeSection === "jump" ? (
     <SshJumpPanel
       options={sshOptions}
       setOptions={updateSshOptions}
@@ -340,7 +347,7 @@ export function RemoteHostDialogSectionContent({
     />
   ) : mode === "ssh" && activeSection === "terminal" ? (
     <SshTerminalPanel options={sshOptions} setOptions={updateSshOptions} />
-  ) : mode === "ssh" && activeSection === "transfer" ? (
+  ) : mode === "sftp" && activeSection === "transfer" ? (
     <SshTransferPanel options={sshOptions} setOptions={updateSshOptions} />
   ) : (
     <DeferredSection

@@ -25,6 +25,7 @@ pub mod port_forward_service;
 pub mod process_command;
 pub mod profile_service;
 pub mod pty_process_guard;
+pub mod remote_host_capability;
 pub mod remote_host_service;
 pub mod serial_terminal_service;
 pub mod server_info_service;

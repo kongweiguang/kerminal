@@ -487,6 +487,7 @@ pub(super) fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         host: "dev.internal".to_owned(),
         port: 2222,
         username: "deploy".to_owned(),
+        protocol: Default::default(),
         auth_type,
         credential_ref: (auth_type == RemoteHostAuthType::Key)
             .then(|| "/home/deploy/.ssh/id_ed25519".to_owned()),
@@ -529,6 +530,7 @@ pub(super) fn create_saved_password_remote_host(
             ssh_options: host.ssh_options,
             tags: host.tags,
             username: host.username,
+            protocol: Default::default(),
         })
         .expect("create saved password host")
 }
@@ -544,6 +546,7 @@ pub(super) fn create_password_remote_host_without_credentials(
         host: "127.0.0.1".to_owned(),
         port,
         username: "deploy".to_owned(),
+        protocol: Default::default(),
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
         secret_ref: None,

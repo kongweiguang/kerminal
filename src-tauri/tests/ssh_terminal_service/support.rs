@@ -85,6 +85,7 @@ pub fn create_test_remote_host_with_options(
             ssh_options,
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create test host")
         .id
@@ -144,6 +145,7 @@ pub fn create_test_remote_host_with_secret_and_options(
             ssh_options,
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),
+            protocol: Default::default(),
         })
         .expect("create test host")
         .id

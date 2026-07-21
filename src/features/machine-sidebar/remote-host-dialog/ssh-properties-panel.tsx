@@ -1,6 +1,7 @@
 import { FolderOpen } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
+import { Switch } from "../../../components/ui/switch";
 import { selectLocalFile } from "../../../lib/fileDialogApi";
 import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
@@ -16,6 +17,8 @@ export function SshPropertiesPanel({
   name,
   onCreateGroupClick,
   port,
+  production,
+  protocolLabel,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
@@ -24,6 +27,7 @@ export function SshPropertiesPanel({
   setHost,
   setName,
   setPort,
+  setProduction,
   setTags,
   setUsername,
   tags,
@@ -38,6 +42,8 @@ export function SshPropertiesPanel({
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
+  production: boolean;
+  protocolLabel: "SSH" | "SFTP";
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
@@ -46,6 +52,7 @@ export function SshPropertiesPanel({
   setHost: (value: string) => void;
   setName: (value: string) => void;
   setPort: (value: string) => void;
+  setProduction: (value: boolean) => void;
   setTags: (value: string) => void;
   setUsername: (value: string) => void;
   tags: string;
@@ -117,6 +124,21 @@ export function SshPropertiesPanel({
             value={tags}
           />
         </FieldRow>
+        <FieldRow label="环境">
+          <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
+            <span>生产或安全敏感主机</span>
+            <Switch
+              aria-label="生产主机"
+              checked={production}
+              onCheckedChange={setProduction}
+            />
+          </div>
+        </FieldRow>
+        {protocolLabel === "SFTP" ? (
+          <p className="rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">
+            该连接仅用于文件浏览与传输，不会创建 SSH 终端。
+          </p>
+        ) : null}
       </div>
     </div>
   );

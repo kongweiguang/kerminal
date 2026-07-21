@@ -349,8 +349,12 @@ export function useKerminalShellRemoteActions({
         return;
       }
 
-      if (machine.kind !== "ssh" && machine.kind !== "rdp") {
-        setRemoteHostLoadError("只能移动本地、容器、SSH 或 RDP 连接。");
+      if (
+        machine.kind !== "ssh" &&
+        machine.kind !== "sftp" &&
+        machine.kind !== "rdp"
+      ) {
+        setRemoteHostLoadError("只能移动本地、容器、SSH、SFTP 或 RDP 连接。");
         return;
       }
 
@@ -422,7 +426,11 @@ export function useKerminalShellRemoteActions({
         return;
       }
 
-      if (machine.kind !== "ssh" && machine.kind !== "rdp") {
+      if (
+        machine.kind !== "ssh" &&
+        machine.kind !== "sftp" &&
+        machine.kind !== "rdp"
+      ) {
         setRemoteHostLoadError("容器卡片暂不支持复制。");
         return;
       }
@@ -434,6 +442,9 @@ export function useKerminalShellRemoteActions({
       if (!request) {
         setRemoteHostLoadError("主机配置不完整，无法复制。");
         return;
+      }
+      if (machine.kind === "sftp") {
+        request.protocol = "ssh";
       }
 
       const createdHost = await createRemoteHost(request);
@@ -515,6 +526,8 @@ export function useKerminalShellRemoteActions({
       const nextEditingMode =
         nextEditingMachine?.kind === "rdp"
           ? "rdp"
+          : nextEditingMachine?.kind === "sftp"
+            ? "sftp"
           : nextEditingMachine?.kind === "telnet"
             ? "telnet"
             : nextEditingMachine?.kind === "serial"
@@ -644,6 +657,7 @@ export function useKerminalShellRemoteActions({
       }
       if (
         machine.kind !== "ssh" &&
+        machine.kind !== "sftp" &&
         machine.kind !== "rdp" &&
         machine.kind !== "telnet" &&
         machine.kind !== "serial"

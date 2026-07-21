@@ -63,6 +63,9 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("container.files.delete"));
     assert!(config_reference.contains("hosts/groups.toml"));
     assert!(config_reference.contains("Host creation checklist"));
+    assert!(config_reference.contains("schema_version = 2"));
+    assert!(config_reference.contains("protocol = \"sftp\""));
+    assert!(config_reference.contains("SFTP-only hosts may use proxy, jump, and transfer settings"));
     assert!(config_reference.contains(r#"cwd = "~/.kerminal""#));
     assert!(config_reference.contains(r#"credential_ref = "~/.ssh/id_ed25519""#));
     assert!(config_reference.contains("secrets/vault.toml"));

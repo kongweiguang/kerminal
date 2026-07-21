@@ -1,7 +1,11 @@
 use super::*;
 
 pub(crate) async fn start_loopback_sftp_server(root: PathBuf) -> LoopbackSftpServer {
-    start_loopback_sftp_server_with_symlinks(root, Vec::new()).await
+    start_loopback_sftp_server_with_shell_policy(root, Vec::new(), true).await
+}
+
+pub(crate) async fn start_loopback_sftp_only_server(root: PathBuf) -> LoopbackSftpServer {
+    start_loopback_sftp_server_with_shell_policy(root, Vec::new(), false).await
 }
 
 pub(crate) async fn start_loopback_sftp_server_on_port_with_private_key(
@@ -22,13 +26,22 @@ pub(crate) async fn start_loopback_sftp_server_with_symlinks(
     root: PathBuf,
     symlinks: Vec<(String, String)>,
 ) -> LoopbackSftpServer {
-    start_loopback_sftp_server_with_symlinks_on_port(root, symlinks, 0).await
+    start_loopback_sftp_server_with_shell_policy(root, symlinks, true).await
+}
+
+async fn start_loopback_sftp_server_with_shell_policy(
+    root: PathBuf,
+    symlinks: Vec<(String, String)>,
+    allow_shell: bool,
+) -> LoopbackSftpServer {
+    start_loopback_sftp_server_with_symlinks_on_port(root, symlinks, 0, allow_shell).await
 }
 
 async fn start_loopback_sftp_server_with_symlinks_on_port(
     root: PathBuf,
     symlinks: Vec<(String, String)>,
     port: u16,
+    allow_shell: bool,
 ) -> LoopbackSftpServer {
     let listener = bind_loopback_sftp_listener(port).await;
     let private_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
@@ -38,6 +51,7 @@ async fn start_loopback_sftp_server_with_symlinks_on_port(
         symlinks,
         listener,
         private_key,
+        allow_shell,
     )
     .await
 }
@@ -54,6 +68,7 @@ async fn start_loopback_sftp_server_with_symlinks_on_port_and_private_key(
         symlinks,
         listener,
         private_key,
+        true,
     )
     .await
 }
@@ -63,6 +78,7 @@ async fn start_loopback_sftp_server_with_listener_symlinks_and_private_key(
     symlinks: Vec<(String, String)>,
     listener: TcpListener,
     private_key: PrivateKey,
+    allow_shell: bool,
 ) -> LoopbackSftpServer {
     let addr = listener.local_addr().expect("loopback SFTP address");
     let config = russh::server::Config {
@@ -87,6 +103,7 @@ async fn start_loopback_sftp_server_with_listener_symlinks_and_private_key(
     let server_auth_successes = Arc::clone(&auth_successes);
     let task = tokio::spawn(async move {
         let mut server = LoopbackSshServer {
+            allow_shell,
             auth_successes: server_auth_successes,
             root,
             symlinks,

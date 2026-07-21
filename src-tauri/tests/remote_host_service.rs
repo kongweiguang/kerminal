@@ -13,8 +13,8 @@ use kerminal_lib::{
     models::remote_host::{
         build_vault_secret_ref, RemoteHostAuthType, RemoteHostCreateRequest,
         RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus, RemoteHostGroupCreateRequest,
-        RemoteHostGroupUpdateRequest, RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions,
-        SshProxyProtocol, SshTunnelKind, SshTunnelOptions,
+        RemoteHostGroupUpdateRequest, RemoteHostProtocol, RemoteHostUpdateRequest,
+        SshJumpHostOptions, SshOptions, SshProxyProtocol, SshTunnelKind, SshTunnelOptions,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -93,6 +93,7 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
             host: "192.168.1.253".to_owned(),
             port: 22,
             username: "root".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Key,
             credential_ref: Some("/home/root/.ssh/armbian".to_owned()),
             credential_secret: None,
@@ -122,6 +123,159 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
 }
 
 #[test]
+fn create_sftp_host_persists_v2_protocol_and_vault_boundary() {
+    let (home, state) = test_state();
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "upload only".to_owned(),
+            host: "files.internal".to_owned(),
+            port: 22,
+            username: "upload".to_owned(),
+            protocol: RemoteHostProtocol::Sftp,
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("fixture-password".to_owned()),
+            tags: vec!["files".to_owned()],
+            production: true,
+            ssh_options: Default::default(),
+        })
+        .expect("create SFTP host");
+
+    assert_eq!(host.protocol, RemoteHostProtocol::Sftp);
+    assert!(host.credential_secret.is_none());
+    let config_root = KerminalPaths::from_home_dir(home.path()).root;
+    let source = fs::read_to_string(config_root.join("hosts").join(format!("{}.toml", host.id)))
+        .expect("read SFTP host config");
+    assert!(source.contains("schema_version = 2"));
+    assert!(source.contains("protocol = \"sftp\""));
+    assert!(!source.contains("fixture-password"));
+}
+
+#[test]
+fn sftp_username_requirement_cannot_be_bypassed_with_legacy_protocol_tags() {
+    let (_home, state) = test_state();
+    let error = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "files only".to_owned(),
+            host: "files.internal".to_owned(),
+            port: 22,
+            username: "".to_owned(),
+            protocol: RemoteHostProtocol::Sftp,
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["rdp".to_owned()],
+            production: false,
+            ssh_options: SshOptions::default(),
+        })
+        .expect_err("SFTP username must remain required");
+
+    assert!(error.to_string().contains("用户名不能为空"));
+}
+
+#[test]
+fn non_sftp_protocol_tags_are_normalized_for_v1_round_trip() {
+    let (_home, state) = test_state();
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "remote desktop".to_owned(),
+            host: "desktop.internal".to_owned(),
+            port: 3389,
+            username: "desktop-user".to_owned(),
+            protocol: RemoteHostProtocol::Rdp,
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: SshOptions::default(),
+        })
+        .expect("create RDP host");
+    let reloaded = state
+        .remote_hosts()
+        .host_by_id(&host.id)
+        .expect("reload RDP host")
+        .expect("RDP host exists");
+
+    assert_eq!(reloaded.protocol, RemoteHostProtocol::Rdp);
+    assert!(reloaded.tags.iter().any(|tag| tag == "rdp"));
+}
+
+#[test]
+fn non_sftp_protocol_rejects_conflicting_legacy_protocol_tags() {
+    let (_home, state) = test_state();
+    let error = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "remote desktop".to_owned(),
+            host: "desktop.internal".to_owned(),
+            port: 3389,
+            username: "desktop-user".to_owned(),
+            protocol: RemoteHostProtocol::Rdp,
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["telnet".to_owned()],
+            production: false,
+            ssh_options: SshOptions::default(),
+        })
+        .expect_err("conflicting v1 protocol tag must fail");
+
+    assert!(error.to_string().contains("与主机协议"));
+}
+
+#[test]
+fn update_host_rejects_protocol_change() {
+    let (_home, state) = test_state();
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "ssh host".to_owned(),
+            host: "ssh.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            protocol: RemoteHostProtocol::Ssh,
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create SSH host");
+
+    let error = state
+        .remote_hosts()
+        .update_host(RemoteHostUpdateRequest {
+            id: host.id,
+            group_id: host.group_id,
+            name: host.name,
+            host: host.host,
+            port: host.port,
+            username: host.username,
+            protocol: RemoteHostProtocol::Sftp,
+            auth_type: host.auth_type,
+            credential_ref: host.credential_ref,
+            credential_secret: None,
+            tags: host.tags,
+            production: host.production,
+            ssh_options: host.ssh_options,
+            sort_order: host.sort_order,
+        })
+        .expect_err("protocol change must fail");
+
+    assert!(error.to_string().contains("不能直接更改协议"));
+}
+
+#[test]
 fn create_password_host_writes_encrypted_vault_ref() {
     let (home, state) = test_state();
 
@@ -133,6 +287,7 @@ fn create_password_host_writes_encrypted_vault_ref() {
             host: "password.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: Some("s3cr3t".to_owned()),
@@ -209,6 +364,7 @@ fn create_rdp_password_host_writes_rdp_vault_ref() {
             host: "rdp.internal".to_owned(),
             port: 3389,
             username: "administrator".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: Some("rdp-secret".to_owned()),
@@ -232,7 +388,7 @@ fn create_rdp_password_host_writes_rdp_vault_ref() {
 }
 
 #[test]
-fn update_rdp_host_rejects_reusing_ssh_vault_ref_without_password() {
+fn update_ssh_host_rejects_legacy_tag_protocol_change_before_reusing_vault_ref() {
     let (_home, state) = test_state();
 
     let host = state
@@ -243,6 +399,7 @@ fn update_rdp_host_rejects_reusing_ssh_vault_ref_without_password() {
             host: "rdp.internal".to_owned(),
             port: 22,
             username: "administrator".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: Some("ssh-secret".to_owned()),
@@ -265,6 +422,7 @@ fn update_rdp_host_rejects_reusing_ssh_vault_ref_without_password() {
             host: "rdp.internal".to_owned(),
             port: 3389,
             username: "administrator".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: None,
@@ -273,10 +431,10 @@ fn update_rdp_host_rejects_reusing_ssh_vault_ref_without_password() {
             ssh_options: Default::default(),
             sort_order: host.sort_order,
         })
-        .expect_err("old ssh-host ref cannot satisfy rdp-host password");
+        .expect_err("legacy RDP tag must not switch an existing SSH host protocol");
 
     assert!(matches!(error, AppError::InvalidInput(_)));
-    assert!(error.to_string().contains("RDP 密码认证需要填写明文密码"));
+    assert!(error.to_string().contains("不能直接更改协议"));
 }
 
 #[test]
@@ -291,6 +449,7 @@ fn reveal_password_host_credential_returns_vault_secret_without_exposing_tree() 
             host: "password.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: Some("edit-form-secret".to_owned()),
@@ -340,6 +499,7 @@ fn reveal_non_secret_host_credentials_returns_status_without_secret() {
             host: "key.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Key,
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
@@ -356,6 +516,7 @@ fn reveal_non_secret_host_credentials_returns_status_without_secret() {
             host: "agent.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -425,6 +586,7 @@ fn create_host_persists_ssh_options() {
             host: "app.internal".to_owned(),
             port: 2222,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Key,
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
@@ -457,6 +619,7 @@ fn update_key_host_saves_inline_private_key_into_vault() {
             host: "key.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Key,
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
@@ -475,6 +638,7 @@ fn update_key_host_saves_inline_private_key_into_vault() {
             host: "key.internal".to_owned(),
             port: 22,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Key,
             credential_ref: None,
             credential_secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n".to_owned()),
@@ -519,6 +683,7 @@ fn update_group_and_host_persist_changes() {
             host: "dev.internal".to_owned(),
             port: 22,
             username: "ubuntu".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -537,6 +702,7 @@ fn update_group_and_host_persist_changes() {
             host: "api.dev.internal".to_owned(),
             port: 2222,
             username: "deploy".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Password,
             credential_ref: None,
             credential_secret: Some("updated-password".to_owned()),
@@ -581,6 +747,7 @@ fn delete_group_moves_hosts_to_ungrouped() {
             host: "temp.internal".to_owned(),
             port: 22,
             username: "root".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -613,6 +780,7 @@ fn create_host_rejects_unknown_group() {
             host: "example.com".to_owned(),
             port: 22,
             username: "root".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -637,6 +805,7 @@ fn create_host_rejects_whitespace_in_host_address() {
             host: "bad host".to_owned(),
             port: 22,
             username: "root".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -661,6 +830,7 @@ fn create_host_allows_no_group_and_lists_it_as_ungrouped() {
             host: "standalone.internal".to_owned(),
             port: 22,
             username: "root".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -691,6 +861,7 @@ fn create_telnet_host_allows_empty_username_and_normalizes_tags() {
             host: "lab.internal".to_owned(),
             port: 23,
             username: "   ".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -720,6 +891,7 @@ fn create_serial_host_allows_empty_username_and_normalizes_tags() {
             host: "COM7".to_owned(),
             port: 1,
             username: "   ".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,
@@ -749,6 +921,7 @@ fn create_non_telnet_host_rejects_empty_username() {
             host: "rdp.internal".to_owned(),
             port: 3389,
             username: " ".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,

@@ -16,6 +16,7 @@ fn remote_host(host: &str, tags: Vec<String>) -> RemoteHost {
         host: host.to_owned(),
         port: 1,
         username: String::new(),
+        protocol: Default::default(),
         auth_type: RemoteHostAuthType::Agent,
         credential_ref: None,
         secret_ref: None,

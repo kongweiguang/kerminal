@@ -261,7 +261,9 @@ export function RemoteHostPaneBody({
 }
 
 function hostIdentity(machine: Machine) {
-  if (machine.kind !== "ssh") return machine.description;
+  if (machine.kind !== "ssh" && machine.kind !== "sftp") {
+    return machine.description;
+  }
   const username = machine.username ?? "ssh";
   const host = machine.host ?? machine.name;
   return `${username}@${host}:${machine.port ?? 22}`;
@@ -271,8 +273,8 @@ function hostSearchText(machine: Machine) {
   return [
     machine.name,
     machine.description,
-    machine.kind === "ssh" ? machine.host : "",
-    machine.kind === "ssh" ? machine.username : "",
+    machine.kind === "ssh" || machine.kind === "sftp" ? machine.host : "",
+    machine.kind === "ssh" || machine.kind === "sftp" ? machine.username : "",
     hostIdentity(machine),
     ...machine.tags,
   ]

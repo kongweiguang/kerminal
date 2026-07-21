@@ -407,6 +407,7 @@ fn remote_host(
         host: "target.example.test".to_owned(),
         port: 22,
         username: "target-user".to_owned(),
+        protocol: Default::default(),
         auth_type,
         credential_ref: credential_ref.map(str::to_owned),
         secret_ref: None,

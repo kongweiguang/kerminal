@@ -32,7 +32,7 @@ function configHostNoticeItems(groups: MachineGroup[]): ConfigChangePublicItem[]
   return groups.flatMap((group) =>
     group.machines
       .filter((machine) =>
-        ["ssh", "rdp", "telnet", "serial"].includes(machine.kind),
+        ["ssh", "sftp", "rdp", "telnet", "serial"].includes(machine.kind),
       )
       .map((machine) => ({
         id: machine.id,

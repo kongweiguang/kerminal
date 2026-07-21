@@ -9,7 +9,7 @@ import { isSftpCapableRemoteHost } from "./KerminalShell.contextWorkspaceShellHe
 interface UseKerminalShellSftpHostCreateOptions {
   closeConnectionDialog: () => void;
   handleRemoteHostCreated: (host: RemoteHost) => Promise<void>;
-  openConnectionDialog: (options: { mode: "ssh" }) => void;
+  openConnectionDialog: (options: { mode: "sftp" }) => void;
 }
 
 /** 维护 SFTP 工作台发起的新主机请求，并把创建结果回传到原工作台侧。 */
@@ -30,7 +30,7 @@ export function useKerminalShellSftpHostCreate({
         return;
       }
       setPendingTarget(request);
-      openConnectionDialog({ mode: "ssh" });
+      openConnectionDialog({ mode: "sftp" });
     },
     [openConnectionDialog],
   );

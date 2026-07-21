@@ -1,6 +1,7 @@
 import {
   Box,
   Cloud,
+  FolderKey,
   LoaderCircle,
   Monitor,
   Server,
@@ -158,6 +159,9 @@ function machineIcon(
   }
   if (machine.kind === "telnet" || machine.kind === "serial") {
     return Terminal;
+  }
+  if (machine.kind === "sftp") {
+    return FolderKey;
   }
   if (machine.kind === "dockerContainer") {
     return Box;

@@ -28,6 +28,7 @@ export const createdHost: RemoteHost = {
   id: "host-1",
   name: "ubuntu-dev",
   port: 22,
+  protocol: "ssh",
   production: false,
   sshOptions: createDefaultSshOptions(),
   sortOrder: 10,

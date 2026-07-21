@@ -184,6 +184,8 @@ export function RemoteHostCreateDialog({
       initialTargetGroupId(targetGroups, defaultGroupId);
     const initialMode = editingLocalMachine
       ? "local"
+      : editingHost?.protocol === "sftp"
+        ? "sftp"
       : editingHost && isSerialRemoteHost(editingHost)
         ? "serial"
         : editingHost && isTelnetRemoteHost(editingHost)
@@ -196,7 +198,9 @@ export function RemoteHostCreateDialog({
     setActiveSection("properties");
     setAuthType(
       editingHost?.authType ??
-        (initialMode === "ssh" || initialMode === "rdp" ? "password" : "agent"),
+        (initialMode === "ssh" || initialMode === "sftp" || initialMode === "rdp"
+          ? "password"
+          : "agent"),
     );
     setCredentialRef(
       editingHost?.authType === "key" ? (editingHost.credentialRef ?? "") : "",
@@ -256,7 +260,16 @@ export function RemoteHostCreateDialog({
     );
     setSerialStopBits(readSerialTagValue(editingHost, "stop-bits") ?? "1");
     setSavingAction(null);
-    setSshOptions(normalizeSshOptionsForForm(editingHost?.sshOptions));
+    const normalizedSshOptions = normalizeSshOptionsForForm(editingHost?.sshOptions);
+    setSshOptions(
+      initialMode === "sftp"
+        ? {
+            ...normalizedSshOptions,
+            transfer: { ...normalizedSshOptions.transfer, enabled: true },
+            tunnels: [],
+          }
+        : normalizedSshOptions,
+    );
     setConnectionTestFeedback(null);
     setTags(
       editingHost
@@ -480,7 +493,7 @@ export function RemoteHostCreateDialog({
     await onGroupCreated?.(group);
   };
   const showTestButton = (
-    ["ssh", "rdp", "telnet", "serial"] as ConnectionMode[]
+    ["ssh", "sftp", "rdp", "telnet", "serial"] as ConnectionMode[]
   ).includes(mode);
   const footerFeedback: ConnectionTestFeedback | null =
     connectionTestFeedback ??
@@ -520,6 +533,7 @@ export function RemoteHostCreateDialog({
         onCreateGroup ? () => setInlineGroupDialogOpen(true) : undefined
       }
       port={port}
+      production={production}
       rdpFullscreen={rdpFullscreen}
       rdpHeight={rdpHeight}
       rdpNote={rdpNote}
@@ -548,6 +562,7 @@ export function RemoteHostCreateDialog({
       setLocalTitle={setLocalTitle}
       setName={setName}
       setPort={setPort}
+      setProduction={setProduction}
       setRdpFullscreen={setRdpFullscreen}
       setRdpHeight={setRdpHeight}
       setRdpNote={setRdpNote}
@@ -658,10 +673,17 @@ export function RemoteHostCreateDialog({
                       setSerialStopBits("1");
                       setTags("serial");
                       setUsername("");
-                    } else if (protocol.id === "ssh") {
+                    } else if (protocol.id === "ssh" || protocol.id === "sftp") {
                       setAuthType("password");
                       setPort("22");
                       setTags("");
+                      if (protocol.id === "sftp") {
+                        setSshOptions((current) => ({
+                          ...current,
+                          transfer: { ...current.transfer, enabled: true },
+                          tunnels: [],
+                        }));
+                      }
                     }
                   }}
                   title={protocol.label}

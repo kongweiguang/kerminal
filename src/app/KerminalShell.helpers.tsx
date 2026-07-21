@@ -232,6 +232,7 @@ export function remoteHostCreateRequestFromMachine(
     host: host.host,
     name: overrides.name ?? host.name,
     port: host.port,
+    protocol: host.protocol,
     production: host.production,
     sshOptions: host.sshOptions,
     tags: [...host.tags],
@@ -259,6 +260,7 @@ export function remoteHostFromMachine(machine: Machine | undefined): RemoteHost 
   if (
     !machine ||
     (machine.kind !== "ssh" &&
+      machine.kind !== "sftp" &&
       machine.kind !== "rdp" &&
       machine.kind !== "telnet" &&
       machine.kind !== "serial")
@@ -279,6 +281,16 @@ export function remoteHostFromMachine(machine: Machine | undefined): RemoteHost 
     port:
       machine.port ??
       (machine.kind === "rdp" ? 3389 : machine.kind === "telnet" ? 23 : 1),
+    protocol:
+      machine.kind === "sftp"
+        ? "sftp"
+        : machine.kind === "rdp"
+          ? "rdp"
+          : machine.kind === "telnet"
+            ? "telnet"
+            : machine.kind === "serial"
+              ? "serial"
+              : "ssh",
     production: machine.production ?? false,
     sshOptions: machine.sshOptions ?? createDefaultSshOptions(),
     sortOrder: machine.sortOrder ?? 0,

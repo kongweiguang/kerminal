@@ -13,6 +13,7 @@ const sshHost: RemoteHost = {
   id: "host-1",
   name: "dev-api",
   port: 22,
+  protocol: "ssh",
   production: false,
   sortOrder: 1,
   sshOptions: createDefaultSshOptions(),
@@ -32,7 +33,7 @@ describe("useKerminalShellSftpHostCreate", () => {
         workspaceTabId: "transfer-1",
       }),
     );
-    expect(options.openConnectionDialog).toHaveBeenCalledWith({ mode: "ssh" });
+    expect(options.openConnectionDialog).toHaveBeenCalledWith({ mode: "sftp" });
 
     await act(() => result.current.handleConnectionDialogCreated(sshHost));
 
@@ -73,6 +74,7 @@ describe("useKerminalShellSftpHostCreate", () => {
       result.current.handleConnectionDialogCreated({
         ...sshHost,
         id: "rdp-host",
+        protocol: "rdp",
         tags: ["rdp"],
       }),
     );

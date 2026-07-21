@@ -13,6 +13,7 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             host: "127.0.0.1".to_owned(),
             port: 22,
             username: "tester".to_owned(),
+            protocol: Default::default(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
             credential_secret: None,

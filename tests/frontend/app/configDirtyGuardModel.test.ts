@@ -15,6 +15,7 @@ const host: RemoteHost = {
   id: "host-1",
   name: "dev-api",
   port: 22,
+  protocol: "ssh",
   production: false,
   sortOrder: 10,
   sshOptions: createDefaultSshOptions(),
