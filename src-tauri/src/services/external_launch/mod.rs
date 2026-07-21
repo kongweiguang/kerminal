@@ -33,14 +33,15 @@ pub use intake::{
 };
 pub use materializer::{
     external_launch_id_from_target_id, external_target_id, external_target_safety_for_saved_hosts,
-    is_external_target_id, ExternalMaterializedTarget, ExternalMaterializerSnapshot,
-    ExternalSessionMaterializer, ExternalTargetSafety,
+    is_external_target_id, ExternalMaterializeOutcome, ExternalMaterializedTarget,
+    ExternalMaterializerSnapshot, ExternalSessionMaterializer, ExternalTargetSafety,
 };
 pub use model::{
-    ExternalLaunchEntrypoint, ExternalLaunchParseInput, ExternalLaunchRequestDiagnostics,
-    ExternalLaunchSource, ExternalLaunchSourceTool, ExternalSecretKind, ExternalSecretMaterial,
-    ExternalSecretSlot, ExternalSecretSource, ExternalSessionSecretRef, ExternalSshAuth,
-    ExternalSshLaunchOptions, ExternalSshLaunchRequest, ExternalSshRouteHop, ExternalSshTarget,
+    ExternalLaunchEntrypoint, ExternalLaunchIntent, ExternalLaunchParseInput,
+    ExternalLaunchRequestDiagnostics, ExternalLaunchSource, ExternalLaunchSourceTool,
+    ExternalSecretKind, ExternalSecretMaterial, ExternalSecretSlot, ExternalSecretSource,
+    ExternalSessionSecretRef, ExternalSshAuth, ExternalSshLaunchOptions, ExternalSshLaunchRequest,
+    ExternalSshRouteHop, ExternalSshTarget,
 };
 pub use parser::{ExternalLaunchParser, ExternalLaunchParserRegistry};
 pub use secret::{ExternalLaunchSecretBroker, ExternalLaunchSecretBrokerSnapshot};

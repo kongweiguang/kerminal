@@ -71,6 +71,29 @@ describe("workspaceStore external SSH launch", () => {
     });
   });
 
+  it("opens an external SFTP launch as one transfer tab without a terminal pane", () => {
+    const launch = createResolvedLaunch();
+    launch.intent = {
+      kind: "sftpTransfer",
+      remotePath: "/srv/releases/",
+      selectedEntry: "artifact.zip",
+    };
+
+    useWorkspaceStore.getState().openExternalSftpLaunch(launch);
+    useWorkspaceStore.getState().openExternalSftpLaunch(launch);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.terminalPanes).toHaveLength(0);
+    expect(state.terminalTabs).toHaveLength(1);
+    expect(state.terminalTabs[0]).toMatchObject({
+      externalLaunchId: "launch-1",
+      initialRightPath: "/srv/releases/",
+      initialRightSelection: "artifact.zip",
+      kind: "sftpTransfer",
+      rightHostId: "external:launch-1",
+    });
+  });
+
   it("removes only the requested temporary external SSH machine", () => {
     useWorkspaceStore.getState().openExternalSshLaunch(
       createResolvedLaunch({

@@ -1,13 +1,16 @@
 // @author kongweiguang
+
 import { useCallback, useMemo, useState } from "react";
 import type {
   TerminalTab,
   WorkspaceFileDirtyState,
 } from "../features/workspace/types";
 import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
+import { prepareExternalSftpTabClose } from "../features/sftp/externalSftpLaunchLifecycle";
 
 interface UseKerminalShellTabCloseOptions {
   closeTerminalTab: (tabId: string) => void;
+  removeSidebarMachine?: (machineId: string) => void;
   confirmTerminalClose: boolean;
   onTabsClosed?: (tabIds: string[]) => void;
   terminalTabs: TerminalTab[];
@@ -17,6 +20,7 @@ interface UseKerminalShellTabCloseOptions {
 /** 管理终端 tab 与未保存文件的两阶段关闭确认。 */
 export function useKerminalShellTabClose({
   closeTerminalTab,
+  removeSidebarMachine = () => undefined,
   confirmTerminalClose,
   onTabsClosed,
   terminalTabs,
@@ -30,10 +34,15 @@ export function useKerminalShellTabClose({
   >(null);
   const closeTabs = useCallback(
     (tabIds: string[]) => {
-      for (const tabId of tabIds) closeTerminalTab(tabId);
-      onTabsClosed?.(tabIds);
+      void closeTabsWithExternalOwners(
+        tabIds,
+        terminalTabs,
+        closeTerminalTab,
+        removeSidebarMachine,
+        onTabsClosed,
+      );
     },
-    [closeTerminalTab, onTabsClosed],
+    [closeTerminalTab, onTabsClosed, removeSidebarMachine, terminalTabs],
   );
 
   const requestCloseTabs = useCallback(
@@ -58,6 +67,7 @@ export function useKerminalShellTabClose({
     [
       closeTabs,
       confirmTerminalClose,
+      removeSidebarMachine,
       terminalTabs,
       workspaceFileDirtyState,
     ],
@@ -95,4 +105,37 @@ export function useKerminalShellTabClose({
     pendingTerminalTabCount: pendingTerminalTabIds?.length ?? 0,
     requestCloseTab,
   };
+}
+
+async function closeTabsWithExternalOwners(
+  tabIds: string[],
+  terminalTabs: TerminalTab[],
+  closeTerminalTab: (tabId: string) => void,
+  removeSidebarMachine: (machineId: string) => void,
+  onTabsClosed?: (tabIds: string[]) => void,
+) {
+  const closedTabIds: string[] = [];
+  for (const tabId of tabIds) {
+    const tab = terminalTabs.find((candidate) => candidate.id === tabId);
+    if (tab?.kind === "sftpTransfer" && tab.externalLaunchId) {
+      const preparation = prepareExternalSftpTabClose(tabId);
+      if (!preparation.canClose) {
+        continue;
+      }
+      try {
+        await preparation.cleanup;
+      } catch {
+        continue;
+      }
+      closeTerminalTab(tabId);
+      removeSidebarMachine(tab.machineId);
+      closedTabIds.push(tabId);
+      continue;
+    }
+    closeTerminalTab(tabId);
+    closedTabIds.push(tabId);
+  }
+  if (closedTabIds.length > 0) {
+    onTabsClosed?.(closedTabIds);
+  }
 }

@@ -26,11 +26,12 @@ import {
   type TerminalOpenStateSlice,
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
-import type { Machine, ToolId } from "./types";
+import type { Machine, SftpTransferWorkspaceTab, ToolId } from "./types";
 
 export interface WorkspaceTerminalOpenActions {
   openContainerTerminal: (machineId: string) => void;
   openExternalSshLaunch: (launch: ExternalSshLaunchResolvedRequest) => void;
+  openExternalSftpLaunch: (launch: ExternalSshLaunchResolvedRequest) => void;
   openLocalTerminal: (machineId: string) => void;
   openSerialTerminal: (hostId: string) => void;
   openSshCommandTerminal: (
@@ -173,6 +174,62 @@ export function createWorkspaceTerminalOpenActions(
         return {
           ...terminalState,
           machineGroups,
+        };
+      }),
+    openExternalSftpLaunch: (launch) =>
+      set((state) => {
+        if (launch.intent?.kind !== "sftpTransfer") {
+          return {};
+        }
+        const existingTab = state.terminalTabs.find(
+          (tab) =>
+            tab.kind === "sftpTransfer" && tab.externalLaunchId === launch.id,
+        );
+        if (existingTab) {
+          return {
+            activeTabId: existingTab.id,
+            focusedPaneId: "",
+            selectedMachineId: existingTab.machineId,
+          };
+        }
+        const machineId = externalSshLaunchMachineId(launch);
+        const machine: Machine = {
+          authType: externalSshLaunchAuthType(launch),
+          cwd: launch.intent.remotePath ?? "/",
+          description: externalSshLaunchDescription(launch),
+          host: launch.target.host,
+          id: machineId,
+          kind: "ssh",
+          name: externalSshLaunchDisplayName(launch),
+          port: launch.target.port,
+          production: externalSshLaunchProduction(launch),
+          status: "online",
+          tags: externalSshLaunchTags(launch),
+          target: sshTarget(machineId),
+          username: launch.target.username,
+        };
+        const machineGroups = addMachineToGroup(
+          state.machineGroups,
+          machine,
+          undefined,
+        );
+        const tabId = counters.nextTabId("tab-sftp-transfer");
+        const tab: SftpTransferWorkspaceTab = {
+          externalLaunchId: launch.id,
+          id: tabId,
+          initialRightPath: launch.intent.remotePath,
+          initialRightSelection: launch.intent.selectedEntry,
+          kind: "sftpTransfer",
+          machineId,
+          rightHostId: machineId,
+          title: `${machine.name} 传输`,
+        };
+        return {
+          activeTabId: tabId,
+          focusedPaneId: "",
+          machineGroups,
+          selectedMachineId: machineId,
+          terminalTabs: [...state.terminalTabs, tab],
         };
       }),
     openTmuxAttachTerminal: (launch, placement = "pane") =>

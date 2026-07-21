@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   defaultAppearanceSettings,
   defaultAppSettings,
@@ -86,6 +88,7 @@ export type ExternalLaunchSourceTool =
   | "xshell"
   | "securecrt"
   | "openssh"
+  | "sftp-client"
   | "kerminal-native";
 
 export const externalLaunchSourceTools: ExternalLaunchSourceTool[] = [
@@ -94,6 +97,7 @@ export const externalLaunchSourceTools: ExternalLaunchSourceTool[] = [
   "xshell",
   "securecrt",
   "openssh",
+  "sftp-client",
   "kerminal-native",
 ];
 

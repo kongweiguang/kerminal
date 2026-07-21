@@ -481,6 +481,8 @@ pub enum ExternalLaunchToolSetting {
     Securecrt,
     /// OpenSSH-compatible command line.
     Openssh,
+    /// WinSCP, FileZilla or generic SFTP URL parameters.
+    SftpClient,
     /// Kerminal native flags, JSON envelope, or protocol URL.
     KerminalNative,
 }

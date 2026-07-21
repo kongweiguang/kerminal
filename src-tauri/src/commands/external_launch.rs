@@ -10,10 +10,11 @@ use crate::{
     models::remote_host::RemoteHostAuthType,
     services::external_launch::{
         external_target_id, inspect_external_host_key, trust_external_host_key,
-        ExternalLaunchEntrypoint, ExternalLaunchIntakeSnapshot, ExternalLaunchRequestDiagnostics,
-        ExternalLaunchSecretBrokerSnapshot, ExternalLaunchSource, ExternalLaunchSourceTool,
-        ExternalSshAuth, ExternalSshLaunchOptions, ExternalSshLaunchRequest, ExternalSshRouteHop,
-        ExternalSshTarget, ExternalTargetSafety, EXTERNAL_LAUNCH_DEEP_LINK_SCHEME,
+        ExternalLaunchEntrypoint, ExternalLaunchIntakeSnapshot, ExternalLaunchIntent,
+        ExternalLaunchRequestDiagnostics, ExternalLaunchSecretBrokerSnapshot, ExternalLaunchSource,
+        ExternalLaunchSourceTool, ExternalSshAuth, ExternalSshLaunchOptions,
+        ExternalSshLaunchRequest, ExternalSshRouteHop, ExternalSshTarget, ExternalTargetSafety,
+        EXTERNAL_LAUNCH_DEEP_LINK_SCHEME,
     },
     state::AppState,
 };
@@ -115,12 +116,25 @@ pub fn external_launch_ack(state: State<'_, AppState>, launch_id: String) -> Res
 pub fn external_launch_materialize(
     state: State<'_, AppState>,
     request: ExternalLaunchMaterializeRequestDto,
-) -> Result<ExternalLaunchMaterializedTargetDto, String> {
-    state
-        .external_session_materializer()
-        .materialize(state.paths(), &request.launch_id, request.username)
-        .map(materialized_target_to_dto)
-        .map_err(|error| error.to_string())
+) -> Result<ExternalLaunchMaterializeOutcomeDto, String> {
+    let outcome = state.external_session_materializer().materialize_outcome(
+        state.paths(),
+        &request.launch_id,
+        request.username,
+    );
+    Ok(match outcome {
+        Ok(crate::services::external_launch::ExternalMaterializeOutcome::Ready(target)) => {
+            ExternalLaunchMaterializeOutcomeDto::Ready {
+                target: materialized_target_to_dto(target),
+            }
+        }
+        Ok(crate::services::external_launch::ExternalMaterializeOutcome::PromptRequired(
+            prompt_plan,
+        )) => ExternalLaunchMaterializeOutcomeDto::PromptRequired { prompt_plan },
+        Err(error) => ExternalLaunchMaterializeOutcomeDto::Rejected {
+            message: error.to_string(),
+        },
+    })
 }
 
 /// 在打开 terminal pane 前探测 external target 的 SSH fingerprint。
@@ -266,6 +280,24 @@ pub struct ExternalLaunchMaterializedTargetDto {
     pub safety: ExternalTargetSafety,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ExternalLaunchMaterializeOutcomeDto {
+    Ready {
+        target: ExternalLaunchMaterializedTargetDto,
+    },
+    PromptRequired {
+        prompt_plan: crate::services::ssh_runtime::auth_broker::SshAuthPromptPlan,
+    },
+    Rejected {
+        message: String,
+    },
+}
+
 #[doc(hidden)]
 pub fn external_ssh_launch_request_to_dto(
     request: ExternalSshLaunchRequest,
@@ -278,6 +310,7 @@ pub fn external_ssh_launch_request_to_dto(
         source: source_to_dto(request.source),
         received_at: request.received_at,
         target: target_to_dto(request.target),
+        intent: request.intent,
         auth: auth_to_dto(request.auth),
         options: request.options,
         diagnostics,
@@ -339,6 +372,7 @@ pub struct ExternalSshLaunchRequestDto {
     pub source: ExternalLaunchSourceDto,
     pub received_at: String,
     pub target: ExternalSshTargetDto,
+    pub intent: ExternalLaunchIntent,
     pub auth: ExternalSshAuthDto,
     pub options: ExternalSshLaunchOptions,
     pub diagnostics: ExternalLaunchRequestDiagnostics,

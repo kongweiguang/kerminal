@@ -1,5 +1,8 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { SshAuthPromptPlan } from "./sshAuthApi";
 
 export const EXTERNAL_SSH_LAUNCH_EVENT = "kerminal-external-ssh-launch";
 
@@ -9,6 +12,7 @@ type ExternalLaunchSourceTool =
   | "xshell"
   | "securecrt"
   | "openssh"
+  | "sftp-client"
   | "kerminal-native";
 
 type ExternalLaunchEntrypoint =
@@ -63,6 +67,14 @@ export interface ExternalSshLaunchRequest {
   source: ExternalLaunchSource;
   receivedAt: string;
   target: ExternalSshTarget;
+  intent?:
+    | { kind: "sshTerminal" }
+    | {
+        kind: "sftpTransfer";
+        remotePath?: string;
+        selectedEntry?: string;
+        hostKeyAssertion?: string;
+      };
   auth: ExternalSshAuthMetadata;
   options: ExternalSshLaunchOptions;
   diagnostics: ExternalLaunchRequestDiagnostics;
@@ -84,6 +96,11 @@ export interface ExternalLaunchMaterializedTarget {
   production: boolean;
   safety: "restricted-unknown" | "known-non-production" | "production";
 }
+
+export type ExternalLaunchMaterializeOutcome =
+  | { status: "ready"; target: ExternalLaunchMaterializedTarget }
+  | { status: "promptRequired"; promptPlan: SshAuthPromptPlan }
+  | { status: "rejected"; message: string };
 
 export interface ExternalHostKeyInspection {
   algorithm: string;
@@ -190,23 +207,26 @@ export async function ackExternalSshLaunch(launchId: string): Promise<number> {
 
 export async function materializeExternalSshLaunch(
   request: ExternalLaunchMaterializeRequest,
-): Promise<ExternalLaunchMaterializedTarget> {
+): Promise<ExternalLaunchMaterializeOutcome> {
   validateBrowserPreviewLaunchId(request.launchId);
   if (isTauri()) {
-    return invoke<ExternalLaunchMaterializedTarget>("external_launch_materialize", {
+    return invoke<ExternalLaunchMaterializeOutcome>("external_launch_materialize", {
       request,
     });
   }
   return {
-    authType: "agent",
-    displayName: `External ${request.launchId}`,
-    host: "preview.invalid",
-    launchId: request.launchId,
-    port: 22,
-    production: true,
-    safety: "restricted-unknown",
-    targetId: `external:${request.launchId}`,
-    username: request.username ?? "preview",
+    status: "ready",
+    target: {
+      authType: "agent",
+      displayName: `External ${request.launchId}`,
+      host: "preview.invalid",
+      launchId: request.launchId,
+      port: 22,
+      production: true,
+      safety: "restricted-unknown",
+      targetId: `external:${request.launchId}`,
+      username: request.username ?? "preview",
+    },
   };
 }
 

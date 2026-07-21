@@ -7,8 +7,8 @@ use crate::error::{AppError, AppResult};
 use super::super::{
     classifier::infer_source_tool_from_args,
     model::{
-        ExternalLaunchParseInput, ExternalLaunchRequestDiagnostics, ExternalLaunchSource,
-        ExternalLaunchSourceTool, ExternalSshAuth, ExternalSshLaunchOptions,
+        ExternalLaunchIntent, ExternalLaunchParseInput, ExternalLaunchRequestDiagnostics,
+        ExternalLaunchSource, ExternalLaunchSourceTool, ExternalSshAuth, ExternalSshLaunchOptions,
         ExternalSshLaunchRequest, ExternalSshTarget,
     },
     redaction::raw_hash,
@@ -39,6 +39,19 @@ pub(super) fn build_request(
         warnings: Vec::new(),
     };
     ExternalSshLaunchRequest::new(source, target, auth, options, diagnostics)
+}
+
+pub(super) fn build_request_with_intent(
+    input: &ExternalLaunchParseInput,
+    tool: ExternalLaunchSourceTool,
+    parser: &str,
+    target: ExternalSshTarget,
+    auth: ExternalSshAuth,
+    options: ExternalSshLaunchOptions,
+    intent: ExternalLaunchIntent,
+    argv_redacted: Vec<String>,
+) -> ExternalSshLaunchRequest {
+    build_request(input, tool, parser, target, auth, options, argv_redacted).with_intent(intent)
 }
 
 pub(super) fn should_parse(

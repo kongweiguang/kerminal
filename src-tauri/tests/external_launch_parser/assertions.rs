@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 fn write_temp_moba_session_file() -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!(
         "kerminal-mobaxterm-{}-{}.moba",
@@ -102,6 +104,38 @@ fn assert_expected_options(
         request.options.open_sftp, expected_open_sftp,
         "{id}: open SFTP"
     );
+}
+
+fn assert_expected_intent(
+    id: &str,
+    request: &ExternalSshLaunchRequest,
+    expected: &serde_json::Map<String, Value>,
+) {
+    let Some(intent) = expected.get("intent").and_then(Value::as_object) else {
+        return;
+    };
+    match required_text_map(intent, "kind", id) {
+        "sftpTransfer" => match &request.intent {
+            kerminal_lib::services::external_launch::ExternalLaunchIntent::SftpTransfer {
+                remote_path,
+                selected_entry,
+                ..
+            } => {
+                assert_eq!(
+                    remote_path.as_deref(),
+                    intent.get("remotePath").and_then(Value::as_str),
+                    "{id}: remote path"
+                );
+                assert_eq!(
+                    selected_entry.as_deref(),
+                    intent.get("selectedEntry").and_then(Value::as_str),
+                    "{id}: selected entry"
+                );
+            }
+            other => panic!("{id}: expected SFTP transfer intent, got {other:?}"),
+        },
+        other => panic!("{id}: unsupported fixture intent: {other}"),
+    }
 }
 
 fn assert_expected_diagnostics(

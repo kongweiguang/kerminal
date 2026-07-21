@@ -31,6 +31,7 @@ static EXTERNAL_SSH_CREATE_SOURCE_SEMAPHORES: LazyLock<
         ExternalLaunchSourceTool::Xshell,
         ExternalLaunchSourceTool::Securecrt,
         ExternalLaunchSourceTool::Openssh,
+        ExternalLaunchSourceTool::SftpClient,
         ExternalLaunchSourceTool::KerminalNative,
     ]
     .into_iter()

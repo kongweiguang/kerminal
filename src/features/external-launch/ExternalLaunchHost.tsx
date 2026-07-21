@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
@@ -18,6 +20,7 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
+import { requestSshAuthPrompt } from "../ssh-auth/sshAuthPromptStore";
 import { useWorkspaceStore } from "../workspace/state/index";
 import { ExternalLaunchResolutionDialog } from "./ExternalLaunchResolutionDialog";
 import {
@@ -47,6 +50,19 @@ export function ExternalLaunchHost() {
   const openExternalSshLaunch = useWorkspaceStore(
     (state) => state.openExternalSshLaunch,
   );
+  const openExternalSftpLaunch = useWorkspaceStore(
+    (state) => state.openExternalSftpLaunch,
+  );
+  const openResolvedLaunch = useCallback(
+    (launch: ExternalSshLaunchResolvedRequest) => {
+      if (launch.intent?.kind === "sftpTransfer") {
+        openExternalSftpLaunch(launch);
+      } else {
+        openExternalSshLaunch(launch);
+      }
+    },
+    [openExternalSftpLaunch, openExternalSshLaunch],
+  );
   const [queue, setQueue] = useState<ExternalSshLaunchRequest[]>([]);
   const [resolutionLaunch, setResolutionLaunch] =
     useState<ExternalSshLaunchRequest | null>(null);
@@ -73,11 +89,7 @@ export function ExternalLaunchHost() {
         }
         knownLaunchIdsRef.current.add(launch.id);
         // WebView 重载后工作区 pane 仍可能存在，此时只补 ACK，不能重复物化和建 pane。
-        const alreadyOpened = useWorkspaceStore
-          .getState()
-          .terminalPanes.some(
-            (pane) => pane.machineId === externalSshLaunchMachineId(launch),
-          );
+        const alreadyOpened = isExternalLaunchOpen(launch);
         if (alreadyOpened) {
           void ackExternalSshLaunch(launch.id).catch((nextError) => {
             if (!activeRef.current) {
@@ -131,14 +143,11 @@ export function ExternalLaunchHost() {
       setNotice(null);
       try {
         // ACK 失败后 pane 已存在时只补确认，避免重试再次建 pane 和执行远程命令。
-        if (isExternalLaunchPaneOpen(launch)) {
+        if (isExternalLaunchOpen(launch)) {
           await ackExternalSshLaunch(launch.id);
           return;
         }
-        const materialized = await materializeExternalSshLaunch({
-          launchId: launch.id,
-          username: launch.target.username,
-        });
+        const materialized = await materializeExternalLaunchWithPrompts(launch);
         validateMaterializedTarget(launch, materialized);
         if (!activeRef.current) {
           return;
@@ -149,6 +158,7 @@ export function ExternalLaunchHost() {
         );
         const hostKey = await inspectExternalLaunchHostKey(launch.id);
         validateHostKeyInspection(resolved, materialized, hostKey);
+        validateVendorHostKeyAssertion(resolved, hostKey);
         if (!activeRef.current) {
           return;
         }
@@ -166,8 +176,8 @@ export function ExternalLaunchHost() {
           setSecurityConfirmation({ hostKey, launch: resolved, materialized });
           return;
         }
-        if (!isExternalLaunchPaneOpen(resolved)) {
-          openExternalSshLaunch(resolved);
+        if (!isExternalLaunchOpen(resolved)) {
+          openResolvedLaunch(resolved);
         }
         await ackExternalSshLaunch(launch.id);
       } catch (nextError) {
@@ -188,7 +198,7 @@ export function ExternalLaunchHost() {
         }
       }
     },
-    [openExternalSshLaunch],
+    [openResolvedLaunch],
   );
 
   useEffect(() => {
@@ -305,8 +315,8 @@ export function ExternalLaunchHost() {
       if (!activeRef.current) {
         return;
       }
-      if (!isExternalLaunchPaneOpen(securityConfirmation.launch)) {
-        openExternalSshLaunch(securityConfirmation.launch);
+      if (!isExternalLaunchOpen(securityConfirmation.launch)) {
+        openResolvedLaunch(securityConfirmation.launch);
       }
       await ackExternalSshLaunch(securityConfirmation.launch.id);
       if (activeRef.current) {
@@ -328,7 +338,7 @@ export function ExternalLaunchHost() {
         setBusy(false);
       }
     }
-  }, [busy, openExternalSshLaunch, securityConfirmation]);
+  }, [busy, openResolvedLaunch, securityConfirmation]);
 
   const cancelSecurity = useCallback(async () => {
     if (!securityConfirmation || busy) {
@@ -468,13 +478,47 @@ export function ExternalLaunchHost() {
   );
 }
 
-function isExternalLaunchPaneOpen(
+function isExternalLaunchOpen(
   launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
 ): boolean {
   const machineId = externalSshLaunchMachineId(launch);
-  return useWorkspaceStore
-    .getState()
-    .terminalPanes.some((pane) => pane.machineId === machineId);
+  const state = useWorkspaceStore.getState();
+  return launch.intent?.kind === "sftpTransfer"
+    ? state.terminalTabs.some(
+        (tab) =>
+          tab.kind === "sftpTransfer" && tab.externalLaunchId === launch.id,
+      )
+    : state.terminalPanes.some((pane) => pane.machineId === machineId);
+}
+
+async function materializeExternalLaunchWithPrompts(
+  launch: ExternalSshLaunchResolvedRequest,
+): Promise<ExternalLaunchMaterializedTarget> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const outcome = await materializeExternalSshLaunch({
+      launchId: launch.id,
+      username: launch.target.username,
+    });
+    if (!("status" in outcome)) {
+      return outcome as unknown as ExternalLaunchMaterializedTarget;
+    }
+    if (outcome.status === "ready") {
+      return outcome.target;
+    }
+    if (outcome.status === "rejected") {
+      throw new Error(outcome.message);
+    }
+    for (const prompt of outcome.promptPlan.prompts) {
+      const receipt = await requestSshAuthPrompt({
+        defaultRememberInVault: false,
+        prompt,
+      });
+      if (!receipt) {
+        throw new Error("SSH 认证已取消，该外部启动请求尚未打开。");
+      }
+    }
+  }
+  throw new Error("SSH 认证未能完成，请检查凭据类型后重试。");
 }
 
 /**
@@ -528,6 +572,23 @@ function validateHostKeyInspection(
     !inspection.fingerprint.startsWith("SHA256:")
   ) {
     throw new Error("主机身份结果与当前启动请求不一致，已拒绝连接。");
+  }
+}
+
+function validateVendorHostKeyAssertion(
+  launch: ExternalSshLaunchResolvedRequest,
+  inspection: ExternalHostKeyInspection,
+): void {
+  if (launch.intent?.kind !== "sftpTransfer") {
+    return;
+  }
+  const assertion = launch.intent.hostKeyAssertion?.trim();
+  if (!assertion) {
+    return;
+  }
+  const fingerprint = assertion.match(/SHA256:[A-Za-z0-9+/_=-]+/)?.[0];
+  if (!fingerprint || fingerprint !== inspection.fingerprint) {
+    throw new Error("外部 SFTP 参数中的主机指纹与 Kerminal 二次探测结果不匹配。");
   }
 }
 

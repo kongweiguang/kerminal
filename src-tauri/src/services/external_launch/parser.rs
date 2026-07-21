@@ -9,7 +9,7 @@ use super::{
     model::{ExternalLaunchParseInput, ExternalLaunchSourceTool, ExternalSshLaunchRequest},
     parsers::{
         KerminalNativeParser, MobaXtermParser, OpenSshParser, PuttyParser, SecureCrtParser,
-        XshellParser,
+        SftpClientParser, XshellParser,
     },
 };
 
@@ -46,6 +46,7 @@ impl ExternalLaunchParserRegistry {
                 Box::new(XshellParser),
                 Box::new(SecureCrtParser),
                 Box::new(OpenSshParser),
+                Box::new(SftpClientParser),
                 Box::new(KerminalNativeParser),
             ],
         }

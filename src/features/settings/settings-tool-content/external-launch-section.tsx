@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   Ban,
   CircleCheck,
@@ -54,6 +56,11 @@ const launchExamples = [
   },
   {
     command:
+      'kerminal.exe "sftp://${USER}:<PASSWORD_FROM_PLATFORM>@${HOST}:${PORT}/path/"',
+    label: "WinSCP / FileZilla SFTP URL",
+  },
+  {
+    command:
       "kerminal.exe --external-ssh --host ${HOST} --port ${PORT} --user ${USER}",
     label: "Kerminal flags",
   },
@@ -92,6 +99,10 @@ const launchToolLabels: Record<
   openssh: {
     description: "OpenSSH ssh 命令参数。",
     label: "OpenSSH",
+  },
+  "sftp-client": {
+    description: "WinSCP / FileZilla / 通用 SFTP URL 参数。",
+    label: "SFTP 客户端参数",
   },
   "kerminal-native": {
     description: "Kerminal flags / JSON / URL。",

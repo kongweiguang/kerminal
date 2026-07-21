@@ -3069,6 +3069,7 @@ dependencies = [
  "keyring",
  "notify",
  "notify-debouncer-full",
+ "percent-encoding",
  "portable-pty",
  "rand 0.10.1",
  "regex",

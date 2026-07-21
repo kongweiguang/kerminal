@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 #[test]
 fn openssh_option_schema_preserves_destination_after_known_value_options() {
     let request = ExternalLaunchParserRegistry::new()
@@ -103,6 +105,7 @@ fn registry_parses_all_external_launch_fixtures() {
         assert_expected_target(id, &request, required_object(&case, "expected"));
         assert_expected_auth(id, &request, required_object(&case, "expected"));
         assert_expected_options(id, &request, required_object(&case, "expected"));
+        assert_expected_intent(id, &request, required_object(&case, "expected"));
         assert_expected_diagnostics(id, &request, required_object(&case, "expected"));
         assert_debug_redacted(id, &request, required_object(&case, "expected"));
     }

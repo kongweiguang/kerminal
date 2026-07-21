@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { StrictMode } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,7 +24,19 @@ const apiMocks = vi.hoisted(() => ({
   materializeExternalSshLaunch: vi.fn(),
   takePendingExternalSshLaunches: vi.fn(),
   trustExternalLaunchHostKey: vi.fn(),
+  requestSshAuthPrompt: vi.fn(),
 }));
+
+vi.mock(
+  "../../../../src/features/ssh-auth/sshAuthPromptStore",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../src/features/ssh-auth/sshAuthPromptStore")
+    >()),
+    requestSshAuthPrompt: (...args: unknown[]) =>
+      apiMocks.requestSshAuthPrompt(...args),
+  }),
+);
 
 let externalLaunchListener:
   | ((payload: ExternalLaunchEventPayload) => void)
@@ -58,6 +72,7 @@ describe("ExternalLaunchHost", () => {
     apiMocks.materializeExternalSshLaunch.mockReset();
     apiMocks.takePendingExternalSshLaunches.mockReset();
     apiMocks.trustExternalLaunchHostKey.mockReset();
+    apiMocks.requestSshAuthPrompt.mockReset();
     externalLaunchListener = undefined;
     apiMocks.ackExternalSshLaunch.mockResolvedValue(1);
     apiMocks.cancelExternalSshLaunch.mockResolvedValue(1);
@@ -74,6 +89,10 @@ describe("ExternalLaunchHost", () => {
     apiMocks.trustExternalLaunchHostKey.mockResolvedValue(
       knownHostKeyInspection(),
     );
+    apiMocks.requestSshAuthPrompt.mockResolvedValue({
+      promptId: "prompt-1",
+      secretKind: "password",
+    });
   });
 
   it("drains pending launches, opens resolved SSH tabs, and acknowledges them", async () => {
@@ -134,6 +153,66 @@ describe("ExternalLaunchHost", () => {
       apiMocks.takePendingExternalSshLaunches.mock.invocationCallOrder[0],
     );
     expect(apiMocks.takePendingExternalSshLaunches).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens SFTP intent only in the transfer workbench and deduplicates delivery", async () => {
+    const launch = createLaunch({
+      intent: {
+        kind: "sftpTransfer",
+        remotePath: "/srv/releases/",
+        selectedEntry: "artifact.zip",
+      },
+      username: "deploy",
+    });
+    apiMocks.takePendingExternalSshLaunches.mockResolvedValue([launch, launch]);
+
+    render(<ExternalLaunchHost />);
+
+    await waitFor(() =>
+      expect(apiMocks.ackExternalSshLaunch).toHaveBeenCalledWith("launch-1"),
+    );
+    const state = useWorkspaceStore.getState();
+    expect(state.terminalPanes).toHaveLength(0);
+    expect(
+      state.terminalTabs.filter(
+        (tab) => tab.kind === "sftpTransfer" && tab.externalLaunchId === "launch-1",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("uses the global session-only SSH prompt before retrying materialization", async () => {
+    apiMocks.takePendingExternalSshLaunches.mockResolvedValue([
+      createLaunch({ username: "deploy" }),
+    ]);
+    apiMocks.materializeExternalSshLaunch
+      .mockResolvedValueOnce({
+        promptPlan: {
+          prompts: [
+            {
+              host: "example.internal",
+              port: 22,
+              promptId: "prompt-1",
+              reason: "password required",
+              role: "target",
+              secretKind: "password",
+              username: "deploy",
+            },
+          ],
+        },
+        status: "promptRequired",
+      })
+      .mockResolvedValueOnce({ status: "ready", target: materializedTarget() });
+
+    render(<ExternalLaunchHost />);
+
+    await waitFor(() =>
+      expect(apiMocks.ackExternalSshLaunch).toHaveBeenCalledWith("launch-1"),
+    );
+    expect(apiMocks.requestSshAuthPrompt).toHaveBeenCalledWith({
+      defaultRememberInVault: false,
+      prompt: expect.objectContaining({ promptId: "prompt-1" }),
+    });
+    expect(apiMocks.materializeExternalSshLaunch).toHaveBeenCalledTimes(2);
   });
 
   it("double-drain and duplicate queued events create at most one pane", async () => {
@@ -657,11 +736,13 @@ function createLaunch({
   entrypoint = "single-instance",
   id = "launch-1",
   remoteCommand,
+  intent,
   username,
 }: {
   entrypoint?: ExternalSshLaunchRequest["source"]["entrypoint"];
   id?: string;
   remoteCommand?: string;
+  intent?: ExternalSshLaunchRequest["intent"];
   username: string | undefined;
 }): ExternalSshLaunchRequest {
   return {
@@ -678,6 +759,7 @@ function createLaunch({
       warnings: [],
     },
     id,
+    intent,
     options: {
       openSftp: false,
       remoteCommand,

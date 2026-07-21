@@ -1,4 +1,41 @@
+// @author kongweiguang
+
 use super::support::*;
+
+#[test]
+fn materializer_returns_structured_prompt_required_without_creating_target() {
+    let fixture = materializer_fixture();
+    let launch_id = queued_launch_id(
+        fixture
+            .intake
+            .accept_args(
+                vec![
+                    "kerminal.exe".to_owned(),
+                    "sftp://deploy@example.internal/".to_owned(),
+                ],
+                None,
+                ExternalLaunchEntrypoint::DirectArgv,
+            )
+            .expect("queue prompt-only launch"),
+    );
+    let _ = fixture.intake.take_pending().expect("take pending");
+
+    let outcome = fixture
+        .materializer
+        .materialize_outcome(&fixture.paths, &launch_id, None)
+        .expect("resolve structured materialize outcome");
+
+    let ExternalMaterializeOutcome::PromptRequired(prompt_plan) = outcome else {
+        panic!("missing credentials must request a prompt");
+    };
+    assert_eq!(prompt_plan.prompts.len(), 1);
+    assert!(fixture
+        .materializer
+        .snapshot()
+        .expect("materializer snapshot")
+        .target_ids
+        .is_empty());
+}
 
 #[test]
 fn materializer_preserves_drained_launches_as_active_requests() {
