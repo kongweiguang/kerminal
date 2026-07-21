@@ -8,13 +8,19 @@ import type {
   ExternalLaunchEventPayload,
   ExternalHostKeyInspection,
   ExternalLaunchMaterializedTarget,
-  ExternalSshLaunchRequest,
 } from "../../../../src/lib/externalLaunchApi";
 import { ExternalLaunchHost } from "../../../../src/features/external-launch/ExternalLaunchHost";
 import {
   useWorkspaceStore,
 } from "../../../../src/features/workspace/workspaceStore";
 import { resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
+import {
+  createLaunch,
+  knownHostKeyInspection,
+  materializedTarget,
+  spyOnOpenExternalSshLaunch,
+  unknownHostKeyInspection,
+} from "./ExternalLaunchHost.testSupport";
 
 const apiMocks = vi.hoisted(() => ({
   ackExternalSshLaunch: vi.fn(),
@@ -28,10 +34,10 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock(
-  "../../../../src/features/ssh-auth/sshAuthPromptStore",
+  "../../../../src/features/ssh-auth/state/index",
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import("../../../../src/features/ssh-auth/sshAuthPromptStore")
+      typeof import("../../../../src/features/ssh-auth/state/index")
     >()),
     requestSshAuthPrompt: (...args: unknown[]) =>
       apiMocks.requestSshAuthPrompt(...args),
@@ -722,93 +728,3 @@ describe("ExternalLaunchHost", () => {
     expect(useWorkspaceStore.getState().terminalPanes).toHaveLength(0);
   });
 });
-
-function spyOnOpenExternalSshLaunch() {
-  const originalOpen = useWorkspaceStore.getState().openExternalSshLaunch;
-  const openSpy = vi.fn((launch: Parameters<typeof originalOpen>[0]) =>
-    originalOpen(launch),
-  );
-  useWorkspaceStore.setState({ openExternalSshLaunch: openSpy });
-  return openSpy;
-}
-
-function createLaunch({
-  entrypoint = "single-instance",
-  id = "launch-1",
-  remoteCommand,
-  intent,
-  username,
-}: {
-  entrypoint?: ExternalSshLaunchRequest["source"]["entrypoint"];
-  id?: string;
-  remoteCommand?: string;
-  intent?: ExternalSshLaunchRequest["intent"];
-  username: string | undefined;
-}): ExternalSshLaunchRequest {
-  return {
-    auth: {
-      agent: false,
-      hasKeyPassphrase: false,
-      hasPassword: true,
-      passwordFilePresent: false,
-    },
-    diagnostics: {
-      argvRedacted: ["putty.exe", "-ssh", "example.internal"],
-      parser: "putty",
-      rawHash: "abc123",
-      warnings: [],
-    },
-    id,
-    intent,
-    options: {
-      openSftp: false,
-      remoteCommand,
-    },
-    receivedAt: "1760000000",
-    source: {
-      entrypoint,
-      tool: "putty",
-    },
-    target: {
-      host: "example.internal",
-      port: 22,
-      route: [],
-      username,
-    },
-  };
-}
-
-function materializedTarget(
-  overrides: Partial<ExternalLaunchMaterializedTarget> = {},
-): ExternalLaunchMaterializedTarget {
-  return {
-    authType: "agent",
-    displayName: "Materialized SSH target",
-    host: "materialized.internal",
-    launchId: "launch-1",
-    port: 2202,
-    production: false,
-    safety: "known-non-production",
-    targetId: "external:launch-1",
-    username: "resolved-user",
-    ...overrides,
-  };
-}
-
-function knownHostKeyInspection(): ExternalHostKeyInspection {
-  return {
-    algorithm: "ssh-ed25519",
-    fingerprint: "SHA256:test-fingerprint",
-    host: "materialized.internal",
-    launchId: "launch-1",
-    port: 2202,
-    status: "known",
-  };
-}
-
-function unknownHostKeyInspection(): ExternalHostKeyInspection {
-  return {
-    ...knownHostKeyInspection(),
-    status: "unknown",
-  };
-}

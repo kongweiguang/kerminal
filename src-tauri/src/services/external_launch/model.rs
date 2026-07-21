@@ -56,13 +56,14 @@ impl ExternalLaunchSourceTool {
 }
 
 /// Workspace behavior requested by an external launch.
-#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
 pub enum ExternalLaunchIntent {
+    #[default]
     SshTerminal,
     SftpTransfer {
         #[serde(default)]
@@ -73,12 +74,6 @@ pub enum ExternalLaunchIntent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         host_key_assertion: Option<String>,
     },
-}
-
-impl Default for ExternalLaunchIntent {
-    fn default() -> Self {
-        Self::SshTerminal
-    }
 }
 
 impl fmt::Debug for ExternalLaunchIntent {

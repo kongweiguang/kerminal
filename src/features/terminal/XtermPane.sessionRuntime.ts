@@ -1,6 +1,5 @@
 // @author kongweiguang
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
-import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
 import {
   closeTerminal,
   getTerminalLogState,
@@ -498,17 +497,7 @@ export function createXtermPaneSessionRuntime({
         paneResizeController.clearSession(sessionId);
         unregisterTerminalPaneSession(paneId, sessionId);
       }
-      const externalLaunchId = remoteHostId?.startsWith("external:")
-        ? remoteHostId.slice("external:".length)
-        : null;
-      if (externalLaunchId) {
-        const closeSession = sessionId
-          ? closeTerminal(sessionId).catch(() => undefined)
-          : Promise.resolve();
-        void closeSession.finally(() =>
-          closeExternalSshLaunch(externalLaunchId).catch(() => undefined),
-        );
-      } else if (sessionId) {
+      if (sessionId) {
         void closeTerminal(sessionId);
       }
     },

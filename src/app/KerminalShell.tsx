@@ -199,6 +199,7 @@ export function KerminalShell() {
   const {
     cancelDirtyFileTabs,
     cancelTerminalTabs,
+    closeConfirmedTab,
     confirmDirtyFileTabs,
     confirmTerminalTabs,
     dirtyFileTabCount,
@@ -494,6 +495,7 @@ export function KerminalShell() {
         interfaceDensity: settings.interfaceDensity, leftTitleBarInset,
         machineGroups, onBroadcastCommand: writeBroadcastCommand,
         onCreateSftpHost: openSftpTransferHostCreateDialog,
+        onCloseConfirmedTab: closeConfirmedTab,
         onOpenAgentTool: () => setActiveTool("agentLauncher"),
         onOpenConnection: () => openConnectionDialog({ mode: "ssh" }),
         onOpenLogs: openLogsTool, reserveRightTitleBarControls,

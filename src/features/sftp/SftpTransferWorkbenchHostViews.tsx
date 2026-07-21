@@ -13,6 +13,7 @@ import {
 import { cn } from "../../lib/cn";
 import type { InterfaceDensity } from "../settings/contracts/index";
 import type { Machine } from "../workspace/contracts/index";
+import type { OpenWorkspaceFileTabOptions } from "../workspace/state/index";
 import { SftpToolContent, type SftpClipboard } from "./SftpToolContent";
 import type { SftpTransferCreateHostRequest } from "./SftpTransferWorkbench";
 import type { SftpTransferTarget } from "./sftp-tool-content/types";
@@ -198,6 +199,7 @@ export function RemoteHostPaneBody({
   interfaceDensity,
   machinesById,
   onClipboardChange,
+  onOpenWorkspaceFileTab,
   onPathChange,
   revealRequest,
   transferTarget,
@@ -211,6 +213,7 @@ export function RemoteHostPaneBody({
   interfaceDensity: InterfaceDensity;
   machinesById: Map<string, Machine>;
   onClipboardChange: (clipboard: SftpClipboard | null) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onPathChange: (tabId: string, path: string) => void;
   revealRequest?: import("../workspace/contracts/index").WorkspaceFileRevealRequest;
   transferTarget?: SftpTransferTarget;
@@ -242,6 +245,7 @@ export function RemoteHostPaneBody({
       compactHeader
       interfaceDensity={interfaceDensity}
       onCurrentPathChange={reportCurrentPath}
+      onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
       onSftpClipboardChange={onClipboardChange}
       sftpRevealRequest={revealRequest}
       selectedMachine={selectedMachine}

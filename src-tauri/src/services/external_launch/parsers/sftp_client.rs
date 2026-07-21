@@ -7,7 +7,7 @@ use url::{Host, Url};
 
 use crate::error::{AppError, AppResult};
 
-use super::common::{build_request_with_intent, should_parse};
+use super::common::{build_request_with_intent, should_parse, RequestWithIntent};
 use crate::services::external_launch::{
     model::{
         ExternalLaunchIntent, ExternalLaunchParseInput, ExternalLaunchSourceTool,
@@ -58,13 +58,14 @@ fn parse_sftp_client(input: &ExternalLaunchParseInput) -> AppResult<ExternalSshL
     let mut index = 1;
     while index < input.argv.len() {
         let token = &input.argv[index];
-        let lower = token.to_ascii_lowercase();
+        let normalized = token.trim().trim_matches(['\'', '"']);
+        let lower = normalized.to_ascii_lowercase();
         if lower.starts_with("sftp://") || lower.contains("://") {
             if parsed.raw_url.is_some() {
                 return Err(invalid("multiple SFTP URLs are not supported"));
             }
             parsed.url_index = Some(index);
-            parsed.raw_url = Some(token.clone());
+            parsed.raw_url = Some(normalized.to_owned());
             index += 1;
             continue;
         }
@@ -202,26 +203,33 @@ fn parse_sftp_client(input: &ExternalLaunchParseInput) -> AppResult<ExternalSshL
         input,
         ExternalLaunchSourceTool::SftpClient,
         parser,
-        target,
-        auth,
-        ExternalSshLaunchOptions::default(),
-        ExternalLaunchIntent::SftpTransfer {
-            remote_path,
-            selected_entry,
-            host_key_assertion: parsed.host_key_assertion,
+        RequestWithIntent {
+            target,
+            auth,
+            options: ExternalSshLaunchOptions::default(),
+            intent: ExternalLaunchIntent::SftpTransfer {
+                remote_path,
+                selected_entry,
+                host_key_assertion: parsed.host_key_assertion,
+            },
+            argv_redacted: parsed.redacted,
         },
-        parsed.redacted,
     ))
 }
 
 fn initial_location(url: &Url) -> AppResult<(Option<String>, Option<String>)> {
     let path = decode(url.path())?;
+    // 堡垒机对 WinSCP、FileZilla 和 FlashFXP 使用不带尾斜杠的
+    // `sftp://user:password@host:port`，URL parser 会把它表示为空 path。
+    if path.is_empty() {
+        return Ok((Some("/".to_owned()), None));
+    }
     if !path.starts_with('/') || path.chars().any(char::is_control) {
         return Err(invalid(
             "SFTP URL path must be absolute and must not contain control characters",
         ));
     }
-    if path.is_empty() || path == "/" {
+    if path == "/" {
         return Ok((Some("/".to_owned()), None));
     }
     if path.ends_with('/') {

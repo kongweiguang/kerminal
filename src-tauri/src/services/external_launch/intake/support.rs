@@ -6,6 +6,7 @@ use super::*;
 
 pub(super) struct ExternalLaunchArgSummary {
     pub(super) arg_count: usize,
+    pub(super) argv_shape: String,
     pub(super) raw_hash: String,
     pub(super) cwd_present: bool,
 }
@@ -14,6 +15,7 @@ impl ExternalLaunchArgSummary {
     pub(super) fn new(argv: &[String], cwd: Option<&str>) -> Self {
         Self {
             arg_count: argv.len(),
+            argv_shape: redacted_argv_shape(argv),
             raw_hash: raw_hash(argv),
             cwd_present: cwd.is_some_and(|value| !value.trim().is_empty()),
         }
@@ -80,11 +82,70 @@ pub(super) fn log_external_launch_args(
 ) {
     tauri_plugin_log::log::info!(
         target: "external_launch.intake",
-        "received channel={channel} entrypoint={entrypoint:?} source_tool={source_tool:?} arg_count={} raw_hash={} cwd_present={}",
+        "received channel={channel} entrypoint={entrypoint:?} source_tool={source_tool:?} arg_count={} argv_shape={} raw_hash={} cwd_present={}",
         summary.arg_count,
+        summary.argv_shape,
         summary.raw_hash,
         summary.cwd_present
     );
+}
+
+pub(super) fn log_external_launch_noop(
+    entrypoint: ExternalLaunchEntrypoint,
+    summary: &ExternalLaunchArgSummary,
+) {
+    tauri_plugin_log::log::info!(
+        target: "external_launch.intake",
+        "noop entrypoint={entrypoint:?} arg_count={} argv_shape={} raw_hash={} cwd_present={} reason=unclassified",
+        summary.arg_count,
+        summary.argv_shape,
+        summary.raw_hash,
+        summary.cwd_present
+    );
+}
+
+pub(super) fn log_external_launch_rejected(
+    entrypoint: ExternalLaunchEntrypoint,
+    source_tool: ExternalLaunchSourceTool,
+    summary: &ExternalLaunchArgSummary,
+    error: &AppError,
+) {
+    let error_code = external_launch_parse_error_code(error);
+    tauri_plugin_log::log::warn!(
+        target: "external_launch.intake",
+        "rejected entrypoint={entrypoint:?} source_tool={source_tool:?} arg_count={} argv_shape={} raw_hash={} cwd_present={} reason=parse parse_error_code={error_code}",
+        summary.arg_count,
+        summary.argv_shape,
+        summary.raw_hash,
+        summary.cwd_present
+    );
+}
+
+fn external_launch_parse_error_code(error: &AppError) -> &'static str {
+    let AppError::InvalidInput(message) = error else {
+        return "non_input";
+    };
+    if message.starts_with("invalid SFTP URL:") {
+        "sftp_url_syntax"
+    } else if message.contains("only accepts the sftp:// scheme") {
+        "sftp_scheme"
+    } else if message.contains("query and fragment") {
+        "sftp_query_or_fragment"
+    } else if message.contains("URL host is required") {
+        "sftp_host_missing"
+    } else if message.contains("invalid UTF-8 percent encoding") {
+        "sftp_percent_encoding"
+    } else if message.contains("path must be absolute") {
+        "sftp_path"
+    } else if message.contains("multiple SFTP URLs") {
+        "sftp_multiple_urls"
+    } else if message.contains("requires an sftp:// URL") {
+        "sftp_url_missing"
+    } else if message.contains("unsupported or unsafe") {
+        "unsupported_option"
+    } else {
+        "invalid_input_other"
+    }
 }
 
 pub(super) fn log_external_launch_queued(
@@ -154,6 +215,72 @@ fn raw_hash(argv: &[String]) -> String {
         hash_field(&mut hasher, arg.as_bytes());
     }
     hex_digest(hasher.finalize())
+}
+
+/// 只记录参数类别，不记录 URL authority、文件名、用户名、密码或不透明 token 正文。
+fn redacted_argv_shape(argv: &[String]) -> String {
+    argv.iter()
+        .enumerate()
+        .map(|(index, token)| {
+            if index == 0 {
+                return "executable".to_owned();
+            }
+            let value = token.trim().trim_matches(['\'', '"']);
+            let lower = value.to_ascii_lowercase();
+            if let Some((scheme, _)) = lower.split_once("://") {
+                let known_scheme = match scheme {
+                    "file" | "ftp" | "http" | "https" | "kerminal" | "sftp" | "ssh" => scheme,
+                    _ => "other",
+                };
+                return format!("url:{known_scheme}");
+            }
+            if lower.ends_with(".moba") {
+                return "file:.moba".to_owned();
+            }
+            if lower.starts_with('-') || lower.starts_with('/') {
+                let name = lower
+                    .split_once('=')
+                    .map(|(name, _)| name)
+                    .unwrap_or(lower.as_str());
+                let known_name = match name {
+                    "--external-sftp"
+                    | "--external-ssh"
+                    | "--external-ssh-json"
+                    | "--host"
+                    | "--hostname"
+                    | "--logontype"
+                    | "--remote-host"
+                    | "--site"
+                    | "-exec"
+                    | "-host"
+                    | "-hostname"
+                    | "-load"
+                    | "-newtab"
+                    | "-newwin"
+                    | "-pw"
+                    | "-pwfile"
+                    | "-remotehost"
+                    | "-server"
+                    | "-ssh"
+                    | "-url"
+                    | "/browse"
+                    | "/newinstance"
+                    | "/passwordsfromfiles"
+                    | "/ssh2" => name,
+                    _ => "other",
+                };
+                return format!("option:{known_name}");
+            }
+            let bucket = match value.len() {
+                0 => "empty",
+                1..=32 => "short",
+                33..=128 => "medium",
+                _ => "long",
+            };
+            format!("opaque:{bucket}")
+        })
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 fn hash_field(hasher: &mut Sha256, value: &[u8]) {

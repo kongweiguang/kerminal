@@ -55,6 +55,39 @@ fn parses_generic_sftp_url_as_transfer_intent_without_leaking_password() {
 }
 
 #[test]
+fn parses_sftp_url_with_literal_wrapper_quotes_from_vendor_launchers() {
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::inferred_direct_argv(vec![
+            "kerminal.exe".to_owned(),
+            "  \"sftp://ops@example.internal/releases/\"  ".to_owned(),
+        ]))
+        .expect("parse quoted vendor SFTP URL");
+
+    assert_eq!(request.source.tool, ExternalLaunchSourceTool::SftpClient);
+    assert_eq!(request.target.host, "example.internal");
+    assert_eq!(request.target.username.as_deref(), Some("ops"));
+}
+
+#[test]
+fn parses_bastion_sftp_url_without_trailing_slash_as_root() {
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::inferred_direct_argv(vec![
+            "kerminal.exe".to_owned(),
+            "sftp://ops:session-token@example.internal:2222".to_owned(),
+        ]))
+        .expect("parse bastion SFTP URL without trailing slash");
+
+    assert!(matches!(
+        request.intent,
+        kerminal_lib::services::external_launch::ExternalLaunchIntent::SftpTransfer {
+            ref remote_path,
+            selected_entry: None,
+            ..
+        } if remote_path.as_deref() == Some("/")
+    ));
+}
+
+#[test]
 fn sftp_file_url_opens_parent_and_selects_file() {
     let request = ExternalLaunchParserRegistry::new()
         .parse(&ExternalLaunchParseInput::direct_argv(

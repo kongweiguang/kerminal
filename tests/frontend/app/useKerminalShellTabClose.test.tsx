@@ -30,6 +30,12 @@ const externalSftpTab: TerminalTab = {
   rightHostId: "external:launch-sftp",
   title: "临时堡垒机传输",
 };
+const externalTerminalTab: TerminalTab = {
+  id: "tab-external-terminal",
+  layout: { paneId: "pane-external-terminal", type: "pane" },
+  machineId: "external:launch-terminal",
+  title: "临时堡垒机终端",
+};
 
 describe("useKerminalShellTabClose", () => {
   it("requires dirty-file confirmation before closing a workspace file", () => {
@@ -107,6 +113,52 @@ describe("useKerminalShellTabClose", () => {
     act(() => result.current.confirmTerminalTabs());
     expect(onTabsClosed).toHaveBeenCalledTimes(1);
     expect(onTabsClosed).toHaveBeenCalledWith([terminalTab.id]);
+  });
+
+  it("does not confirm again when the workspace already confirmed the tab close", () => {
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        terminalTabs: [terminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() => result.current.closeConfirmedTab(terminalTab.id));
+
+    expect(closeTerminalTab).toHaveBeenCalledWith(terminalTab.id);
+    expect(onTabsClosed).toHaveBeenCalledWith([terminalTab.id]);
+    expect(result.current.pendingTerminalTabCount).toBe(0);
+  });
+
+  it("releases an external SSH launch only when its terminal tab explicitly closes", async () => {
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        removeSidebarMachine,
+        terminalTabs: [externalTerminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() => result.current.requestCloseTab(externalTerminalTab.id));
+
+    expect(closeTerminalTab).toHaveBeenCalledWith(externalTerminalTab.id);
+    expect(removeSidebarMachine).toHaveBeenCalledWith(
+      externalTerminalTab.machineId,
+    );
+    await waitFor(() =>
+      expect(closeExternalLaunch).toHaveBeenCalledWith("launch-terminal"),
+    );
   });
 
   it("removes an external SFTP tab while its cleanup is still pending", async () => {

@@ -20,7 +20,7 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import { requestSshAuthPrompt } from "../ssh-auth/sshAuthPromptStore";
+import { requestSshAuthPrompt } from "../ssh-auth/state/index";
 import { useWorkspaceStore } from "../workspace/state/index";
 import { ExternalLaunchResolutionDialog } from "./ExternalLaunchResolutionDialog";
 import {

@@ -7,8 +7,11 @@ import type {
 } from "../features/workspace/types";
 import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
 import { prepareExternalSftpTabClose } from "../features/sftp/externalSftpLaunchLifecycle";
+import { externalSshLaunchIdFromMachineId } from "../features/external-launch/externalSshLaunchModel";
+import { closeExternalSshLaunch } from "../lib/externalLaunchApi";
 
 interface UseKerminalShellTabCloseOptions {
+  closeExternalLaunch?: (launchId: string) => Promise<unknown>;
   closeTerminalTab: (tabId: string) => void;
   removeSidebarMachine?: (machineId: string) => void;
   confirmTerminalClose: boolean;
@@ -19,6 +22,7 @@ interface UseKerminalShellTabCloseOptions {
 
 /** 管理终端 tab 与未保存文件的两阶段关闭确认。 */
 export function useKerminalShellTabClose({
+  closeExternalLaunch = closeExternalSshLaunch,
   closeTerminalTab,
   removeSidebarMachine = () => undefined,
   confirmTerminalClose,
@@ -37,12 +41,19 @@ export function useKerminalShellTabClose({
       void closeTabsWithExternalOwners(
         tabIds,
         terminalTabs,
+        closeExternalLaunch,
         closeTerminalTab,
         removeSidebarMachine,
         onTabsClosed,
       );
     },
-    [closeTerminalTab, onTabsClosed, removeSidebarMachine, terminalTabs],
+    [
+      closeExternalLaunch,
+      closeTerminalTab,
+      onTabsClosed,
+      removeSidebarMachine,
+      terminalTabs,
+    ],
   );
 
   const requestCloseTabs = useCallback(
@@ -67,7 +78,6 @@ export function useKerminalShellTabClose({
     [
       closeTabs,
       confirmTerminalClose,
-      removeSidebarMachine,
       terminalTabs,
       workspaceFileDirtyState,
     ],
@@ -76,6 +86,10 @@ export function useKerminalShellTabClose({
   const requestCloseTab = useCallback(
     (tabId: string) => requestCloseTabs([tabId]),
     [requestCloseTabs],
+  );
+  const closeConfirmedTab = useCallback(
+    (tabId: string) => closeTabs([tabId]),
+    [closeTabs],
   );
   const confirmTerminalTabs = useCallback(() => {
     if (!pendingTerminalTabIds) return;
@@ -98,6 +112,7 @@ export function useKerminalShellTabClose({
   return {
     cancelDirtyFileTabs: () => setPendingDirtyFileTabIds(null),
     cancelTerminalTabs: () => setPendingTerminalTabIds(null),
+    closeConfirmedTab,
     confirmDirtyFileTabs,
     confirmTerminalTabs,
     dirtyFileTabCount,
@@ -110,11 +125,13 @@ export function useKerminalShellTabClose({
 async function closeTabsWithExternalOwners(
   tabIds: string[],
   terminalTabs: TerminalTab[],
+  closeExternalLaunch: (launchId: string) => Promise<unknown>,
   closeTerminalTab: (tabId: string) => void,
   removeSidebarMachine: (machineId: string) => void,
   onTabsClosed?: (tabIds: string[]) => void,
 ) {
   const closedTabIds: string[] = [];
+  const closingTabIds = new Set(tabIds);
   for (const tabId of tabIds) {
     const tab = terminalTabs.find((candidate) => candidate.id === tabId);
     if (tab?.kind === "sftpTransfer" && tab.externalLaunchId) {
@@ -132,8 +149,30 @@ async function closeTabsWithExternalOwners(
       closedTabIds.push(tabId);
       continue;
     }
+    const externalLaunchId = tab
+      ? externalSshLaunchIdFromMachineId(tab.machineId)
+      : null;
     closeTerminalTab(tabId);
     closedTabIds.push(tabId);
+    if (!tab || !externalLaunchId) {
+      continue;
+    }
+    const ownerRemains = terminalTabs.some(
+      (candidate) =>
+        candidate.machineId === tab.machineId &&
+        candidate.id !== tab.id &&
+        !closingTabIds.has(candidate.id),
+    );
+    const closingSftpOwner = terminalTabs.some(
+      (candidate) =>
+        closingTabIds.has(candidate.id) &&
+        candidate.kind === "sftpTransfer" &&
+        candidate.externalLaunchId === externalLaunchId,
+    );
+    if (!ownerRemains && !closingSftpOwner) {
+      removeSidebarMachine(tab.machineId);
+      void closeExternalLaunch(externalLaunchId).catch(() => undefined);
+    }
   }
   if (closedTabIds.length > 0) {
     onTabsClosed?.(closedTabIds);

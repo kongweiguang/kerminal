@@ -147,8 +147,9 @@ impl ExternalLaunchIntake {
         parent_command_line: Option<String>,
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
         let summary = ExternalLaunchArgSummary::new(&argv, cwd.as_deref());
-        log_external_launch_args(entrypoint, "direct", None, &summary);
-        let Some(source_tool) = infer_source_tool_from_args(&argv) else {
+        let source_tool = infer_source_tool_from_args(&argv);
+        log_external_launch_args(entrypoint, "direct", source_tool, &summary);
+        let Some(source_tool) = source_tool else {
             let outcome = ExternalLaunchAcceptOutcome::Noop(ExternalLaunchNoop {
                 entrypoint,
                 reason: "no external SSH launch arguments detected".to_owned(),
@@ -156,13 +157,7 @@ impl ExternalLaunchIntake {
                 cwd_present: cwd.as_ref().is_some_and(|value| !value.trim().is_empty()),
             });
             self.state()?.noop_count += 1;
-            tauri_plugin_log::log::info!(
-                target: "external_launch.intake",
-                "noop entrypoint={entrypoint:?} arg_count={} raw_hash={} cwd_present={}",
-                summary.arg_count,
-                summary.raw_hash,
-                summary.cwd_present
-            );
+            log_external_launch_noop(entrypoint, &summary);
             return Ok(outcome);
         };
         let policy = self.policy_snapshot()?;
@@ -200,13 +195,7 @@ impl ExternalLaunchIntake {
                 self.enqueue_request(request, entrypoint, summary)
             }
             Err(error) => {
-                tauri_plugin_log::log::warn!(
-                    target: "external_launch.intake",
-                    "rejected entrypoint={entrypoint:?} source_tool={source_tool:?} arg_count={} raw_hash={} cwd_present={} reason=parse",
-                    summary.arg_count,
-                    summary.raw_hash,
-                    summary.cwd_present
-                );
+                log_external_launch_rejected(entrypoint, source_tool, &summary, &error);
                 let rejected =
                     self.record_rejection(entrypoint, Some(source_tool), error, summary)?;
                 Ok(ExternalLaunchAcceptOutcome::Rejected(rejected))
@@ -242,8 +231,9 @@ impl ExternalLaunchIntake {
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
         let intake_started_at = Instant::now();
         let summary = ExternalLaunchArgSummary::new(&argv, cwd.as_deref());
-        log_external_launch_args(entrypoint, "direct", None, &summary);
-        let Some(source_tool) = infer_source_tool_from_args(&argv) else {
+        let source_tool = infer_source_tool_from_args(&argv);
+        log_external_launch_args(entrypoint, "direct", source_tool, &summary);
+        let Some(source_tool) = source_tool else {
             let outcome = ExternalLaunchAcceptOutcome::Noop(ExternalLaunchNoop {
                 entrypoint,
                 reason: "no external SSH launch arguments detected".to_owned(),
@@ -251,6 +241,7 @@ impl ExternalLaunchIntake {
                 cwd_present: cwd.as_ref().is_some_and(|value| !value.trim().is_empty()),
             });
             self.state()?.noop_count += 1;
+            log_external_launch_noop(entrypoint, &summary);
             return Ok(outcome);
         };
         let policy = self.policy_snapshot()?;
@@ -269,6 +260,7 @@ impl ExternalLaunchIntake {
         let request = match parse_request_bounded(input).await {
             Ok(request) => request,
             Err(error) => {
+                log_external_launch_rejected(entrypoint, source_tool, &summary, &error);
                 let rejected =
                     self.record_rejection(entrypoint, Some(source_tool), error, summary)?;
                 return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));

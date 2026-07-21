@@ -24,15 +24,18 @@ import {
 } from "../../lib/sftpApi";
 import { sshTarget } from "../../lib/targetModel";
 import { defaultDesktopNotificationSettings } from "../settings/defaults/index";
-import type {
-  DesktopNotificationSettings,
-  InterfaceDensity,
-} from "../settings/contracts/index";
-import type { Machine, MachineGroup } from "../workspace/contracts/index";
+import type { InterfaceDensity } from "../settings/contracts/index";
+import type { Machine } from "../workspace/contracts/index";
+import type { OpenWorkspaceFileTabOptions } from "../workspace/state/index";
 import { LocalTransferPane } from "./LocalTransferPane";
 import type { SftpClipboard } from "./SftpToolContent";
 import { SftpTransferQueuePanel } from "./SftpTransferQueuePanel";
+import { resolveSftpTransferWorkbenchLayout } from "./SftpTransferWorkbenchLayout";
 import { HostTabButton } from "./SftpTransferWorkbench.parts";
+import type {
+  SftpTransferCreateHostRequest,
+  SftpTransferWorkbenchProps,
+} from "./SftpTransferWorkbench.types";
 import {
   RemoteHostPaneBody,
   SearchableSftpHostSelect,
@@ -68,31 +71,8 @@ import {
   useSftpTransferQueueSync,
 } from "./useSftpTransferQueueSync";
 
-export interface SftpTransferWorkbenchProps {
-  active?: boolean;
-  createdHostTarget?: SftpTransferCreatedHostTarget;
-  desktopNotifications?: DesktopNotificationSettings;
-  groups: MachineGroup[];
-  initialRightHostId?: string;
-  initialRightPath?: string;
-  initialRightSelection?: string;
-  externalLaunchId?: string;
-  interfaceDensity?: InterfaceDensity;
-  lockedLeftHostId?: string;
-  onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
-  workspaceTabId?: string;
-}
-export interface SftpTransferCreateHostRequest {
-  side: SftpTransferHostSide;
-  workspaceTabId?: string;
-}
-
-export interface SftpTransferCreatedHostTarget {
-  hostId: string;
-  sequence: number;
-  side: SftpTransferHostSide;
-  workspaceTabId?: string;
-}
+export type { SftpTransferCreateHostRequest, SftpTransferCreatedHostTarget } from "./SftpTransferWorkbench.types";
+export type { SftpTransferWorkbenchProps } from "./SftpTransferWorkbench.types";
 
 export function SftpTransferWorkbench({
   active = true,
@@ -106,6 +86,7 @@ export function SftpTransferWorkbench({
   interfaceDensity = "comfortable",
   lockedLeftHostId,
   onCreateSshHost,
+  onOpenWorkspaceFileTab,
   workspaceTabId,
 }: SftpTransferWorkbenchProps) {
   const sshMachines = useMemo(() => collectSshMachines(groups), [groups]);
@@ -422,28 +403,12 @@ export function SftpTransferWorkbench({
     [rightCurrentPath, rightMachine],
   );
   const canClearTransfers = canClearFinishedTransfers(transfers);
-  const compactDensity = interfaceDensity === "compact";
-  const spaciousDensity = interfaceDensity === "spacious";
-  const headerPaddingClass = compactDensity
-    ? "px-3 py-2"
-    : spaciousDensity
-      ? "px-5 py-4"
-      : "px-4 py-3";
-  const bodyGridClass = compactDensity
-    ? "grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
-    : spaciousDensity
-      ? "grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
-      : "grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]";
-  const headerIconClass = compactDensity
-    ? "h-8 w-8 rounded-[var(--radius-control)]"
-    : spaciousDensity
-      ? "h-10 w-10 rounded-[var(--radius-control)]"
-      : "h-9 w-9 rounded-[var(--radius-control)]";
-  const headerActionClass = compactDensity
-    ? "h-8 w-8 rounded-[var(--radius-control)]"
-    : spaciousDensity
-      ? "h-10 w-10 rounded-[var(--radius-control)]"
-      : "h-9 w-9 rounded-[var(--radius-control)]";
+  const {
+    bodyGridClass,
+    headerActionClass,
+    headerIconClass,
+    headerPaddingClass,
+  } = resolveSftpTransferWorkbenchLayout(interfaceDensity);
 
   return (
     <section
@@ -515,6 +480,7 @@ export function SftpTransferWorkbench({
           onCloseTab={closeLeftHostTab}
           onCurrentPathChange={setLeftLocalPath}
           onLocalClipboardChange={handleLocalClipboardChange}
+          onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
           onPathChange={updateLeftPath}
           onTransferQueued={refreshTransfers}
           targetMachine={rightMachine}
@@ -536,6 +502,7 @@ export function SftpTransferWorkbench({
           onCreateSshHost={onCreateSshHost ? requestCreateSshHost : undefined}
           onClipboardChange={handleRemoteClipboardChange}
           onCloseTab={closeRightHostTab}
+          onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
           onPathChange={updateRightPath}
           revealRequest={initialRightRevealRequest}
           side="right"
@@ -588,6 +555,7 @@ function LeftPane({
   onCreateSshHost,
   onClipboardChange,
   onLocalClipboardChange,
+  onOpenWorkspaceFileTab,
   onCloseTab,
   onCurrentPathChange,
   onPathChange,
@@ -614,6 +582,7 @@ function LeftPane({
   onCloseTab: (tabId: string) => void;
   onCurrentPathChange?: (path: string | undefined) => void;
   onLocalClipboardChange: (clipboard: SftpWorkbenchLocalClipboard) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onPathChange: (tabId: string, path: string) => void;
   onTransferQueued?: () => void;
   targetMachine: Machine | undefined;
@@ -707,6 +676,7 @@ function LeftPane({
               interfaceDensity={interfaceDensity}
               machinesById={machinesById}
               onClipboardChange={onClipboardChange}
+              onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
               onPathChange={onPathChange}
               transferTarget={transferTarget}
               transferViewScope={transferViewScope}
@@ -731,6 +701,7 @@ function HostPane({
   onCreateSshHost,
   onClipboardChange,
   onCloseTab,
+  onOpenWorkspaceFileTab,
   onPathChange,
   revealRequest,
   side,
@@ -751,6 +722,7 @@ function HostPane({
   onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
   onClipboardChange: (clipboard: SftpClipboard | null) => void;
   onCloseTab: (tabId: string) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onPathChange: (tabId: string, path: string) => void;
   revealRequest?: import("../workspace/contracts/index").WorkspaceFileRevealRequest;
   side: SftpTransferHostSide;
@@ -811,6 +783,7 @@ function HostPane({
           interfaceDensity={interfaceDensity}
           machinesById={machinesById}
           onClipboardChange={onClipboardChange}
+          onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
           onPathChange={onPathChange}
           revealRequest={revealRequest}
           transferTarget={transferTarget}

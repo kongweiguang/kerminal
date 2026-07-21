@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use kerminal_lib::services::external_launch::{
     ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint, ExternalLaunchEventKind,
     ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchSourceTool, ExternalSecretSlot,
@@ -379,6 +381,56 @@ fn intake_noops_for_random_file_path_arg() {
     let snapshot = intake.snapshot().expect("snapshot");
     assert_eq!(snapshot.noop_count, 1);
     assert_eq!(snapshot.pending_count, 0);
+}
+
+#[test]
+fn intake_queues_sftp_url_with_literal_vendor_wrapper_quotes() {
+    let intake = ExternalLaunchIntake::new();
+
+    let outcome = intake
+        .accept_args(
+            vec![
+                "kerminal.exe".to_owned(),
+                "  \"sftp://ops@example.internal/releases/\"  ".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::SingleInstance,
+        )
+        .expect("accept quoted vendor SFTP URL");
+
+    assert!(matches!(outcome, ExternalLaunchAcceptOutcome::Queued(_)));
+    let pending = intake.take_pending().expect("take quoted SFTP request");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].source.tool, ExternalLaunchSourceTool::SftpClient);
+    assert_eq!(pending[0].target.host, "example.internal");
+}
+
+#[test]
+fn intake_queues_bastion_sftp_url_without_trailing_slash() {
+    let intake = ExternalLaunchIntake::new();
+
+    let outcome = intake
+        .accept_args(
+            vec![
+                "kerminal.exe".to_owned(),
+                "sftp://ops:session-token@example.internal:2222".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::SingleInstance,
+        )
+        .expect("accept bastion SFTP URL without trailing slash");
+
+    assert!(matches!(outcome, ExternalLaunchAcceptOutcome::Queued(_)));
+    let pending = intake.take_pending().expect("take root SFTP request");
+    assert_eq!(pending.len(), 1);
+    assert!(matches!(
+        pending[0].intent,
+        kerminal_lib::services::external_launch::ExternalLaunchIntent::SftpTransfer {
+            ref remote_path,
+            selected_entry: None,
+            ..
+        } if remote_path.as_deref() == Some("/")
+    ));
 }
 
 #[test]

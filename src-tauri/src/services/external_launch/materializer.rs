@@ -106,7 +106,7 @@ impl ExternalSessionMaterializer {
                 .is_some_and(|value| !value.trim().is_empty())
         );
         match self.materialize_outcome(paths, launch_id, username_override)? {
-            ExternalMaterializeOutcome::Ready(target) => Ok(target),
+            ExternalMaterializeOutcome::Ready(target) => Ok(*target),
             ExternalMaterializeOutcome::PromptRequired(prompt_plan) => {
                 Err(AppError::Credential(format!(
                     "external SSH launch still requires authentication: prompt_count={} kinds={}",
@@ -151,7 +151,7 @@ impl ExternalSessionMaterializer {
             target.safety
         );
         self.targets()?
-            .insert(target.host_id.clone(), target.clone());
+            .insert(target.host_id.clone(), target.as_ref().clone());
         Ok(ExternalMaterializeOutcome::Ready(target))
     }
 
@@ -270,7 +270,7 @@ impl ExternalSessionMaterializer {
             };
             let runtime_host =
                 SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved_auth);
-            Ok(ExternalMaterializeOutcome::Ready(
+            Ok(ExternalMaterializeOutcome::Ready(Box::new(
                 ExternalMaterializedTarget {
                     display_name: display_name(&request, &runtime_host),
                     host: runtime_host,
@@ -281,7 +281,7 @@ impl ExternalSessionMaterializer {
                     session_secret_receipts: std::mem::take(&mut receipts),
                     source_tool: request.source.tool,
                 },
-            ))
+            )))
         })();
         if !matches!(result, Ok(ExternalMaterializeOutcome::Ready(_))) {
             for receipt in &receipts {
@@ -328,7 +328,7 @@ impl ExternalSessionMaterializer {
 /// Structured materialization result used by trusted UI authentication prompts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExternalMaterializeOutcome {
-    Ready(ExternalMaterializedTarget),
+    Ready(Box<ExternalMaterializedTarget>),
     PromptRequired(SshAuthPromptPlan),
 }
 

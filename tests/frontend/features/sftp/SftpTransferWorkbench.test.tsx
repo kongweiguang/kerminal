@@ -42,6 +42,7 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
     active,
     compactHeader,
     onCurrentPathChange,
+    onOpenWorkspaceFileTab,
     onSftpClipboardChange,
     selectedMachine,
     showLocalTransferActions,
@@ -54,6 +55,7 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
     active: boolean;
     compactHeader?: boolean;
     onCurrentPathChange?: (path: string) => void;
+    onOpenWorkspaceFileTab?: (options: unknown) => void;
     onSftpClipboardChange: (clipboard: SftpClipboard | null) => void;
     selectedMachine: { id: string; name: string };
     showLocalTransferActions?: boolean;
@@ -100,6 +102,21 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
           type="button"
         >
           报告路径 {selectedMachine.name}
+        </button>
+        <button
+          disabled={!onOpenWorkspaceFileTab}
+          onClick={() =>
+            onOpenWorkspaceFileTab?.({
+              access: "editable",
+              path: "/srv/app.log",
+              rootPath: "/srv",
+              source: "sftp",
+              target: { hostId: selectedMachine.id, kind: "ssh" },
+            })
+          }
+          type="button"
+        >
+          打开文件 {selectedMachine.name}
         </button>
       </div>
     );
@@ -324,6 +341,28 @@ describe("SftpTransferWorkbench", () => {
     await user.click(screen.getByRole("option", { name: "right" }));
 
     expect(screen.getAllByRole("button", { name: "right" })).toHaveLength(2);
+  });
+
+  it("forwards the central workspace file bridge to remote host panes", async () => {
+    const user = userEvent.setup();
+    const onOpenWorkspaceFileTab = vi.fn();
+    render(
+      <SftpTransferWorkbench
+        groups={groups}
+        initialRightHostId="host-right"
+        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开文件 right" }));
+
+    expect(onOpenWorkspaceFileTab).toHaveBeenCalledWith({
+      access: "editable",
+      path: "/srv/app.log",
+      rootPath: "/srv",
+      source: "sftp",
+      target: { hostId: "host-right", kind: "ssh" },
+    });
   });
 
   it("filters the transfer host dropdown before adding an SSH host", async () => {

@@ -125,7 +125,7 @@ pub fn external_launch_materialize(
     Ok(match outcome {
         Ok(crate::services::external_launch::ExternalMaterializeOutcome::Ready(target)) => {
             ExternalLaunchMaterializeOutcomeDto::Ready {
-                target: materialized_target_to_dto(target),
+                target: materialized_target_to_dto(*target),
             }
         }
         Ok(crate::services::external_launch::ExternalMaterializeOutcome::PromptRequired(

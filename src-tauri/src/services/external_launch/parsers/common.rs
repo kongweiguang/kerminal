@@ -41,17 +41,30 @@ pub(super) fn build_request(
     ExternalSshLaunchRequest::new(source, target, auth, options, diagnostics)
 }
 
+pub(super) struct RequestWithIntent {
+    pub(super) target: ExternalSshTarget,
+    pub(super) auth: ExternalSshAuth,
+    pub(super) options: ExternalSshLaunchOptions,
+    pub(super) intent: ExternalLaunchIntent,
+    pub(super) argv_redacted: Vec<String>,
+}
+
 pub(super) fn build_request_with_intent(
     input: &ExternalLaunchParseInput,
     tool: ExternalLaunchSourceTool,
     parser: &str,
-    target: ExternalSshTarget,
-    auth: ExternalSshAuth,
-    options: ExternalSshLaunchOptions,
-    intent: ExternalLaunchIntent,
-    argv_redacted: Vec<String>,
+    request: RequestWithIntent,
 ) -> ExternalSshLaunchRequest {
-    build_request(input, tool, parser, target, auth, options, argv_redacted).with_intent(intent)
+    build_request(
+        input,
+        tool,
+        parser,
+        request.target,
+        request.auth,
+        request.options,
+        request.argv_redacted,
+    )
+    .with_intent(request.intent)
 }
 
 pub(super) fn should_parse(

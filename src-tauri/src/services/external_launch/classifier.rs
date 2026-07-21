@@ -22,6 +22,7 @@ pub(crate) fn infer_source_tool_from_args(argv: &[String]) -> Option<ExternalLau
         return Some(ExternalLaunchSourceTool::KerminalNative);
     }
     if argv.iter().skip(1).any(|token| {
+        let token = normalized_token(token);
         token.to_ascii_lowercase().starts_with("sftp://")
             || token.eq_ignore_ascii_case("--site")
             || token.eq_ignore_ascii_case("--logontype")
@@ -63,6 +64,10 @@ pub(crate) fn infer_source_tool_from_args(argv: &[String]) -> Option<ExternalLau
     } else {
         None
     }
+}
+
+fn normalized_token(token: &str) -> &str {
+    token.trim().trim_matches(['\'', '"'])
 }
 
 fn infer_source_tool_from_argv0(argv0: &str) -> Option<ExternalLaunchSourceTool> {

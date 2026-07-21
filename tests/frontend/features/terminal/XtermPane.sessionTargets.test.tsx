@@ -422,7 +422,7 @@ describe("XtermPane session targets and appearance", () => {
     });
   });
 
-  it("releases an external SSH launch when its terminal pane unmounts", async () => {
+  it("keeps an external SSH launch alive when its terminal pane transiently unmounts", async () => {
     const view = render(
       <XtermPane
         focused
@@ -445,9 +445,7 @@ describe("XtermPane session targets and appearance", () => {
 
     await waitFor(() => {
       expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-1");
-      expect(mocks.api.closeExternalSshLaunch).toHaveBeenCalledWith(
-        "launch-reconnect",
-      );
+      expect(mocks.api.closeExternalSshLaunch).not.toHaveBeenCalled();
     });
   });
 

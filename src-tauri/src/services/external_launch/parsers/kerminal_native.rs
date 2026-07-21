@@ -10,6 +10,7 @@ use crate::error::{AppError, AppResult};
 use super::common::{
     build_request, build_request_with_intent, find_any_named_option, find_generic_host_option,
     find_option_index, required_generic_host_option, required_named_option, should_parse,
+    RequestWithIntent,
 };
 use crate::services::external_launch::{
     destination::parse_port,
@@ -111,11 +112,13 @@ impl ExternalLaunchParser for KerminalNativeParser {
             } else {
                 "kerminal-native-flags"
             },
-            target,
-            ExternalSshAuth::default(),
-            options,
-            intent,
-            input.argv.clone(),
+            RequestWithIntent {
+                target,
+                auth: ExternalSshAuth::default(),
+                options,
+                intent,
+                argv_redacted: input.argv.clone(),
+            },
         )))
     }
 }
@@ -153,18 +156,20 @@ fn parse_kerminal_sftp_protocol_url(
         input,
         ExternalLaunchSourceTool::KerminalNative,
         "kerminal-native-sftp-protocol",
-        target,
-        ExternalSshAuth::default(),
-        ExternalSshLaunchOptions::default(),
-        ExternalLaunchIntent::SftpTransfer {
-            remote_path: query_param(&url, "path")
-                .as_deref()
-                .map(validate_sftp_path)
-                .transpose()?,
-            selected_entry: None,
-            host_key_assertion: None,
+        RequestWithIntent {
+            target,
+            auth: ExternalSshAuth::default(),
+            options: ExternalSshLaunchOptions::default(),
+            intent: ExternalLaunchIntent::SftpTransfer {
+                remote_path: query_param(&url, "path")
+                    .as_deref()
+                    .map(validate_sftp_path)
+                    .transpose()?,
+                selected_entry: None,
+                host_key_assertion: None,
+            },
+            argv_redacted: redacted,
         },
-        redacted,
     ))
 }
 

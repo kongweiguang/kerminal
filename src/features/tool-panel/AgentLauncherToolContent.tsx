@@ -74,7 +74,6 @@ import { useAgentSessionTitleRename } from "./agent-launcher/useAgentSessionTitl
 import { useAgentSendRequestCoordinator } from "./agent-launcher/useAgentSendRequestCoordinator";
 import { useAgentSendRequestSnapshot } from "../agent-workflow/state/index";
 import { createAgentSessionForLaunch } from "./agent-launcher/agentSessionLaunchFactory";
-
 interface AgentLauncherToolContentProps {
   activeTab?: TerminalTab;
   desktopNotifications?: DesktopNotificationSettings;
@@ -84,7 +83,6 @@ interface AgentLauncherToolContentProps {
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
 }
-
 type AgentLauncherScreen = "launcher" | "terminal";
 
 export function AgentLauncherToolContent({
@@ -184,7 +182,6 @@ export function AgentLauncherToolContent({
     },
     [],
   );
-
   const loadPersistedAgentSessions = useCallback(async () => {
     try {
       const list = await listAgentSessions();
@@ -466,7 +463,7 @@ export function AgentLauncherToolContent({
       agentSessionId,
       agentId: launchSpec.agentId,
       args: launchSpec.args ?? [],
-      commandLabel: formatLaunchCommand(launchSpec),
+      commandLabel: agentLaunchDisplayCommand(launchSpec) || launchSpec.title,
       cwd: launchSpec.cwd,
       env: launchSpec.env,
       permissionMode,
@@ -798,8 +795,4 @@ export function AgentLauncherToolContent({
       })}
     </section>
   );
-}
-
-function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
-  return agentLaunchDisplayCommand(spec) || spec.title;
 }

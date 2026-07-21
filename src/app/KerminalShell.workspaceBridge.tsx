@@ -61,6 +61,7 @@ type WorkspaceTerminalSurfaceProps = {
     request: BroadcastCommandRequest,
   ) => Promise<BroadcastCommandResult>;
   onCreateSftpHost?: (request: SftpTransferCreateHostRequest) => void;
+  onCloseConfirmedTab: (tabId: string) => void;
   onOpenAgentTool: () => void;
   onOpenConnection: () => void;
   onOpenLogs: () => void;
@@ -132,6 +133,7 @@ export function WorkspaceTerminalSurface({
   machineGroups,
   onBroadcastCommand,
   onCreateSftpHost,
+  onCloseConfirmedTab,
   onOpenAgentTool,
   onOpenConnection,
   onOpenLogs,
@@ -140,6 +142,9 @@ export function WorkspaceTerminalSurface({
   splitDropIndicator,
   terminalAppearance,
 }: WorkspaceTerminalSurfaceProps) {
+  const openWorkspaceFileTab = useWorkspaceStore(
+    (state) => state.openWorkspaceFileTab,
+  );
   const terminalWorkspaceSnapshot = useSyncExternalStore(
     subscribeToWorkspaceStore,
     getTerminalWorkspaceSnapshot,
@@ -150,7 +155,6 @@ export function WorkspaceTerminalSurface({
     [terminalWorkspaceSnapshot],
   );
   const closePane = useWorkspaceStore((state) => state.closePane);
-  const closeTerminalTab = useWorkspaceStore((state) => state.closeTerminalTab);
   const setWorkspaceFileTabDirty = useWorkspaceStore(
     (state) => state.setWorkspaceFileTabDirty,
   );
@@ -205,7 +209,7 @@ export function WorkspaceTerminalSurface({
       onBroadcastCommand={onBroadcastCommand}
       onBroadcastDraftChange={setBroadcastDraft}
       onClosePane={closePane}
-      onCloseTab={closeTerminalTab}
+      onCloseTab={onCloseConfirmedTab}
       onCreateTerminal={() => addTerminalTab()}
       onFocusPane={focusPane}
       onOpenAgentTool={onOpenAgentTool}
@@ -239,6 +243,7 @@ export function WorkspaceTerminalSurface({
             interfaceDensity={interfaceDensity}
             lockedLeftHostId={tab.lockedLeftHostId}
             onCreateSshHost={onCreateSftpHost}
+            onOpenWorkspaceFileTab={openWorkspaceFileTab}
             workspaceTabId={tab.id}
           />
         ) : isWorkspaceFileTab(tab) ? (
