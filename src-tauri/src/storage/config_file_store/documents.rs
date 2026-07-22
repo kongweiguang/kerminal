@@ -545,7 +545,7 @@ impl RemoteHostTomlDocument {
                     "unsupported host schema_version: {}, expected {}",
                     self.schema_version, REMOTE_HOST_SCHEMA_VERSION
                 ),
-                "Host schema v1 is no longer supported. Use a Kerminal version that can read the old file to export it, or rewrite it as schema_version = 2 with an explicit protocol.",
+                "Host schema v1 is no longer accepted by the normal loader. Restart Kerminal to run the one-time startup upgrader that writes schema v2 with an explicit protocol; if migration is rejected, fix the reported original file and restart without rewriting it through the v2 CRUD path.",
             ));
         }
         let protocol = self.protocol.ok_or_else(|| {
