@@ -485,7 +485,6 @@ impl From<RemoteHostGroupTomlEntry> for RemoteHostGroup {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct RemoteHostTomlDocument {
     schema_version: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     protocol: Option<RemoteHostProtocol>,
     id: String,
     group_id: Option<String>,
@@ -518,12 +517,8 @@ impl RemoteHostTomlDocument {
             jump_host.key_passphrase_secret = None;
         }
         Self {
-            schema_version: if host.protocol == RemoteHostProtocol::Sftp {
-                2
-            } else {
-                CONFIG_FILE_SCHEMA_VERSION
-            },
-            protocol: (host.protocol == RemoteHostProtocol::Sftp).then_some(host.protocol),
+            schema_version: REMOTE_HOST_SCHEMA_VERSION,
+            protocol: Some(host.protocol),
             id: host.id,
             group_id: host.group_id,
             name: host.name,
@@ -544,38 +539,21 @@ impl RemoteHostTomlDocument {
     }
 
     pub(super) fn into_host(self) -> FileStoreResult<RemoteHost> {
-        let protocol = match self.schema_version {
-            CONFIG_FILE_SCHEMA_VERSION => {
-                if self.protocol.is_some() {
-                    return Err(remote_host_schema_error(
-                        "host schema v1 must not declare protocol",
-                        "Remove protocol or set schema_version = 2 for an SFTP-only host.",
-                    ));
-                }
-                RemoteHostProtocol::from_legacy_tags(&self.tags)
-            }
-            2 => match self.protocol {
-                Some(RemoteHostProtocol::Sftp) => RemoteHostProtocol::Sftp,
-                Some(_) => {
-                    return Err(remote_host_schema_error(
-                        "host schema v2 currently supports only protocol = \"sftp\"",
-                        "Use schema_version = 1 for SSH, RDP, Telnet, or Serial hosts.",
-                    ))
-                }
-                None => {
-                    return Err(remote_host_schema_error(
-                        "host schema v2 requires protocol = \"sftp\"",
-                        "Add protocol = \"sftp\" or restore schema_version = 1.",
-                    ))
-                }
-            },
-            version => {
-                return Err(remote_host_schema_error(
-                    &format!("unsupported host schema_version: {version}, expected 1 or 2"),
-                    "Set schema_version = 1 for legacy hosts or 2 for an SFTP-only host.",
-                ))
-            }
-        };
+        if self.schema_version != REMOTE_HOST_SCHEMA_VERSION {
+            return Err(remote_host_schema_error(
+                &format!(
+                    "unsupported host schema_version: {}, expected {}",
+                    self.schema_version, REMOTE_HOST_SCHEMA_VERSION
+                ),
+                "Host schema v1 is no longer supported. Use a Kerminal version that can read the old file to export it, or rewrite it as schema_version = 2 with an explicit protocol.",
+            ));
+        }
+        let protocol = self.protocol.ok_or_else(|| {
+            remote_host_schema_error(
+                "host schema v2 requires an explicit protocol",
+                "Add protocol = \"ssh\", \"sftp\", \"rdp\", \"telnet\", or \"serial\".",
+            )
+        })?;
         let secret_ref = self.secret_ref;
         let key_passphrase_ref = self.key_passphrase_ref;
         let ssh_options = normalize_jump_host_credential_statuses(self.ssh_options);
@@ -605,6 +583,8 @@ impl RemoteHostTomlDocument {
         })
     }
 }
+
+const REMOTE_HOST_SCHEMA_VERSION: u32 = 2;
 
 fn remote_host_schema_error(message: &str, recovery: &str) -> FileStoreError {
     FileStoreError::TomlParse(

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   adaptAgentPromptHistoryMetadata,
@@ -58,18 +60,18 @@ describe("agentWorkflowModel", () => {
       resolveAgentWorkflowSessionSnapshot({
         record: {
           session: {
-            agentId: "codex",
-            agentSessionId: "ags-1",
-            createdAt: "2026-07-11T08:00:00.000Z",
+            agent_id: "codex",
+            agent_session_id: "ags-1",
+            created_at: "2026-07-11T08:00:00.000Z",
             launch: { args: [], cwd: "/workspace", shell: "codex" },
             status: "active",
             target: {
               cwd: "/srv/app",
-              liveStatus: "ready",
-              targetRef: "ssh:prod",
+              live_status: "ready",
+              target_ref: "ssh:prod",
             },
             title: "生产排障",
-            updatedAt: "2026-07-12T08:00:00.000Z",
+            updated_at: "2026-07-12T08:00:00.000Z",
           },
         },
       }),

@@ -164,7 +164,7 @@ impl CommandHistoryService {
         storage.clear_command_history()
     }
 
-    /// 按终端上下文清理历史；空范围保留全局清空兼容行为。
+    /// 按显式终端上下文清理历史；拒绝空范围，避免意外清空全部数据。
     pub fn clear_history_scoped(
         &self,
         storage: &CommandSqliteStore,
@@ -174,6 +174,15 @@ impl CommandHistoryService {
         let remote_host_id =
             normalize_optional_text("SSH 主机 id", request.remote_host_id, MAX_ID_CHARS)?;
         let session_id = normalize_optional_text("session id", request.session_id, MAX_ID_CHARS)?;
+        if request.target.is_none()
+            && pane_id.is_none()
+            && remote_host_id.is_none()
+            && session_id.is_none()
+        {
+            return Err(AppError::InvalidInput(
+                "命令历史清理必须明确指定 target、paneId、remoteHostId 或 sessionId".to_owned(),
+            ));
+        }
         storage.clear_command_history_filtered(&CommandHistoryClearFilter {
             target: request.target,
             pane_id: pane_id.as_deref(),

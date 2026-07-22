@@ -20,7 +20,6 @@ import {
   buildUserProxySetupScript,
   buildUserProxyUndoScript,
   copyAddressForSession,
-  isLegacyHttpNetworkAssist,
   isRemoteDynamicSocks,
   proxyUrlForSession,
   sessionDirectionLabel,
@@ -120,7 +119,6 @@ function PortForwardSessionRow({
   session: PortForwardSummary;
 }) {
   const isRemoteSocks = isRemoteDynamicSocks(session);
-  const isLegacyHttp = isLegacyHttpNetworkAssist(session);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = useId();
   const proxyUrl = proxyUrlForSession(session);
@@ -217,11 +215,6 @@ function PortForwardSessionRow({
               {effectiveInjectDisabledReason}
             </div>
           ) : null}
-          {isLegacyHttp ? (
-            <div className="mt-2 text-[11px] leading-4 text-amber-700 dark:text-amber-200">
-              旧版 HTTP 网络助手已移除；该记录仅支持停止或删除，请改用远端 SOCKS。
-            </div>
-          ) : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -252,10 +245,9 @@ function PortForwardSessionRow({
         </Button>
         <Button
           aria-label="编辑隧道"
-          disabled={isLegacyHttp}
           onClick={() => onEdit(session)}
           size="icon"
-          title={isLegacyHttp ? "旧版 HTTP 网络助手不可编辑" : "编辑隧道"}
+          title="编辑隧道"
           variant="secondary"
         >
           <Pencil className="h-4 w-4" />
@@ -329,10 +321,9 @@ function PortForwardSessionRow({
         ) : (
           <Button
             aria-label="启动隧道"
-            disabled={isLegacyHttp}
             onClick={() => void onStart(session.id)}
             size="icon"
-            title={isLegacyHttp ? "旧版 HTTP 网络助手不可启动" : "启动隧道"}
+            title="启动隧道"
             variant="secondary"
           >
             <Play className="h-4 w-4" />
@@ -382,9 +373,6 @@ function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
 }
 
 function originLabel(origin: ReturnType<typeof sessionOrigin>) {
-  if (origin === "networkAssist") {
-    return "旧版网络助手";
-  }
   if (origin === "mcpTool") {
     return "MCP 工具";
   }

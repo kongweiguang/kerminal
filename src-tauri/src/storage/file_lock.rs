@@ -68,7 +68,10 @@ pub(crate) fn acquire(root: &Path) -> FileStoreResult<FileStoreLock> {
     for _ in 0..3 {
         match create_lock_file(root, &lock_path, &metadata) {
             Ok(guard) => return Ok(guard),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            Err(error)
+                if error.kind() == ErrorKind::AlreadyExists
+                    || (error.kind() == ErrorKind::PermissionDenied && lock_path.exists()) =>
+            {
                 if !remove_if_provably_stale(&lock_path)? {
                     return Err(FileStoreError::Locked(lock_path));
                 }

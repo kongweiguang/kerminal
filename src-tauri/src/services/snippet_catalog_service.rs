@@ -2,12 +2,7 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::LazyLock,
-};
-
-use regex::Regex;
+use std::collections::HashMap;
 
 use crate::{
     error::AppResult,
@@ -24,10 +19,6 @@ use crate::{
 
 const DEFAULT_LIMIT: usize = 200;
 const MAX_LIMIT: usize = 2_000;
-static LEGACY_PLACEHOLDER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
-        .expect("legacy snippet placeholder regex must compile")
-});
 
 pub fn list_catalog(
     snippets: &SnippetService,
@@ -188,11 +179,7 @@ fn project_builtin(item: &StaticSnippetCatalogItem) -> SnippetCatalogItem {
 }
 
 fn project_user(item: CommandSnippet) -> SnippetCatalogItem {
-    let variables = if item.variables.is_empty() {
-        legacy_raw_variables(&item.command)
-    } else {
-        item.variables
-    };
+    let variables = item.variables;
     let sensitive = variables
         .iter()
         .any(|variable| variable.sensitive || variable.kind == "secret");
@@ -232,28 +219,6 @@ fn project_user(item: CommandSnippet) -> SnippetCatalogItem {
         sort_order: item.sort_order,
         updated_at: item.updated_at,
     }
-}
-
-/// 旧 v1 文件没有变量声明；投影为显式 raw 合同，避免 UI 把模板误判为无参数命令。
-fn legacy_raw_variables(template: &str) -> Vec<SnippetCatalogVariable> {
-    let mut seen = HashSet::new();
-    LEGACY_PLACEHOLDER
-        .captures_iter(template)
-        .filter_map(|captures| captures.get(1).map(|name| name.as_str()))
-        .filter(|name| seen.insert((*name).to_owned()))
-        .map(|name| SnippetCatalogVariable {
-            name: name.to_owned(),
-            label: name.to_owned(),
-            description: "旧片段兼容变量，将按原始文本插入".to_owned(),
-            kind: "raw".to_owned(),
-            required: true,
-            default_value: None,
-            suggestions: Vec::new(),
-            validation: None,
-            render_strategy: "literal".to_owned(),
-            sensitive: false,
-        })
-        .collect()
 }
 
 fn matches_query(item: &SnippetCatalogItem, query: &str) -> bool {

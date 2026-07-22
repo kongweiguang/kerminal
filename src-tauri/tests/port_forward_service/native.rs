@@ -483,7 +483,7 @@ fn create_remote_dynamic_socks5_with_native_runtime_proxies_bytes() {
                 host_id: host.id.clone(),
                 kind: PortForwardKind::RemoteDynamic,
                 name: Some("native remote dynamic socks".to_owned()),
-                origin: PortForwardOrigin::NetworkAssist,
+                origin: PortForwardOrigin::User,
                 proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
                 remote_bind_host: Some("127.0.0.1".to_owned()),
                 source_port,

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type CommandHistoryTarget =
@@ -30,7 +32,7 @@ export interface CommandHistoryListRequest {
   limit?: number;
 }
 
-/** 命令历史清理范围；空对象保留全局清空的兼容语义。 */
+/** 命令历史清理范围；调用方必须明确至少一个过滤字段。 */
 export type CommandHistoryClearRequest = Pick<
   CommandHistoryListRequest,
   "paneId" | "remoteHostId" | "sessionId" | "target"
@@ -140,9 +142,14 @@ export async function deleteCommandHistory(entryId: string): Promise<boolean> {
 }
 
 export async function clearCommandHistory(
-  request: CommandHistoryClearRequest = {},
+  request: CommandHistoryClearRequest,
 ): Promise<number> {
   const normalized = normalizeScopeRequest(request);
+  if (Object.keys(normalized).length === 0) {
+    throw new Error(
+      "命令历史清理必须明确指定 target、paneId、remoteHostId 或 sessionId",
+    );
+  }
   if (!isTauri()) {
     const matchingIds = Array.from(browserPreviewHistory.values())
       .filter((entry) => historyMatchesScope(entry, normalized))

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useMemo, useState } from "react";
 import {
   BookmarkPlus,
@@ -37,7 +39,7 @@ import {
   type SnippetVariableDefinition,
 } from "./snippetTemplate";
 
-export interface SnippetCatalogRowV2Props {
+export interface SnippetCatalogRowProps {
   activeTabId?: string;
   expanded: boolean;
   focusedPane?: TerminalPane;
@@ -53,7 +55,7 @@ export interface SnippetCatalogRowV2Props {
 }
 
 /** 紧凑目录行与展开后的安全运行面板。 */
-export function SnippetCatalogRowV2({
+export function SnippetCatalogRow({
   activeTabId,
   expanded,
   focusedPane,
@@ -66,7 +68,7 @@ export function SnippetCatalogRowV2({
   onToggle,
   onValue,
   values,
-}: SnippetCatalogRowV2Props) {
+}: SnippetCatalogRowProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -167,7 +169,7 @@ export function SnippetCatalogRowV2({
   const bindingInvalid = Boolean(boundSnapshot && !bindingCurrent);
   const executionPolicy = boundSnapshot
     ? resolveSnippetExecutionPolicy({
-        hasLegacyRaw: render.plan?.legacyRaw,
+        hasUnsafeLiteral: render.plan?.unsafeLiteral,
         risk: item.risk,
         sensitive: item.sensitive || Boolean(render.plan?.containsSensitiveValue),
         snapshot: boundSnapshot,

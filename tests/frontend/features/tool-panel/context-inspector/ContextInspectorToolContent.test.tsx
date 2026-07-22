@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import "@testing-library/jest-dom/vitest";
 import {
   fireEvent,
@@ -262,18 +264,18 @@ describe("ContextInspectorToolContent", () => {
       sessions: [
         {
           session: {
-            agentSessionId: "agent-other",
-            agentId: "claude",
+            agent_session_id: "agent-other",
+            agent_id: "claude",
             title: "其它目标会话",
             status: "active",
             launch: { args: [], cwd: "/tmp", shell: "claude" },
-            target: { paneId: "pane-other", tabId: "tab-other" },
+            target: { pane_id: "pane-other", tab_id: "tab-other" },
           },
         },
         {
           session: {
-            agentSessionId: "agent-unbound",
-            agentId: "codex",
+            agent_session_id: "agent-unbound",
+            agent_id: "codex",
             title: "未绑定会话",
             status: "active",
             launch: { args: [], cwd: "/tmp", shell: "codex" },
@@ -281,13 +283,13 @@ describe("ContextInspectorToolContent", () => {
         },
         {
           session: {
-            agentSessionId: "agent-current",
-            agentId: "codex",
+            agent_session_id: "agent-current",
+            agent_id: "codex",
             title: "API 故障排查",
             status: "active",
-            updatedAt: "2026-07-12T01:00:00.000Z",
+            updated_at: "2026-07-12T01:00:00.000Z",
             launch: { args: [], cwd: "/srv/app", shell: "codex" },
-            target: { paneId: "pane-1", tabId: "tab-1", liveStatus: "ready" },
+            target: { pane_id: "pane-1", tab_id: "tab-1", live_status: "ready" },
           },
         },
       ],

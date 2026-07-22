@@ -145,7 +145,7 @@ fn source_enumeration_order_does_not_change_generated_bytes() {
 }
 
 #[test]
-fn production_registry_preserves_the_seven_legacy_candidate_sets() {
+fn production_registry_preserves_the_seven_current_candidate_sets() {
     let generated = String::from_utf8(
         compiler::compile_registry_bytes(&production_source_root()).expect("compile registry"),
     )

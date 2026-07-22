@@ -264,21 +264,8 @@ struct ForwardRoutePlan {
 }
 
 fn resolve_forward_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    if request.proxy_protocol == Some(PortForwardProxyProtocol::Http) {
-        return Err(AppError::InvalidInput(
-            "HTTP 网络助手已移除，请改用远端 SOCKS 转发".to_owned(),
-        ));
-    }
-
     match request.kind {
         PortForwardKind::Local => resolve_local_route(request),
-        PortForwardKind::Remote
-            if request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
-                && request.target_host.is_none()
-                && request.target_port.is_none() =>
-        {
-            resolve_remote_dynamic_route(request)
-        }
         PortForwardKind::Remote => resolve_remote_route(request),
         PortForwardKind::RemoteDynamic => resolve_remote_dynamic_route(request),
         PortForwardKind::Dynamic => resolve_dynamic_route(request),

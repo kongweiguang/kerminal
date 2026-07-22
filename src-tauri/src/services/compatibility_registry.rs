@@ -23,8 +23,6 @@ pub enum CompatibilityCategory {
     PreviewAdapter,
     RuntimeFallback,
     RuntimePatch,
-    SchemaCompatibility,
-    SemanticCompatibility,
     StartupRecovery,
 }
 

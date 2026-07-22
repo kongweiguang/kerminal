@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -246,29 +248,6 @@ describe("terminalRenderer", () => {
           state.mode === "gpu" && state.fallbackReason === "software-gpu",
       ),
     ).toBe(false);
-  });
-
-  it("keeps a stable CPU rollback when lifecycle V2 is disabled", () => {
-    const loadWebglAddon = vi.fn();
-    const controller = createTerminalRendererController({
-      lifecycleV2Enabled: false,
-      loadWebglAddon,
-      paneId: "pane-1",
-      rendererType: "gpu",
-      terminal: new FakeTerminal(),
-    });
-
-    controller.attach();
-    controller.retryGpu();
-
-    expect(loadWebglAddon).not.toHaveBeenCalled();
-    expect(controller.getState()).toEqual({
-      backend: "cpu",
-      canvasCount: 0,
-      fallbackReason: undefined,
-      mode: "gpu",
-    });
-    expect(controller.getDiagnostics().lifecycle.state).toBe("cpu-ready");
   });
 
   it("attaches the WebGL addon in auto mode", async () => {

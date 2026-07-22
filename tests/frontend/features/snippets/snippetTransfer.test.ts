@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   dryRunSnippetImport,
@@ -45,10 +47,10 @@ describe("snippetTransfer", () => {
   });
 
   it("rejects invalid versions and literal secrets without returning values", () => {
-    expect(dryRunSnippetImport('{"schemaVersion":2,"snippets":[]}').errors).toHaveLength(1);
+    expect(dryRunSnippetImport('{"schemaVersion":1,"snippets":[]}').errors).toHaveLength(1);
     const result = dryRunSnippetImport(
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         snippets: [
           {
             command: "password=super-secret",
@@ -67,7 +69,7 @@ describe("snippetTransfer", () => {
   it("rejects sensitive defaults regardless of variable kind", () => {
     const result = dryRunSnippetImport(
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         snippets: [{
           command: "echo {{ value }}",
           contextBindings: [],

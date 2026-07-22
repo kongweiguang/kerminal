@@ -1,6 +1,8 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SnippetEditorDialogV2 } from "../../../../src/features/snippets/SnippetEditorDialogV2";
+import { SnippetEditorDialog } from "../../../../src/features/snippets/SnippetEditorDialog";
 
 const initial = {
   category: "custom",
@@ -16,11 +18,11 @@ const initial = {
   variables: [],
 };
 
-describe("SnippetEditorDialogV2", () => {
+describe("SnippetEditorDialog", () => {
   it("derives typed variables from placeholders and submits metadata", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
-      <SnippetEditorDialogV2
+      <SnippetEditorDialog
         initial={initial}
         onClose={vi.fn()}
         onSave={onSave}
@@ -73,7 +75,7 @@ describe("SnippetEditorDialogV2", () => {
   it("blocks a literal secret before calling storage", async () => {
     const onSave = vi.fn();
     render(
-      <SnippetEditorDialogV2
+      <SnippetEditorDialog
         initial={{ ...initial, command: "password=super-secret" }}
         onClose={vi.fn()}
         onSave={onSave}

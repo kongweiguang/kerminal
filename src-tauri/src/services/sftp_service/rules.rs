@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 //! SFTP 传输规则测试入口。
 
 use std::{
@@ -8,12 +10,11 @@ use std::{
     },
 };
 
-use russh::{client::Handler as _, keys::PublicKey};
 use russh_sftp::protocol::StatusCode;
 use tokio::fs;
 
 use crate::{
-    error::{AppError, AppResult},
+    error::AppResult,
     models::{
         settings::SftpPerformanceSettings,
         sftp::{
@@ -93,16 +94,6 @@ pub fn reserve_clipboard_download_target_path_in(
     super::transfer_paths::reserve_clipboard_download_target_path_in(target_root, request)
 }
 
-/// 为远端 shell 删除命令做单引号转义。
-pub fn shell_single_quote(value: &str) -> String {
-    super::backend::shell_single_quote(value)
-}
-
-/// 校验远端目录 shell 删除路径的安全边界。
-pub fn validate_remote_directory_shell_delete_path(path: &str) -> AppResult<()> {
-    super::backend::validate_remote_directory_shell_delete_path(path)
-}
-
 /// 判断远端复制是否需要落本地临时文件兜底。
 pub fn should_stage_remote_copy(request: &SftpRemoteCopyRequest, global_transfers: usize) -> bool {
     let settings = super::backend::SftpRuntimeSettings {
@@ -153,30 +144,6 @@ pub fn zip_local_path_to_file(
         kind,
         cancel_requested,
     )
-}
-
-/// 按 native SFTP 的 known_hosts 策略校验主机公钥。
-pub async fn check_native_host_key(
-    host: &str,
-    port: u16,
-    known_hosts_path: PathBuf,
-    trust_unknown: bool,
-    server_public_key: &PublicKey,
-) -> AppResult<bool> {
-    let mut handler = super::native_ssh::NativeClientHandler {
-        host: host.to_owned(),
-        port,
-        known_hosts_path,
-        host_key_policy: if trust_unknown {
-            super::native_ssh::HostKeyPolicy::TrustUnknown
-        } else {
-            super::native_ssh::HostKeyPolicy::RequireKnown
-        },
-    };
-    handler
-        .check_server_key(server_public_key)
-        .await
-        .map_err(|error| AppError::Sftp(format!("SFTP 主机密钥校验失败: {error}")))
 }
 
 /// 生成本地冲突重命名候选的文件名。

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   createSnippetTargetSnapshot,
@@ -109,7 +111,7 @@ describe("snippetTargetPolicy", () => {
     });
     expect(
       resolveSnippetExecutionPolicy({
-        hasLegacyRaw: true,
+        hasUnsafeLiteral: true,
         risk: "inspect",
         snapshot: snapshot(),
       }),

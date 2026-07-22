@@ -47,14 +47,14 @@ pub fn command_history_delete(
         .map_err(|error| error.to_string())
 }
 
-/// 按指定终端上下文清空命令历史；缺省请求兼容旧版全局清空。
+/// 按显式终端上下文清空命令历史。
 #[tauri::command]
 pub fn command_history_clear(
     state: State<'_, AppState>,
-    request: Option<CommandHistoryClearRequest>,
+    request: CommandHistoryClearRequest,
 ) -> Result<usize, String> {
     state
         .command_history()
-        .clear_history_scoped(state.command_store(), request.unwrap_or_default())
+        .clear_history_scoped(state.command_store(), request)
         .map_err(|error| error.to_string())
 }

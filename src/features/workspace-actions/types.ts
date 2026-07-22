@@ -1,7 +1,9 @@
+// @author kongweiguang
+
 import type { UserFacingMessage } from "../../lib/userFacingMessage";
 
-/** Workspace 上下文版本号，兼容投影层的数字版本与外部适配层的字符串版本。 */
-export type WorkspaceActionRevision = string | number;
+/** Workspace 上下文的稳定字符串版本号。 */
+export type WorkspaceActionRevision = string;
 
 /** Workspace Action 对外声明的副作用等级。 */
 type WorkspaceActionEffect =

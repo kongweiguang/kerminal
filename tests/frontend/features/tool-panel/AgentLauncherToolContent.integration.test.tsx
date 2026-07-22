@@ -30,14 +30,30 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   archiveAgentSession: (...args: unknown[]) =>
     apiMocks.archiveAgentSession(...args),
   agentSessionRecordAgentId: (record: {
-    session: { agentId?: string; agent_id?: string };
-  }) => record.session.agentId ?? record.session.agent_id,
-  agentSessionRecordId: (record: { session: { agentSessionId?: string; agent_session_id?: string } }) =>
-    record.session.agentSessionId ?? record.session.agent_session_id,
+    session: { agent_id?: string };
+  }) => record.session.agent_id,
+  agentSessionRecordId: (record: { session: { agent_session_id?: string } }) =>
+    record.session.agent_session_id,
   agentSessionRecordStatus: (record: { session: { status?: string } }) =>
     record.session.status ?? "active",
-  agentSessionRecordTarget: (record: { session: { target?: unknown } }) =>
-    record.session.target,
+  agentSessionRecordTarget: (record: {
+    session: {
+      target?: {
+        live_status?: string;
+        pane_id?: string;
+        tab_id?: string;
+        target_ref?: string;
+      };
+    };
+  }) =>
+    record.session.target
+      ? {
+          liveStatus: record.session.target.live_status,
+          paneId: record.session.target.pane_id,
+          tabId: record.session.target.tab_id,
+          targetRef: record.session.target.target_ref,
+        }
+      : undefined,
   createAgentSession: (...args: unknown[]) =>
     apiMocks.createAgentSession(...args),
   getExternalAgentWorkspaceStatus: (...args: unknown[]) =>
@@ -134,7 +150,7 @@ describe("AgentLauncherToolContent", () => {
     });
     apiMocks.archiveAgentSession.mockResolvedValue({
       session: {
-        agentSessionId: "ags-archived",
+        agent_session_id: "ags-archived",
         launch: { args: [], cwd: "", shell: "" },
         status: "archived",
         title: "Archived",
@@ -143,8 +159,8 @@ describe("AgentLauncherToolContent", () => {
     apiMocks.updateAgentSession.mockImplementation(
       async (agentSessionId: string, request: { title?: string }) => ({
         session: {
-          agentId: "codex",
-          agentSessionId,
+          agent_id: "codex",
+          agent_session_id: agentSessionId,
           launch: { args: [], cwd: "", shell: "codex" },
           status: "active",
           title: request.title ?? "Codex",
@@ -160,18 +176,25 @@ describe("AgentLauncherToolContent", () => {
         target?: unknown;
       }) => ({
         session: {
-          agentId,
-          agentSessionId: `ags-${agentId}`,
+          agent_id: agentId,
+          agent_session_id: `ags-${agentId}`,
           launch: {
             args: [],
-            commandLabel: agentId,
+            command_label: agentId,
             cwd: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
             shell: agentId,
           },
-          sessionRoot: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
-          target,
+          session_root: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
+          target: target
+            ? {
+                live_status: (target as { liveStatus?: string }).liveStatus,
+                pane_id: (target as { paneId?: string }).paneId,
+                tab_id: (target as { tabId?: string }).tabId,
+                target_ref: (target as { targetRef?: string }).targetRef,
+              }
+            : undefined,
           title: agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex",
-          workspaceRoot: "C:/Users/me/.kerminal",
+          workspace_root: "C:/Users/me/.kerminal",
         },
       }),
     );
@@ -448,8 +471,8 @@ describe("AgentLauncherToolContent", () => {
       sessions: [
         {
           session: {
-            agentId: "codex",
-            agentSessionId: "ags-title",
+            agent_id: "codex",
+            agent_session_id: "ags-title",
             launch: { args: [], cwd: "", shell: "codex" },
             status: "active",
             title: "旧标题",

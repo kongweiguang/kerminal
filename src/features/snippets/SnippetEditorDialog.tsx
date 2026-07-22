@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -27,7 +29,7 @@ export interface SnippetEditorValue {
   contextBindings: SnippetContextBinding[];
 }
 
-export function SnippetEditorDialogV2({
+export function SnippetEditorDialog({
   initial,
   onClose,
   onSave,
@@ -237,7 +239,7 @@ export function SnippetEditorDialogV2({
                   <label className="space-y-1">
                     <span className="text-[11px] text-zinc-500">渲染</span>
                     <select className="kerminal-field-surface h-8 w-full rounded-md border px-2 text-xs text-zinc-900 dark:text-zinc-100" onChange={(event) => updateVariable(variable.name, { renderStrategy: event.target.value as SnippetCatalogVariable["renderStrategy"] })} value={variable.renderStrategy}>
-                      <option value="shellArg">Shell 参数</option><option value="validatedRaw">校验原始值</option><option value="literal">兼容原样</option>
+                      <option value="shellArg">Shell 参数</option><option value="validatedRaw">校验原始值</option><option value="literal">不转义原样</option>
                     </select>
                   </label>
                 </div>

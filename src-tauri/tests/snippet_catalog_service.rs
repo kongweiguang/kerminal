@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use kerminal_lib::{
     models::snippet::{
         SnippetCatalogListRequest, SnippetCatalogOrigin, SnippetContextBindingKind,
@@ -57,63 +59,7 @@ fn parameterized_catalog_items_keep_typed_variables() {
 }
 
 #[test]
-fn legacy_user_placeholders_project_to_raw_variables_without_rewriting_toml() {
-    let root = tempdir().expect("temp root");
-    let paths = KerminalPaths::from_home_dir(root.path());
-    paths.ensure_directories().expect("create dirs");
-    let source = r#"# 外部注释必须保持
-schema_version = 1
-id = "legacy-vars"
-title = "旧变量片段"
-command = "ssh {{ host }} -p {{port}} {{ host }}"
-tags = ["legacy"]
-scope = "ssh"
-sort_order = 1
-created_at = "1"
-updated_at = "1"
-future_key = "外部字段"
-"#;
-    let snippet_path = paths.snippets.join("legacy-vars.toml");
-    fs::write(&snippet_path, source).expect("write legacy snippet");
-    let service = SnippetService::new(ConfigFileStore::new(paths.root.clone()));
-    let storage = CommandSqliteStore::open(&paths).expect("store");
-
-    let items = snippet_catalog_service::list_catalog(
-        &service,
-        &storage,
-        SnippetCatalogListRequest {
-            query: None,
-            origin: Some(SnippetCatalogOrigin::User),
-            scope: None,
-            limit: None,
-        },
-    )
-    .expect("catalog");
-
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].risk, "change");
-    assert_eq!(
-        items[0]
-            .variables
-            .iter()
-            .map(|variable| variable.name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["host", "port"]
-    );
-    assert!(items[0].variables.iter().all(|variable| {
-        variable.kind == "raw"
-            && variable.required
-            && variable.render_strategy == "literal"
-            && !variable.sensitive
-    }));
-    assert_eq!(
-        fs::read_to_string(snippet_path).expect("read source"),
-        source
-    );
-}
-
-#[test]
-fn typed_user_metadata_takes_priority_over_legacy_projection_defaults() {
+fn typed_user_metadata_is_projected_without_inference() {
     let root = tempdir().expect("temp root");
     let paths = KerminalPaths::from_home_dir(root.path());
     paths.ensure_directories().expect("create dirs");

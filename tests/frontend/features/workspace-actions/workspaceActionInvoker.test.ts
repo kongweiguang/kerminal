@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it, vi } from "vitest";
 import {
   WorkspaceActionInvoker,
@@ -51,33 +53,6 @@ describe("WorkspaceActionInvoker", () => {
       expectedRevision: "revision-1",
     });
     expect(execute).not.toHaveBeenCalled();
-  });
-
-  it("accepts numeric revisions while keeping the stale guard strict", async () => {
-    const execute = vi.fn(async () => ({ kind: "completed" as const }));
-    const invoker = setup(execute);
-
-    await expect(
-      invoker.invoke(
-        invocation({
-          contextRevision: 2,
-          expectedContextRevision: 2,
-        }),
-      ),
-    ).resolves.toEqual({ kind: "completed" });
-    await expect(
-      invoker.invoke(
-        invocation({
-          contextRevision: 2,
-          expectedContextRevision: "2",
-        }),
-      ),
-    ).resolves.toEqual({
-      kind: "stale-context",
-      actualRevision: 2,
-      expectedRevision: "2",
-    });
-    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it("returns cancelled when the signal is already aborted", async () => {

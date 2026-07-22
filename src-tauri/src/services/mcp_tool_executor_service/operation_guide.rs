@@ -110,7 +110,7 @@ pub(super) fn execute_kerminal_operation_guide(
                 "snapshotPath": "managedSsh",
                 "appliesToIntents": ["ssh-command", "sftp", "tmux", "container", "port-forward", "server-info", "diagnostics"],
                 "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens independent shell, SFTP, exec, and forwarding channels under the same session key when available.",
-                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures should not be hidden by opening a separate legacy SSH connection.",
+                "failureRule": "Managed SSH is the only SSH runtime. Unsupported or unwired capabilities return a stable error; auth, host-key, connect, subsystem, exec, or channel-open failures never open another SSH implementation.",
                 "secretBoundary": "managedSsh diagnostics include only redacted session/channel/runtime state, never passwords, private keys, passphrases, raw env, or vault refs."
             },
             "deliberatelyAbsentToolFamilies": absent_tool_families(),
@@ -309,7 +309,7 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             ],
             vec![
                 "If the host id is unknown, read hosts/*.toml directly or use the bound target context.",
-                "If managedSsh reports backend unsupported/unwired, legacy fallback may be expected; auth, host-key, connect, subsystem, or channel errors should not be retried through a hidden legacy SSH login.",
+                "Managed SSH is the only SSH runtime path. Backend unsupported/unwired, auth, host-key, connect, subsystem, or channel errors must remain visible and must not be retried through another SSH implementation.",
                 "If a destructive remote file operation is requested, rely on host approval and clear user intent.",
             ],
             vec!["Use sftp.transfer.list after enqueueing long-running transfers."],
@@ -490,7 +490,7 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             vec!["port_forward.create", "port_forward.close"],
             vec![
                 "If the local port is busy, choose another port or ask the user.",
-                "Managed port-forward diagnostics should show backend, tunnel kind, session/channel/tunnel id, cleanup/reconnect state, and fallback reason.",
+                "Managed port-forward diagnostics should show backend, tunnel kind, session/channel/tunnel id, cleanup/reconnect state, and recent failure.",
                 "If the host id is missing, edit/read hosts/*.toml directly before creating a forward.",
             ],
             vec!["Call kerminal.runtime_snapshot to see running forward counts in a broader runtime view."],
@@ -771,7 +771,7 @@ fn managed_ssh_runtime_step() -> Value {
         Some("kerminal.runtime_snapshot"),
         "Inspect managedSsh session/channel diagnostics for the target before treating SSH-bound tool failures as independent logins.",
         &[],
-        "Snapshot output is redacted; use it for backend/session/channel/fallback evidence, not for credential extraction.",
+        "Snapshot output is redacted; use it for backend/session/channel/failure evidence, not for credential extraction.",
     )
 }
 

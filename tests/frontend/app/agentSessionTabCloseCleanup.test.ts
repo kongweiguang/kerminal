@@ -56,11 +56,11 @@ function record(
 ): AgentSessionRecord {
   return {
     session: {
-      agentId: "codex",
-      agentSessionId,
+      agent_id: "codex",
+      agent_session_id: agentSessionId,
       launch: { args: [], cwd: "C:/workspace", shell: "codex" },
       status,
-      target: { liveStatus, tabId },
+      target: { live_status: liveStatus, tab_id: tabId },
       title: "Codex",
     },
   };

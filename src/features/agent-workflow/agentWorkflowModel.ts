@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { AgentSessionRecord } from "../../lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import type {
@@ -27,9 +29,8 @@ export const AGENT_WORKFLOW_PREVIEW_TTL_MS = 60_000;
 /** Queue/history 仅保存近期 metadata，避免长期挂载的 Controller 无界增长。 */
 export const AGENT_WORKFLOW_METADATA_LIMIT = 20;
 
-/** 兼容 Rust 历史 snake_case 与当前 camelCase session 字段。 */
 export function getAgentWorkflowSessionId(record: AgentSessionRecord) {
-  return record.session.agentSessionId ?? record.session.agent_session_id;
+  return record.session.agent_session_id;
 }
 
 /**
@@ -53,9 +54,9 @@ export function resolveAgentWorkflowSessionSnapshot({
     : resolveRepositoryRuntimeStatus(repositoryStatus);
 
   return {
-    agentId: record.session.agentId ?? record.session.agent_id,
+    agentId: record.session.agent_id,
     agentSessionId,
-    createdAt: record.session.createdAt ?? record.session.created_at,
+    createdAt: record.session.created_at,
     repositoryStatus,
     runtimeStatus,
     statusSource: terminalMatches ? "terminalSignal" : "repository",
@@ -64,34 +65,22 @@ export function resolveAgentWorkflowSessionSnapshot({
     terminalStatus: terminalMatches ? signal.status : undefined,
     target: record.session.target
       ? {
-          bindingId:
-            record.session.target.bindingId ?? record.session.target.binding_id,
-          bindingGeneration:
-            record.session.target.bindingGeneration ??
-            record.session.target.binding_generation,
+          bindingId: record.session.target.binding_id,
+          bindingGeneration: record.session.target.binding_generation,
           cwd: record.session.target.cwd,
-          lastSeenAt:
-            record.session.target.lastSeenAt ??
-            record.session.target.last_seen_at,
-          liveStatus:
-            record.session.target.liveStatus ??
-            record.session.target.live_status,
-          paneId:
-            record.session.target.paneId ?? record.session.target.pane_id,
+          lastSeenAt: record.session.target.last_seen_at,
+          liveStatus: record.session.target.live_status,
+          paneId: record.session.target.pane_id,
           shell: record.session.target.shell,
-          tabId: record.session.target.tabId ?? record.session.target.tab_id,
-          targetKind:
-            record.session.target.targetKind ??
-            record.session.target.target_kind,
-          targetRef:
-            record.session.target.targetRef ?? record.session.target.target_ref,
+          tabId: record.session.target.tab_id,
+          targetKind: record.session.target.target_kind,
+          targetRef: record.session.target.target_ref,
           targetTerminalSessionId:
-            record.session.target.targetTerminalSessionId ??
             record.session.target.target_terminal_session_id,
         }
       : undefined,
     title: record.session.title,
-    updatedAt: record.session.updatedAt ?? record.session.updated_at,
+    updatedAt: record.session.updated_at,
   };
 }
 

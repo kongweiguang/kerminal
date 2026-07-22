@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { ITerminalAddon } from "@xterm/xterm";
 import type { TerminalRendererType } from "../settings/contracts/index";
 import type {
@@ -84,7 +86,6 @@ export interface CreateTerminalRendererControllerOptions {
   contextLossWindowMs?: number;
   healthWatchdogEnabled?: boolean;
   gpuPlatformClass?: TerminalGpuPlatformClass;
-  lifecycleV2Enabled?: boolean;
   loadWebglAddon?: () => Promise<{ WebglAddon: WebglAddonConstructor }>;
   logger?: TerminalRendererLogger;
   maxRecoveryAttempts?: number;

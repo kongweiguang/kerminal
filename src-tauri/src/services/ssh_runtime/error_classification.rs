@@ -282,7 +282,7 @@ fn failure_guidance(failure_class: SshRuntimeFailureClass) -> (&'static str, &'s
         ),
         SshRuntimeFailureClass::ChannelUnsupported => (
             "当前 SSH backend 不支持该 channel。",
-            "切换到支持该能力的 backend，或显式使用 legacy compatibility mode。",
+            "切换到支持该能力的 Managed SSH backend 后重试。",
             false,
         ),
         SshRuntimeFailureClass::PermissionDenied => (

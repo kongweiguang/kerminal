@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   agentSessionRecordId,
   agentSessionRecordStatus,
@@ -51,7 +53,7 @@ function bindingScore(
 }
 
 function timestamp(record: AgentSessionRecord) {
-  const value = record.session.updatedAt ?? record.session.updated_at;
+  const value = record.session.updated_at;
   const parsed = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }

@@ -1,5 +1,6 @@
+// @author kongweiguang
+
 import type {
-  ManagedSshLegacyFallbackSnapshot,
   ManagedSshRuntimeSnapshot,
   ManagedSshSessionSnapshot,
 } from "../../lib/diagnosticsApi";
@@ -11,7 +12,7 @@ type ManagedSshToolCapability = "shell" | "sftp" | "exec" | "forward";
 
 type ManagedSshToolAvailabilityKind =
   | "managed-reusable"
-  | "legacy-terminal-only"
+  | "terminal-connected"
   | "auth-required"
   | "host-key-required"
   | "action-required"
@@ -31,22 +32,13 @@ export interface ManagedSshToolAvailability {
   detail: string;
   kind: ManagedSshToolAvailabilityKind;
   label: string;
-  legacyFallback?: ManagedSshLegacyFallbackSnapshot;
   session?: ManagedSshSessionSnapshot;
   targetLabel?: string;
 }
 
-const capabilityAliases: Record<ManagedSshToolCapability, string[]> = {
-  exec: ["exec", "command", "tmux", "server", "container", "mcp"],
-  forward: ["forward", "port", "tunnel"],
-  sftp: ["sftp", "file", "transfer"],
-  shell: ["shell", "terminal"],
-};
-
 export function resolveManagedSshToolAvailability({
   focusedPane,
   managedSsh,
-  requiredCapability,
   selectedMachine,
 }: ManagedSshToolAvailabilityInput): ManagedSshToolAvailability {
   if (!selectedMachine) {
@@ -72,15 +64,7 @@ export function resolveManagedSshToolAvailability({
 
   const targetLabel = sshMachineTargetLabel(selectedMachine);
   const session = findManagedSessionForMachine(managedSsh, selectedMachine);
-  const relevantFallback = findRecentFallbackForMachine(
-    managedSsh,
-    selectedMachine,
-    requiredCapability,
-  );
-  const diagnosticFailure = classifyAvailabilityFailure(
-    session?.lastError,
-    relevantFallback?.reason,
-  );
+  const diagnosticFailure = classifyAvailabilityFailure(session?.lastError);
 
   if (
     diagnosticFailure &&
@@ -92,7 +76,6 @@ export function resolveManagedSshToolAvailability({
       detail: availabilityFailureDetail(diagnosticFailure),
       kind: "host-key-required",
       label: "需确认主机",
-      legacyFallback: relevantFallback,
       session,
       targetLabel,
     };
@@ -108,17 +91,13 @@ export function resolveManagedSshToolAvailability({
       detail: availabilityFailureDetail(diagnosticFailure),
       kind: "auth-required",
       label: "需认证",
-      legacyFallback: relevantFallback,
       session,
       targetLabel,
     };
   }
 
   if (
-    diagnosticFailure?.class === "channelUnsupported" ||
-    (requiredCapability &&
-      relevantFallback &&
-      isUnsupportedFallback(relevantFallback))
+    diagnosticFailure?.class === "channelUnsupported"
   ) {
     return {
       canAttemptConnection: false,
@@ -129,7 +108,6 @@ export function resolveManagedSshToolAvailability({
           : "当前主机不支持此操作，可更换主机或使用其它方式完成。",
       kind: "unsupported",
       label: "当前不可用",
-      legacyFallback: relevantFallback,
       session,
       targetLabel,
     };
@@ -142,7 +120,6 @@ export function resolveManagedSshToolAvailability({
       detail: availabilityFailureDetail(diagnosticFailure),
       kind: "action-required",
       label: "需处理",
-      legacyFallback: relevantFallback,
       session,
       targetLabel,
     };
@@ -165,9 +142,8 @@ export function resolveManagedSshToolAvailability({
       canAttemptConnection: true,
       canUseConnectedSession: false,
       detail: "当前终端已连接到该主机，使用此工具时会建立单独连接。",
-      kind: "legacy-terminal-only",
+      kind: "terminal-connected",
       label: "需连接",
-      legacyFallback: relevantFallback,
       targetLabel,
     };
   }
@@ -178,7 +154,6 @@ export function resolveManagedSshToolAvailability({
     detail: "使用此工具前需要连接并完成 SSH 认证。",
     kind: "auth-required",
     label: "需认证",
-    legacyFallback: relevantFallback,
     session,
     targetLabel,
   };
@@ -197,35 +172,6 @@ function findManagedSessionForMachine(
   );
 }
 
-function findRecentFallbackForMachine(
-  managedSsh: ManagedSshRuntimeSnapshot | null | undefined,
-  machine: Machine,
-  requiredCapability?: ManagedSshToolCapability,
-): ManagedSshLegacyFallbackSnapshot | undefined {
-  return managedSsh?.recentLegacyFallbacks.find((fallback) => {
-    if (!fallbackMatchesCapability(fallback, requiredCapability)) {
-      return false;
-    }
-    if (!fallback.target) {
-      return true;
-    }
-    return targetMatchesMachine(fallback.target, machine);
-  });
-}
-
-function fallbackMatchesCapability(
-  fallback: ManagedSshLegacyFallbackSnapshot,
-  requiredCapability?: ManagedSshToolCapability,
-): boolean {
-  if (!requiredCapability) {
-    return true;
-  }
-  const capability = fallback.capability.toLowerCase();
-  return capabilityAliases[requiredCapability].some((alias) =>
-    capability.includes(alias),
-  );
-}
-
 function focusedPaneMatchesSshMachine(
   focusedPane: TerminalPane | undefined,
   machine: Machine,
@@ -235,13 +181,6 @@ function focusedPaneMatchesSshMachine(
       (focusedPane.remoteHostId === machine.id ||
         focusedPane.machineId === machine.id),
   );
-}
-
-function isUnsupportedFallback(
-  fallback: ManagedSshLegacyFallbackSnapshot,
-): boolean {
-  const reason = fallback.reason.toLowerCase();
-  return reason.includes("unsupported") || reason.includes("unwired");
 }
 
 function targetMatchesMachine(target: string, machine: Machine): boolean {

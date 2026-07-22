@@ -15,19 +15,7 @@ pub struct ManagedSshRuntimeSnapshot {
     pub active_channels: u64,
     pub active_sessions: usize,
     pub generated_at: String,
-    pub recent_legacy_fallbacks: Vec<ManagedSshLegacyFallbackSnapshot>,
     pub sessions: Vec<ManagedSshSessionSnapshot>,
-}
-
-/// Recent intentional legacy fallback diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ManagedSshLegacyFallbackSnapshot {
-    pub capability: String,
-    pub count: u64,
-    pub last_at: String,
-    pub reason: String,
-    pub target: Option<String>,
 }
 
 /// Redacted session diagnostics.

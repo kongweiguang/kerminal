@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { listCommandHistory, type CommandHistoryEntry } from "./commandHistoryApi";
 import type {
   CommandSuggestionAuditRecordRequest,
@@ -79,15 +81,22 @@ export function normalizeCommandSuggestionRequest(
 }
 
 /**
- * 将后端或旧缓存候选归一化为前端稳定合同。
+ * 校验后端候选并归一化为前端稳定合同。
  *
- * 所有偏移均按 Unicode code point 计数；非法 range 回退为当前前缀整条替换，
- * 任一非法 boundary 都会清空全部边界，确保只能整条接受。
+ * 所有偏移均按 Unicode code point 计数；非法 range 或 boundary 直接拒绝。
  */
 export function normalizeCommandSuggestionCandidate(
   candidate: CommandSuggestionCandidatePayload,
   request: NormalizedCommandSuggestionRequest,
 ): CommandSuggestionCandidate {
+  if (
+    !Array.isArray(candidate.acceptBoundaries) ||
+    !Array.isArray(candidate.allowedPresentations) ||
+    (candidate.activation !== "insert" && candidate.activation !== "openSnippetPanel") ||
+    (candidate.candidateKind !== "command" && candidate.candidateKind !== "snippet")
+  ) {
+    throw new Error("Command suggestion candidate does not match the current contract");
+  }
   const replacementRange = normalizeReplacementRange(
     candidate.replacementRange,
     request,
@@ -101,15 +110,11 @@ export function normalizeCommandSuggestionCandidate(
 
   return {
     ...candidate,
-    activation:
-      candidate.activation === "openSnippetPanel"
-        ? "openSnippetPanel"
-        : "insert",
+    activation: candidate.activation,
     replacementRange,
     allowedPresentations,
     acceptBoundaries,
-    candidateKind:
-      candidate.candidateKind === "snippet" ? "snippet" : "command",
+    candidateKind: candidate.candidateKind,
     ...(normalizeOptionalText(candidate.sourceId)
       ? { sourceId: normalizeOptionalText(candidate.sourceId) }
       : {}),
@@ -339,8 +344,10 @@ function historyEntryToCandidate(
   const sameCwd = entry.cwd && entry.cwd === request.cwd;
 
   return {
+    activation: "insert",
     acceptBoundaries: [],
     allowedPresentations: ["inline", "menu"],
+    candidateKind: "command",
     id: `history:${entry.id}`,
     provider: "history",
     displayText: entry.command,
@@ -398,7 +405,10 @@ function normalizeReplacementRange(
     range.end <= request.cursor &&
     range.end <= inputLength;
 
-  return valid ? range : { start: 0, end: request.cursor };
+  if (!valid) {
+    throw new Error("Command suggestion replacement range is invalid");
+  }
+  return range;
 }
 
 function normalizeAllowedPresentations(
@@ -407,11 +417,7 @@ function normalizeAllowedPresentations(
   if (candidate.sensitivity === "dangerous") {
     return ["menu"];
   }
-  if (!candidate.allowedPresentations) {
-    return ["inline"];
-  }
-
-  return Array.from(
+  const normalized = Array.from(
     new Set(
       candidate.allowedPresentations.filter(
         (presentation): presentation is CommandSuggestionPresentation =>
@@ -419,16 +425,17 @@ function normalizeAllowedPresentations(
       ),
     ),
   );
+  if (normalized.length !== candidate.allowedPresentations.length || normalized.length === 0) {
+    throw new Error("Command suggestion presentations are invalid");
+  }
+  return normalized;
 }
 
 function normalizeAcceptBoundaries(
-  boundaries: number[] | undefined,
+  boundaries: number[],
   cursor: number,
   replacementText: string,
 ) {
-  if (!boundaries) {
-    return [];
-  }
   const replacementLength = Array.from(replacementText).length;
   if (
     boundaries.some(
@@ -438,7 +445,7 @@ function normalizeAcceptBoundaries(
         boundary > replacementLength,
     )
   ) {
-    return [];
+    throw new Error("Command suggestion accept boundaries are invalid");
   }
   return Array.from(new Set(boundaries)).sort((left, right) => left - right);
 }

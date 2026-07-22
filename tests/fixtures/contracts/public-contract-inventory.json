@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "tauri": {
     "commandCount": 183,
-    "signatureFingerprint": "fnv1a64:eb9f7720c12c5dc2",
+    "signatureFingerprint": "fnv1a64:75e5df5e8aa585b7",
     "frontendInvokeCount": 134,
     "frontendInvokeFingerprint": "fnv1a64:5182708bc3f4ae22"
   },

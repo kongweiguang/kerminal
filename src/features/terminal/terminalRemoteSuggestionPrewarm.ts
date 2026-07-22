@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import {
   recordTerminalSuggestionAuditEvent,
@@ -90,7 +92,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const cwd = path?.trim();
     if (
       !canUseSchedulerProbe() ||
-      !inlineSuggestion.enabled ||
+      inlineSuggestion.presentation === "off" ||
       !inlineSuggestion.providers.git ||
       !hostId ||
       !cwd
@@ -124,7 +126,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     if (
       !canUseSchedulerProbe() ||
-      !inlineSuggestion.enabled ||
+      inlineSuggestion.presentation === "off" ||
       !inlineSuggestion.providers.remoteCommand ||
       !hostId
     ) {
@@ -155,7 +157,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     if (
       !canUseSchedulerProbe() ||
-      !inlineSuggestion.enabled ||
+      inlineSuggestion.presentation === "off" ||
       !inlineSuggestion.providers.history ||
       !hostId
     ) {
@@ -187,7 +189,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const normalizedPath = path?.trim();
     if (
       !canUseSchedulerProbe() ||
-      !inlineSuggestion.enabled ||
+      inlineSuggestion.presentation === "off" ||
       !inlineSuggestion.providers.remotePath ||
       !hostId ||
       !normalizedPath
@@ -228,7 +230,7 @@ function remoteProbeSkipReason(
   inlineSuggestion: TerminalAppearance["inlineSuggestion"],
   remoteHostProduction: boolean,
 ) {
-  if (!inlineSuggestion.remoteProbeEnabled) {
+  if (inlineSuggestion.remoteRefresh === "off") {
     return "remote-probe-disabled";
   }
   if (

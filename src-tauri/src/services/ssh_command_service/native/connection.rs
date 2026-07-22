@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use std::{sync::Arc, time::Duration};
 
 use russh::{
@@ -62,10 +64,6 @@ pub(super) async fn connect_native_ssh(
             )))
         }
     }
-}
-
-pub(super) fn exec_cancelled_error() -> AppError {
-    AppError::SshCommand("远程命令已取消".to_owned())
 }
 
 pub(super) async fn connect_native_ssh_through_direct_tcpip(

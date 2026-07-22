@@ -284,7 +284,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
         TERMINAL_RENDERER_FEATURE_GATES.privateCleanupCompat,
     },
     healthWatchdogEnabled: TERMINAL_RENDERER_FEATURE_GATES.healthWatchdog,
-    lifecycleV2Enabled: TERMINAL_RENDERER_FEATURE_GATES.lifecycleV2,
     onStateChange: (state) => {
       terminalRendererRegistry.updatePaneState(paneId, state);
       const fallbackReason = terminalRendererFallbackReasonFromState(state.fallbackReason);

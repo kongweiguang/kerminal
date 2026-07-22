@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   KERMINAL_QUICK_OPEN_COPY,
@@ -62,7 +64,7 @@ describe("KerminalShell Context Workspace adapters", () => {
       sourceApi: {
         listAgentSessions: async () => ({ sessions: [] }),
         listCommandHistory: async () => [],
-        listSnippets: async () => [],
+        listSnippetCatalog: async () => [],
         listWorkflows: async () => [],
       },
     });
@@ -130,7 +132,7 @@ describe("KerminalShell Context Workspace adapters", () => {
     expect(
       safeRegistry.get("remote.restart")?.availability?.(
         {
-          revision: 1,
+          revision: "1",
         },
         undefined,
       ),

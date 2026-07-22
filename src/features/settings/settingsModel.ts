@@ -110,7 +110,6 @@ export interface TerminalInlineSuggestionProviderSettings {
 }
 
 export interface TerminalInlineSuggestionSettings {
-  enabled: boolean;
   acceptKey: TerminalInlineSuggestionAcceptKey;
   presentation: TerminalCommandSuggestionPresentation;
   menuShortcut: TerminalCommandSuggestionMenuShortcut;
@@ -118,7 +117,6 @@ export interface TerminalInlineSuggestionSettings {
   partialAccept: boolean;
   remoteRefresh: TerminalCommandSuggestionRemoteRefresh;
   providers: TerminalInlineSuggestionProviderSettings;
-  remoteProbeEnabled: boolean;
   productionHostPolicy: TerminalInlineSuggestionProductionHostPolicy;
   auditRetentionDays: number;
   feedbackRetentionDays: number;
@@ -489,22 +487,14 @@ function normalizeTerminalInlineSuggestion(
   const defaults = defaultTerminalAppearance.inlineSuggestion;
   const providers: Partial<TerminalInlineSuggestionProviderSettings> =
     settings?.providers ?? {};
-  const enabled = readBoolean(settings?.enabled, defaults.enabled);
-  const remoteProbeEnabled = readBoolean(
-    settings?.remoteProbeEnabled,
-    defaults.remoteProbeEnabled,
-  );
   const presentation = normalizeTerminalCommandSuggestionPresentation(
     settings?.presentation,
-    enabled,
   );
   const remoteRefresh = normalizeTerminalCommandSuggestionRemoteRefresh(
     settings?.remoteRefresh,
-    remoteProbeEnabled,
   );
   return {
     acceptKey: normalizeTerminalInlineSuggestionAcceptKey(settings?.acceptKey),
-    enabled: enabled && presentation !== "off",
     presentation,
     menuShortcut: normalizeTerminalCommandSuggestionMenuShortcut(
       settings?.menuShortcut,
@@ -534,7 +524,6 @@ function normalizeTerminalInlineSuggestion(
       ),
       spec: readBoolean(providers.spec, defaults.providers.spec),
     },
-    remoteProbeEnabled: remoteProbeEnabled && remoteRefresh !== "off",
     auditRetentionDays: normalizeBoundedInteger(
       settings?.auditRetentionDays,
       defaults.auditRetentionDays,
@@ -552,11 +541,7 @@ function normalizeTerminalInlineSuggestion(
 
 function normalizeTerminalCommandSuggestionPresentation(
   value: TerminalCommandSuggestionPresentation | undefined,
-  legacyEnabled: boolean,
 ): TerminalCommandSuggestionPresentation {
-  if (!legacyEnabled) {
-    return "off";
-  }
   if (value === "inline" || value === "inlineAndMenu" || value === "off") {
     return value;
   }
@@ -573,11 +558,7 @@ function normalizeTerminalCommandSuggestionMenuShortcut(
 
 function normalizeTerminalCommandSuggestionRemoteRefresh(
   value: TerminalCommandSuggestionRemoteRefresh | undefined,
-  legacyEnabled: boolean,
 ): TerminalCommandSuggestionRemoteRefresh {
-  if (!legacyEnabled) {
-    return "off";
-  }
   return value === "off" || value === "safe"
     ? value
     : defaultTerminalAppearance.inlineSuggestion.remoteRefresh;

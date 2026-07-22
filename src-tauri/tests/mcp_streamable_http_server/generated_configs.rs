@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use super::*;
 
 #[tokio::test]
@@ -435,9 +437,10 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
     fs::create_dir_all(paths.root.join("hosts")).expect("hosts dir");
     fs::write(
         paths.root.join("hosts/agent-added.toml"),
-        r#"schema_version = 1
+        r#"schema_version = 2
 id = "agent-added"
 name = "Agent Added"
+protocol = "ssh"
 host = "agent-added.internal"
 port = 22
 username = "deploy"

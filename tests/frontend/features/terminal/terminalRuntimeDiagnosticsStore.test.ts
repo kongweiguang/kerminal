@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { createTerminalRuntimeDiagnosticsStore } from "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore";
 import {
@@ -96,7 +98,6 @@ describe("terminalRuntimeDiagnosticsStore", () => {
         activeChannels: 2,
         activeSessions: 1,
         generatedAt: "1760000000",
-        recentLegacyFallbacks: [],
         sessions: [
           {
             activeChannels: 2,

@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 //! SSH runtime 会话、通道与队列集成测试。
 
 use super::fixtures::*;
@@ -40,42 +42,6 @@ fn manager_reuses_session_for_same_key_tracks_ref_counts_and_keeps_idle() {
     assert_eq!(manager.close_idle_sessions().expect("closed idle"), 1);
     assert_eq!(manager.active_session_count().expect("count"), 0);
     assert_eq!(backend.disconnect_count(), 1);
-}
-
-#[test]
-fn legacy_fallback_diagnostics_are_counted_and_capped() {
-    let backend = Arc::new(FakeBackend::default());
-    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
-
-    for index in 0..25 {
-        manager.record_legacy_fallback("sftp", format!("unsupported-{index}"), None);
-    }
-    manager.record_legacy_fallback(
-        "exec",
-        "managed-exec-unsupported",
-        Some("deploy@example.com:22".to_owned()),
-    );
-    manager.record_legacy_fallback(
-        "exec",
-        "managed-exec-unsupported",
-        Some("deploy@example.com:22".to_owned()),
-    );
-
-    let snapshot = manager.snapshot().expect("snapshot");
-
-    assert_eq!(snapshot.recent_legacy_fallbacks.len(), 20);
-    assert!(!snapshot
-        .recent_legacy_fallbacks
-        .iter()
-        .any(|event| event.reason == "unsupported-0"));
-    let counted = snapshot
-        .recent_legacy_fallbacks
-        .iter()
-        .find(|event| event.capability == "exec")
-        .expect("exec fallback");
-    assert_eq!(counted.count, 2);
-    assert_eq!(counted.reason, "managed-exec-unsupported");
-    assert_eq!(counted.target.as_deref(), Some("deploy@example.com:22"));
 }
 
 #[test]

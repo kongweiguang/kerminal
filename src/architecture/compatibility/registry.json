@@ -2,19 +2,6 @@
   "schemaVersion": 1,
   "entries": [
     {
-      "id": "command-history.empty-scope-clear",
-      "category": "semantic-compatibility",
-      "lifecycle": "sunset",
-      "owner": "command-history-runtime",
-      "allowedReasons": ["empty-scope"],
-      "implementationRefs": ["src-tauri/src/services/command_history_service.rs"],
-      "retirement": {
-        "targetTask": "TASK-080",
-        "reviewBy": "2026-12-31",
-        "minimumZeroWindows": 3
-      }
-    },
-    {
       "id": "config-watcher.polling",
       "category": "runtime-fallback",
       "lifecycle": "supported-mode",
@@ -31,19 +18,6 @@
       "implementationRefs": ["src/architecture/compatibility/compatibilityRegistry.ts"]
     },
     {
-      "id": "managed-ssh.legacy-fallback",
-      "category": "runtime-fallback",
-      "lifecycle": "sunset",
-      "owner": "managed-ssh-runtime",
-      "allowedReasons": ["backend-unsupported", "backend-unwired", "capability-unsupported"],
-      "implementationRefs": ["src-tauri/src/services/ssh_runtime/mod.rs"],
-      "retirement": {
-        "targetTask": "TASK-060",
-        "reviewBy": "2026-12-31",
-        "minimumZeroWindows": 5
-      }
-    },
-    {
       "id": "runtime.browser-preview",
       "category": "preview-adapter",
       "lifecycle": "supported-mode",
@@ -58,19 +32,6 @@
       "owner": "sftp-runtime",
       "allowedReasons": ["document-hidden", "event-channel-healthy-safety-poll", "event-channel-unavailable"],
       "implementationRefs": ["src/features/sftp/useSftpTransferQueueSync.ts"]
-    },
-    {
-      "id": "snippet.schema-v1",
-      "category": "schema-compatibility",
-      "lifecycle": "sunset",
-      "owner": "snippet-runtime",
-      "allowedReasons": ["schema-v1"],
-      "implementationRefs": ["src/features/snippets/snippetTransfer.ts"],
-      "retirement": {
-        "targetTask": "TASK-080",
-        "reviewBy": "2026-12-31",
-        "minimumZeroWindows": 3
-      }
     },
     {
       "id": "startup.dynamic-import-retry",
@@ -94,22 +55,9 @@
       "lifecycle": "sunset",
       "owner": "terminal-renderer",
       "allowedReasons": ["tauri-webview"],
-      "implementationRefs": ["src/lib/xtermWebviewCompatibility.ts"],
+      "implementationRefs": ["src/features/terminal/terminalRendererCompatibility.ts"],
       "retirement": {
         "targetTask": "TASK-073",
-        "reviewBy": "2026-12-31",
-        "minimumZeroWindows": 3
-      }
-    },
-    {
-      "id": "workspace.schema-v1-migration",
-      "category": "schema-compatibility",
-      "lifecycle": "sunset",
-      "owner": "workspace-runtime",
-      "allowedReasons": ["schema-v1", "unversioned-session"],
-      "implementationRefs": ["src/features/workspace/workspaceSession.ts"],
-      "retirement": {
-        "targetTask": "TASK-080",
         "reviewBy": "2026-12-31",
         "minimumZeroWindows": 3
       }

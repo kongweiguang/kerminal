@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => ({
@@ -15,6 +17,7 @@ describe("workspaceSessionApi", () => {
 
   it("normalizes a loaded payload inside the workspace feature", async () => {
     transport.loadWorkspaceSessionPayload.mockResolvedValue({
+      version: 2,
       activeTabId: "missing",
       focusedPaneId: "missing",
       selectedMachineId: "",

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -94,6 +96,17 @@ describe("commandHistoryApi", () => {
         target: "ssh",
       },
     });
+  });
+
+  it("rejects an empty clear scope before IPC", async () => {
+    isTauriMock.mockReturnValue(true);
+    const { clearCommandHistory } =
+      await import("../../../src/lib/commandHistoryApi");
+
+    await expect(clearCommandHistory({})).rejects.toThrow(
+      /必须明确指定/,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("uses searchable browser preview history outside Tauri", async () => {

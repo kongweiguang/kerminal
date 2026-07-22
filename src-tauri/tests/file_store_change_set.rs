@@ -119,12 +119,12 @@ fn change_set_applies_multiple_files_and_persists_manifest() {
 }
 
 #[test]
-fn legacy_change_set_keeps_last_write_wins_for_duplicate_paths() {
+fn change_set_rejects_duplicate_paths() {
     let temp = tempdir().expect("temp dir");
     let store = FileStore::new(temp.path());
     fs::write(temp.path().join("settings.toml"), "old").expect("seed target");
 
-    store
+    let error = store
         .apply_change_set(
             "duplicate-path",
             "2026-06-24T10:01:00+08:00",
@@ -133,15 +133,11 @@ fn legacy_change_set_keeps_last_write_wins_for_duplicate_paths() {
                 FileStoreChange::new("settings.toml", b"last".to_vec()).expect("last change"),
             ],
         )
-        .expect("apply duplicate legacy changes");
+        .expect_err("duplicate paths must be rejected");
 
+    assert!(error.to_string().contains("duplicate transaction path"));
     assert_eq!(
         fs::read_to_string(temp.path().join("settings.toml")).expect("target"),
-        "last"
-    );
-    assert_eq!(
-        fs::read_to_string(temp.path().join("backups/duplicate-path/settings.toml"))
-            .expect("backup"),
         "old"
     );
 }

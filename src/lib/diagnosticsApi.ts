@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export interface DiagnosticBundle {
@@ -23,16 +25,7 @@ export interface ManagedSshRuntimeSnapshot {
   activeChannels: number;
   activeSessions: number;
   generatedAt: string;
-  recentLegacyFallbacks: ManagedSshLegacyFallbackSnapshot[];
   sessions: ManagedSshSessionSnapshot[];
-}
-
-export interface ManagedSshLegacyFallbackSnapshot {
-  capability: string;
-  count: number;
-  lastAt: string;
-  reason: string;
-  target?: string | null;
 }
 
 export interface ManagedSshSessionSnapshot {
@@ -271,7 +264,6 @@ function createBrowserPreviewManagedSshRuntime(): ManagedSshRuntimeSnapshot {
     activeChannels: 2,
     activeSessions: 1,
     generatedAt,
-    recentLegacyFallbacks: [],
     sessions: [
       {
         activeChannels: 2,

@@ -4,38 +4,31 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    io::{Read, Write},
-    process::Stdio,
-    sync::Mutex,
-    thread,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::{
-        port_forward::{
-            PortForwardCreateRequest, PortForwardKind, PortForwardStatus, PortForwardSummary,
-        },
-        terminal::TerminalSecretInputPlan,
+    models::port_forward::{
+        PortForwardCreateRequest, PortForwardKind, PortForwardStatus, PortForwardSummary,
     },
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalSessionMaterializer,
-        process_command::silent_command,
         remote_host_capability::{ensure_remote_host_capability, RemoteHostCapability},
         remote_host_service::RemoteHostService,
-        ssh_command_plan::{cleanup_paths, resolve_openssh_executable},
+        ssh_command_plan::cleanup_paths,
         ssh_credential_resolver::{
             NativeSshRouteMaterial, ResolvedSshRouteAuth, SshCredentialResolver,
         },
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
             facade::{SshRuntimeFacade, SshRuntimeTargetContext},
+            native_backend::NativeSshRuntimeBackend,
             policy::{
                 external_target_not_available_error, is_capability_unsupported,
                 is_external_runtime_target_id, is_managed_runtime_unwired,
@@ -52,23 +45,18 @@ use crate::{
 
 use self::{
     plan::{build_forward_plan, build_managed_forward_plan, ForwardCommandPlan},
-    runtime_process::{ManagedForwardProcess, PortForwardSession, PtyForwardProcess},
-    secret_input::ForwardSecretInputResponder,
+    runtime_process::{ManagedForwardProcess, PortForwardSession},
     summary::{
-        is_managed_forward_candidate, is_remote_dynamic_forward_request,
         mark_summary_runtime_cleanup, restored_summary, runtime_diagnostics_for_process,
-        stopped_summary, tunnel_kind_for_kind,
+        stopped_summary,
     },
 };
 
 pub mod plan;
 mod runtime_process;
-mod secret_input;
 mod summary;
-const LEGACY_FALLBACK_PORT_FORWARD_OPENSSH: &str = "managed-port-forward-openssh-fallback";
-
 /// SSH 端口转发业务入口。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PortForwardService {
     auth_broker: Option<SshAuthBroker>,
     external_targets: Option<ExternalSessionMaterializer>,
@@ -79,7 +67,14 @@ pub struct PortForwardService {
 impl PortForwardService {
     /// 创建端口转发服务。
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            auth_broker: None,
+            external_targets: None,
+            managed_runtime: Some(ManagedSshSessionManager::with_backend(Arc::new(
+                NativeSshRuntimeBackend::new(),
+            ))),
+            sessions: Mutex::new(HashMap::new()),
+        }
     }
 
     /// 创建可识别外部 SSH 启动临时 target 的端口转发服务。
@@ -87,7 +82,9 @@ impl PortForwardService {
         Self {
             auth_broker: None,
             external_targets: Some(external_targets),
-            managed_runtime: None,
+            managed_runtime: Some(ManagedSshSessionManager::with_backend(Arc::new(
+                NativeSshRuntimeBackend::new(),
+            ))),
             sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -270,8 +267,6 @@ impl PortForwardService {
         let last_error = exited.map(|status| format!("SSH 端口转发进程已退出，退出码: {status}"));
         if last_error.is_none() {
             session.process.terminate()?;
-        } else {
-            session.process.wait();
         }
         session.cleanup_paths.cleanup_now();
         let summary = stopped_summary(session.summary.clone(), last_error);
@@ -310,33 +305,18 @@ impl PortForwardService {
         let (host, route_auth) =
             self.resolve_runtime_host(remote_hosts, paths, &request.host_id)?;
         let managed_plan = build_managed_forward_plan(&request)?;
-        let (mut process, plan, fallback_reason) = match self.start_managed_forward(
+        let (mut process, plan) = match self.start_managed_forward(
             paths,
             &host,
             route_auth.as_ref(),
             &managed_plan,
             &request,
         )? {
-            Some(process) => (process, managed_plan, None),
+            Some(process) => (process, managed_plan),
             None => {
-                self.record_managed_forward_legacy_fallback(&host, &request);
-                let executable = resolve_openssh_executable()?;
-                let plan = build_forward_plan(&host, executable, paths, &request)?;
-                let process = match spawn_forward_process(&plan) {
-                    Ok(process) => process,
-                    Err(error) => {
-                        cleanup_paths(&plan.cleanup_paths);
-                        return Err(error);
-                    }
-                };
-                (
-                    process,
-                    plan,
-                    Some(
-                        "managed SSH forward runtime unavailable or unsupported; using OpenSSH fallback"
-                            .to_owned(),
-                    ),
-                )
+                return Err(AppError::PortForward(
+                    "当前 Managed SSH backend 不支持该端口转发类型".to_owned(),
+                ))
             }
         };
         let pid = process.id();
@@ -347,11 +327,7 @@ impl PortForwardService {
             summary_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
             created_at.unwrap_or_else(unix_timestamp),
         );
-        summary.runtime = Some(runtime_diagnostics_for_process(
-            &process,
-            &request,
-            fallback_reason,
-        ));
+        summary.runtime = Some(runtime_diagnostics_for_process(&process, &request));
 
         if let Some(status) = process.try_wait()? {
             cleanup_paths(&plan.cleanup_paths);
@@ -361,8 +337,7 @@ impl PortForwardService {
         }
 
         if let Err(error) = storage.upsert_port_forward_summary(&summary) {
-            let _ = process.kill();
-            process.wait();
+            let _ = process.terminate();
             cleanup_paths(&plan.cleanup_paths);
             return Err(error);
         }
@@ -379,24 +354,6 @@ impl PortForwardService {
             },
         );
         Ok(summary)
-    }
-
-    fn record_managed_forward_legacy_fallback(
-        &self,
-        host: &crate::models::remote_host::RemoteHost,
-        request: &PortForwardCreateRequest,
-    ) {
-        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
-            return;
-        };
-        managed_runtime.record_legacy_fallback(
-            format!(
-                "port-forward.{}",
-                tunnel_kind_for_kind(request.kind, request.proxy_protocol)
-            ),
-            LEGACY_FALLBACK_PORT_FORWARD_OPENSSH,
-            Some(format!("{}@{}:{}", host.username, host.host, host.port)),
-        );
     }
 
     fn resolve_host(
@@ -466,9 +423,6 @@ impl PortForwardService {
         plan: &ForwardCommandPlan,
         request: &PortForwardCreateRequest,
     ) -> AppResult<Option<ManagedForwardProcess>> {
-        if !is_managed_forward_candidate(request) {
-            return Ok(None);
-        }
         let (Some(paths), Some(route_auth), Some(managed_runtime)) =
             (paths, route_auth, self.managed_runtime.as_ref())
         else {
@@ -515,14 +469,6 @@ impl PortForwardService {
                         target_port,
                     ),
                 ),
-                (None, None) if is_remote_dynamic_forward_request(request) => facade
-                    .start_remote_dynamic_forward(
-                        &context,
-                        SshRuntimeRemoteDynamicForwardRequest::new(
-                            plan.bind_host.clone(),
-                            request.source_port,
-                        ),
-                    ),
                 _ => return Ok(None),
             },
             PortForwardKind::RemoteDynamic => facade.start_remote_dynamic_forward(
@@ -538,7 +484,7 @@ impl PortForwardService {
             ),
         };
         match tunnel {
-            Ok(tunnel) => Ok(Some(ManagedForwardProcess::Managed(Box::new(Some(tunnel))))),
+            Ok(tunnel) => Ok(Some(ManagedForwardProcess(Some(tunnel)))),
             Err(error)
                 if is_managed_runtime_unwired(&error)
                     || is_capability_unsupported(&error, SshRuntimeCapability::Forward) =>
@@ -574,6 +520,12 @@ impl PortForwardService {
     }
 }
 
+impl Default for PortForwardService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn prompt_required_forward_error(prompt_plan: SshAuthPromptPlan) -> AppError {
     let prompts = prompt_plan
         .prompts
@@ -592,92 +544,6 @@ fn prompt_required_forward_error(prompt_plan: SshAuthPromptPlan) -> AppError {
     AppError::Credential(format!(
         "SSH authentication is required before starting port forwarding: {prompts}"
     ))
-}
-
-fn spawn_forward_process(plan: &ForwardCommandPlan) -> AppResult<ManagedForwardProcess> {
-    if let Some(secret_input_plan) = plan.secret_input_plan.clone() {
-        return spawn_forward_pty(&plan.executable, &plan.args, secret_input_plan);
-    }
-
-    let child = silent_command(&plan.executable)
-        .args(&plan.args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| AppError::PortForward(format!("无法启动 SSH 端口转发: {error}")))?;
-    Ok(ManagedForwardProcess::Process(Box::new(child)))
-}
-
-fn spawn_forward_pty(
-    executable: &str,
-    args: &[String],
-    secret_input_plan: TerminalSecretInputPlan,
-) -> AppResult<ManagedForwardProcess> {
-    let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows: 24,
-            cols: 80,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|error| AppError::PortForward(error.to_string()))?;
-    let mut command = CommandBuilder::new(executable);
-    command.args(args.iter().map(String::as_str));
-    let child = pair
-        .slave
-        .spawn_command(command)
-        .map_err(|error| AppError::PortForward(error.to_string()))?;
-    let pid = child.process_id();
-    let reader = pair
-        .master
-        .try_clone_reader()
-        .map_err(|error| AppError::PortForward(error.to_string()))?;
-    let writer = pair
-        .master
-        .take_writer()
-        .map_err(|error| AppError::PortForward(error.to_string()))?;
-    spawn_secret_input_thread(reader, writer, secret_input_plan);
-
-    Ok(ManagedForwardProcess::Pty(Box::new(PtyForwardProcess {
-        child,
-        _master: pair.master,
-        pid,
-    })))
-}
-
-fn spawn_secret_input_thread(
-    mut reader: Box<dyn Read + Send>,
-    mut writer: Box<dyn Write + Send>,
-    secret_input_plan: TerminalSecretInputPlan,
-) {
-    thread::spawn(move || {
-        let mut responder = ForwardSecretInputResponder::new(secret_input_plan);
-        let mut buffer = String::new();
-        let mut chunk = [0_u8; 1024];
-
-        while let Ok(read) = reader.read(&mut chunk) {
-            if read == 0 {
-                break;
-            }
-            if !responder.can_respond() {
-                continue;
-            }
-
-            buffer.push_str(&String::from_utf8_lossy(&chunk[..read]));
-            if buffer.len() > 8192 {
-                let keep_from = buffer.len().saturating_sub(4096);
-                buffer = buffer[keep_from..].to_owned();
-            }
-            if let Some(response) = responder.response_for(&buffer) {
-                let _ = writer.write_all(response.as_bytes());
-                let _ = writer.write_all(b"\n");
-                let _ = writer.flush();
-                buffer.clear();
-            }
-        }
-    });
 }
 
 fn unix_timestamp() -> String {

@@ -181,7 +181,7 @@ impl FileStore {
         validate_change_set_id(id)?;
         let _lock = self.acquire_transaction_lock()?;
         recover_pending_locked(self)?;
-        apply_changes_locked(self, id, timestamp, coalesce_legacy_changes(changes))
+        apply_changes_locked(self, id, timestamp, changes)
     }
 
     pub fn restore_change_set(
@@ -514,20 +514,4 @@ pub(crate) fn manifest_path_string(path: &Path) -> String {
         .map(|component| component.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
-}
-
-fn coalesce_legacy_changes(changes: Vec<FileStoreChange>) -> Vec<FileStoreChange> {
-    let mut normalized = Vec::<FileStoreChange>::new();
-    for change in changes {
-        if let Some(existing) = normalized
-            .iter_mut()
-            .find(|existing| existing.relative_path == change.relative_path)
-        {
-            // 旧 facade 允许同一路径出现多次，逐项应用后的稳定语义是最后一项生效。
-            *existing = change;
-        } else {
-            normalized.push(change);
-        }
-    }
-    normalized
 }

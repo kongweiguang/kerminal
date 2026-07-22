@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -612,15 +614,6 @@ function managedSshRuntimeSnapshot() {
     activeChannels: 3,
     activeSessions: 1,
     generatedAt: "1760000000",
-    recentLegacyFallbacks: [
-      {
-        capability: "sftp",
-        count: 1,
-        lastAt: "1760000001",
-        reason: "runtime-unwired",
-        target: "deploy@example.internal:22",
-      },
-    ],
     sessions: [
       {
         activeChannels: 3,

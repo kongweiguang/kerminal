@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   createRuntimePerformanceSnapshot,
@@ -144,7 +146,6 @@ describe("terminalRuntimeDiagnostics", () => {
         activeChannels: 3,
         activeSessions: 1,
         generatedAt: "1760000000",
-        recentLegacyFallbacks: [],
         sessions: [
           {
             activeChannels: 3,
@@ -268,7 +269,6 @@ describe("terminalRuntimeDiagnostics", () => {
         activeChannels: 2,
         activeSessions: 1,
         generatedAt: "1760000000",
-        recentLegacyFallbacks: [],
         sessions: [
           {
             activeChannels: 2,
@@ -318,7 +318,6 @@ describe("terminalRuntimeDiagnostics", () => {
     });
 
     expect(evaluateRuntimeProductionReadinessGate(snapshot)).toMatchObject({
-      fallbackCount: 0,
       missingDiagnostics: [],
       ready: true,
       statusLabel: "默认启用门禁通过",
@@ -326,21 +325,12 @@ describe("terminalRuntimeDiagnostics", () => {
     });
   });
 
-  it("blocks the production gate for fallback, unknown errors, or missing diagnostics", () => {
+  it("blocks the production gate for unknown errors or missing diagnostics", () => {
     const snapshot = createRuntimePerformanceSnapshot({
       managedSsh: {
         activeChannels: 0,
         activeSessions: 0,
         generatedAt: "1760000000",
-        recentLegacyFallbacks: [
-          {
-            capability: "sftp",
-            count: 2,
-            lastAt: "1760000001",
-            reason: "runtime-unwired",
-            target: "deploy@example.internal:22",
-          },
-        ],
         sessions: [],
       },
       ssh: {
@@ -356,12 +346,10 @@ describe("terminalRuntimeDiagnostics", () => {
 
     const gate = evaluateRuntimeProductionReadinessGate(snapshot);
     expect(gate.ready).toBe(false);
-    expect(gate.fallbackCount).toBe(2);
     expect(gate.unknownErrorClassCount).toBe(2);
     expect(gate.missingDiagnostics).toEqual(["sftp", "suggestions"]);
     expect(gate.issues.map((issue) => issue.kind)).toEqual([
       "missing-diagnostics",
-      "legacy-fallback",
       "unknown-error-class",
     ]);
   });

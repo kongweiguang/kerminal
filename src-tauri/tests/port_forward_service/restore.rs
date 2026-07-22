@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use super::fixtures::*;
 
 #[test]
@@ -28,24 +30,24 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             id: "forward-restart-1".to_owned(),
             host_id: host.id,
             host_name: host.name,
-            name: "网络助手".to_owned(),
-            kind: PortForwardKind::Remote,
-            origin: PortForwardOrigin::NetworkAssist,
+            name: "远端 SOCKS".to_owned(),
+            kind: PortForwardKind::RemoteDynamic,
+            origin: PortForwardOrigin::User,
             bind_host: "127.0.0.1".to_owned(),
             local_bind_host: Some("127.0.0.1".to_owned()),
             remote_bind_host: Some("127.0.0.1".to_owned()),
             source_port: 18080,
-            target_host: Some("127.0.0.1".to_owned()),
-            target_port: Some(18081),
+            target_host: None,
+            target_port: None,
             local_endpoint: Some(PortForwardEndpoint {
                 host: "127.0.0.1".to_owned(),
-                label: Some("本机 HTTP CONNECT 代理".to_owned()),
-                port: Some(18081),
+                label: Some("本机 SOCKS5 代理".to_owned()),
+                port: Some(18080),
             }),
             remote_endpoint: None,
-            proxy_protocol: Some(PortForwardProxyProtocol::Http),
+            proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
             remote_access_scope: None,
-            proxy_url: Some("http://127.0.0.1:18080".to_owned()),
+            proxy_url: Some("socks5h://127.0.0.1:18080".to_owned()),
             proxy_apply_scope: PortForwardProxyApplyScope::FutureTerminals,
             command_preview: "ssh -R 127.0.0.1:18080:127.0.0.1:18081 tester@127.0.0.1".to_owned(),
             last_error: None,
@@ -88,7 +90,7 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
         .expect("restored runtime diagnostics");
     assert_eq!(runtime.mode, PortForwardRuntimeMode::Restored);
     assert_eq!(runtime.backend, "restored");
-    assert_eq!(runtime.tunnel_kind, "legacyHttp");
+    assert_eq!(runtime.tunnel_kind, "remoteDynamic");
     assert_eq!(runtime.cleanup_status, "restoredAfterAppRestart");
     assert_eq!(
         runtime.recent_failure.as_deref(),

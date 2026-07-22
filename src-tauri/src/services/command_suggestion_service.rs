@@ -34,7 +34,8 @@ use crate::{
             SuggestionProviderKind,
         },
         settings::{
-            TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
+            TerminalCommandSuggestionRemoteRefresh, TerminalInlineSuggestionProductionHostPolicy,
+            TerminalInlineSuggestionSettings,
         },
         sftp::{SftpDirectoryListing, SftpEntry, SftpEntryKind, SftpListDirectoryRequest},
         snippet::{SnippetCatalogListRequest, SnippetScope},
@@ -232,6 +233,6 @@ fn remote_refresh_policy(capacity: usize) -> RemoteCachePolicy {
 struct RemoteProbePolicySkip {
     production_host: bool,
     production_host_policy: TerminalInlineSuggestionProductionHostPolicy,
-    remote_probe_enabled: bool,
+    remote_refresh_enabled: bool,
     reason: &'static str,
 }

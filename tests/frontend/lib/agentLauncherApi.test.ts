@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -19,7 +21,7 @@ describe("agentLauncherApi", () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
       session: {
-        agentSessionId: "ags-1",
+        agent_session_id: "ags-1",
         launch: { args: [], cwd: "C:/sessions/ags-1", shell: "codex" },
         status: "archived",
         title: "Codex",
@@ -28,7 +30,7 @@ describe("agentLauncherApi", () => {
     const { archiveAgentSession } = await import("../../../src/lib/agentLauncherApi");
 
     await expect(archiveAgentSession("ags-1")).resolves.toMatchObject({
-      session: { agentSessionId: "ags-1", status: "archived" },
+      session: { agent_session_id: "ags-1", status: "archived" },
     });
     expect(invokeMock).toHaveBeenCalledWith("agent_session_archive", {
       agentSessionId: "ags-1",
@@ -44,7 +46,7 @@ describe("agentLauncherApi", () => {
     const record = await archiveAgentSession("ags-preview");
 
     expect(record.session).toMatchObject({
-      agentSessionId: "ags-preview",
+      agent_session_id: "ags-preview",
       status: "archived",
       title: "Archived Agent Session",
     });
@@ -56,7 +58,7 @@ describe("agentLauncherApi", () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
       session: {
-        agentSessionId: "ags-title",
+        agent_session_id: "ags-title",
         launch: { args: [], cwd: "C:/sessions/ags-title", shell: "codex" },
         status: "active",
         title: "发布检查",
@@ -74,17 +76,4 @@ describe("agentLauncherApi", () => {
     });
   });
 
-  it("normalizes missing record status as active for legacy records", async () => {
-    const { agentSessionRecordStatus } = await import("../../../src/lib/agentLauncherApi");
-
-    expect(
-      agentSessionRecordStatus({
-        session: {
-          agentSessionId: "ags-legacy",
-          launch: { args: [], cwd: "C:/sessions/ags-legacy", shell: "codex" },
-          title: "Codex",
-        },
-      }),
-    ).toBe("active");
-  });
 });

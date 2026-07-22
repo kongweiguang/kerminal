@@ -248,9 +248,6 @@ impl Default for TerminalInlineSuggestionProviderSettings {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalInlineSuggestionSettings {
-    /// 是否启用 inline suggestion。
-    #[serde(default = "default_true")]
-    pub enabled: bool,
     /// 接受建议的按键。
     #[serde(default)]
     pub accept_key: TerminalInlineSuggestionAcceptKey,
@@ -272,9 +269,6 @@ pub struct TerminalInlineSuggestionSettings {
     /// provider 开关。
     #[serde(default)]
     pub providers: TerminalInlineSuggestionProviderSettings,
-    /// 是否允许远端只读探测预热。
-    #[serde(default = "default_true")]
-    pub remote_probe_enabled: bool,
     /// 生产主机策略。
     #[serde(default)]
     pub production_host_policy: TerminalInlineSuggestionProductionHostPolicy,
@@ -289,7 +283,6 @@ pub struct TerminalInlineSuggestionSettings {
 impl Default for TerminalInlineSuggestionSettings {
     fn default() -> Self {
         Self {
-            enabled: true,
             accept_key: TerminalInlineSuggestionAcceptKey::RightArrow,
             presentation: TerminalCommandSuggestionPresentation::InlineAndMenu,
             menu_shortcut: TerminalCommandSuggestionMenuShortcut::CtrlSpace,
@@ -297,7 +290,6 @@ impl Default for TerminalInlineSuggestionSettings {
             partial_accept: true,
             remote_refresh: TerminalCommandSuggestionRemoteRefresh::Safe,
             providers: TerminalInlineSuggestionProviderSettings::default(),
-            remote_probe_enabled: true,
             production_host_policy: TerminalInlineSuggestionProductionHostPolicy::Restricted,
             audit_retention_days: DEFAULT_TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS,
             feedback_retention_days: DEFAULT_TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS,
@@ -332,7 +324,6 @@ pub struct TerminalAppearance {
     #[serde(default)]
     pub mac_option_is_meta: bool,
     /// 终端渲染器选择策略。
-    #[serde(default)]
     pub renderer_type: TerminalRendererType,
     /// 行高倍率。
     pub line_height: f64,
@@ -661,25 +652,6 @@ impl AppSettings {
                 MIN_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS,
                 MAX_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS,
             );
-        if !self.terminal.inline_suggestion.enabled {
-            self.terminal.inline_suggestion.presentation =
-                TerminalCommandSuggestionPresentation::Off;
-        }
-        if self.terminal.inline_suggestion.presentation
-            == TerminalCommandSuggestionPresentation::Off
-        {
-            self.terminal.inline_suggestion.enabled = false;
-        }
-        if !self.terminal.inline_suggestion.remote_probe_enabled {
-            self.terminal.inline_suggestion.remote_refresh =
-                TerminalCommandSuggestionRemoteRefresh::Off;
-        }
-        if self.terminal.inline_suggestion.remote_refresh
-            == TerminalCommandSuggestionRemoteRefresh::Off
-        {
-            self.terminal.inline_suggestion.remote_probe_enabled = false;
-        }
-
         if self.keybindings.is_empty() {
             self.keybindings = default_keybindings();
         }

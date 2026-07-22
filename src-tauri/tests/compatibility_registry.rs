@@ -8,18 +8,14 @@ use kerminal_lib::services::compatibility_registry::{
     RetirementEvidence,
 };
 
-const EXPECTED_IDS: [&str; 11] = [
-    "command-history.empty-scope-clear",
+const EXPECTED_IDS: [&str; 7] = [
     "config-watcher.polling",
     "diagnostics.silent-catch-policy",
-    "managed-ssh.legacy-fallback",
     "runtime.browser-preview",
     "sftp.transfer-polling",
-    "snippet.schema-v1",
     "startup.dynamic-import-retry",
     "terminal.gpu-fallback",
     "terminal.xterm-webview-patch",
-    "workspace.schema-v1-migration",
 ];
 
 #[test]
@@ -46,16 +42,6 @@ fn registry_validation_rejects_malformed_stable_ids() {
 fn activation_is_fail_closed_for_unknown_ids_and_reasons() {
     assert!(
         evaluate_activation("terminal.gpu-fallback", "context-lost")
-            .unwrap()
-            .allowed
-    );
-    assert!(
-        evaluate_activation("managed-ssh.legacy-fallback", "backend-unwired")
-            .unwrap()
-            .allowed
-    );
-    assert!(
-        !evaluate_activation("managed-ssh.legacy-fallback", "authentication-failed")
             .unwrap()
             .allowed
     );
@@ -129,7 +115,7 @@ fn metric_collector_counts_allowed_denied_and_runtime_failures() {
 #[test]
 fn retirement_gate_requires_quiet_windows_tests_and_rollback() {
     let blocked = evaluate_retirement(
-        "snippet.schema-v1",
+        "terminal.xterm-webview-patch",
         &RetirementEvidence {
             consecutive_zero_windows: 2,
             regression_tests_green: true,
@@ -140,7 +126,7 @@ fn retirement_gate_requires_quiet_windows_tests_and_rollback() {
     assert_eq!(blocked, RetirementDecision::Blocked);
 
     let allowed = evaluate_retirement(
-        "snippet.schema-v1",
+        "terminal.xterm-webview-patch",
         &RetirementEvidence {
             consecutive_zero_windows: 3,
             regression_tests_green: true,

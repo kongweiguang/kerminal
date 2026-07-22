@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   listDockerContainerDirectory,
   readDockerContainerTextFile,
@@ -28,8 +30,6 @@ import type { RemoteTargetRef } from "../../lib/targetModel";
 export const MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE =
   "远程工作区缺少可用目标。";
 
-const BINARY_FILE_READ_ERROR_MARKER = "文件包含二进制内容";
-
 export type RemoteWorkspaceDirectoryListing =
   DockerContainerDirectoryListing | SftpDirectoryListing;
 
@@ -42,21 +42,6 @@ export type RemoteWorkspaceWriteTextFileResponse =
   | DockerContainerWriteTextFileResponse
   | SftpWriteTextFileResponse
   | LocalWriteTextFileResponse;
-
-/**
- * 兼容旧版读取实现的二进制错误文本。
- * 新实现优先使用响应里的 `binary` 字段；这里只识别应用自身的稳定标记，
- * 不能把普通连接、权限或远端错误降级为不可预览提示。
- */
-export function isRemoteWorkspaceBinaryFileReadError(error: unknown) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  return message.includes(BINARY_FILE_READ_ERROR_MARKER);
-}
 
 export async function listRemoteWorkspaceDirectory(
   target: RemoteTargetRef | null | undefined,

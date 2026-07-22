@@ -28,16 +28,9 @@ import {
 } from "../lib/commandHistoryApi";
 import {
   listSnippetCatalog,
-  listSnippets,
-  type CommandSnippet,
   type SnippetCatalogItem,
 } from "../lib/snippetApi";
 import { requestSnippetPanelOpen } from "../features/snippets/snippetPanelEvents";
-import {
-  resolveRuntimeSnippetFeatureGates,
-  snippetV2NavigationEnabled,
-  type SnippetFeatureGates,
-} from "../features/snippets/snippetFeatureGates";
 import { writeTerminal } from "../lib/terminalApi";
 import { listWorkflows, type CommandWorkflow } from "../lib/workflowApi";
 import { getTerminalPaneSession } from "../features/terminal/terminalSessionRegistry";
@@ -51,10 +44,7 @@ export interface KerminalQuickOpenSourceApi {
     query?: string;
     limit?: number;
   }) => Promise<CommandHistoryEntry[]>;
-  readonly listSnippets: (request: {
-    query?: string;
-  }) => Promise<CommandSnippet[]>;
-  readonly listSnippetCatalog?: (request: {
+  readonly listSnippetCatalog: (request: {
     query?: string;
     limit?: number;
   }) => Promise<SnippetCatalogItem[]>;
@@ -68,7 +58,6 @@ export interface KerminalQuickOpenRegistryInput {
   readonly terminalPanes: readonly TerminalPane[];
   readonly terminalTabs: readonly TerminalTab[];
   readonly sourceApi?: KerminalQuickOpenSourceApi;
-  readonly snippetFeatureGates?: SnippetFeatureGates;
 }
 
 export interface KerminalQuickOpenResolutionEnvironment {
@@ -88,7 +77,6 @@ export type KerminalQuickOpenResolution =
 const defaultSourceApi: KerminalQuickOpenSourceApi = {
   listAgentSessions,
   listCommandHistory,
-  listSnippets,
   listSnippetCatalog,
   listWorkflows,
 };
@@ -177,7 +165,6 @@ function createVisibleRecentPaths(
 export function createKerminalQuickOpenRegistry({
   machineGroups,
   sourceApi = defaultSourceApi,
-  snippetFeatureGates = resolveRuntimeSnippetFeatureGates(),
   terminalPanes,
   terminalTabs,
 }: KerminalQuickOpenRegistryInput): QuickOpenProviderRegistry {
@@ -263,12 +250,10 @@ export function createKerminalQuickOpenRegistry({
       ["snippet"],
       async ({ signal, text }) => {
         throwIfAborted(signal);
-        const snippets = snippetV2NavigationEnabled(snippetFeatureGates) && sourceApi.listSnippetCatalog
-          ? await sourceApi.listSnippetCatalog({
-              limit: 200,
-              query: text.trim() || undefined,
-            })
-          : await sourceApi.listSnippets({ query: text.trim() || undefined });
+        const snippets = await sourceApi.listSnippetCatalog({
+          limit: 200,
+          query: text.trim() || undefined,
+        });
         throwIfAborted(signal);
         return snippets.map((snippet) => ({
           kind: "snippet" as const,
@@ -344,15 +329,12 @@ export function createKerminalQuickOpenRegistry({
 }
 
 async function findCommand(
-  reference: QuickOpenReference<"command-history" | "snippet">,
+  reference: QuickOpenReference<"command-history">,
   sourceApi: KerminalQuickOpenSourceApi,
   signal: AbortSignal,
 ): Promise<string | undefined> {
   throwIfAborted(signal);
-  const items =
-    reference.kind === "command-history"
-      ? await sourceApi.listCommandHistory({ limit: 100 })
-      : await sourceApi.listSnippets({});
+  const items = await sourceApi.listCommandHistory({ limit: 100 });
   throwIfAborted(signal);
   return items.find((item) => item.id === reference.id)?.command;
 }
@@ -366,7 +348,6 @@ export async function resolveKerminalQuickOpenReference(
     readonly sourceApi?: KerminalQuickOpenSourceApi;
     readonly writeTerminal?: (sessionId: string, data: string) => Promise<void>;
     readonly getTerminalPaneSession?: (paneId: string) => string | undefined;
-    readonly snippetFeatureGates?: SnippetFeatureGates;
   },
 ): Promise<KerminalQuickOpenResolution> {
   const sourceApi = options.sourceApi ?? defaultSourceApi;
@@ -398,35 +379,13 @@ export async function resolveKerminalQuickOpenReference(
     return { kind: "unavailable", message: "当前可见路径已失效，请重新搜索。" };
   }
   if (reference.kind === "snippet") {
-    const gates = options.snippetFeatureGates ?? resolveRuntimeSnippetFeatureGates();
-    if (snippetV2NavigationEnabled(gates)) {
-      environment.onOpenTool("snippets");
-      requestSnippetPanelOpen({
-        ...(environment.focusedPaneId
-          ? { paneId: environment.focusedPaneId }
-          : {}),
-        snippetId: reference.id,
-      });
-      return { kind: "completed" };
-    }
-    const paneId = environment.focusedPaneId;
-    const sessionId = paneId
-      ? (options.getTerminalPaneSession ?? getTerminalPaneSession)(paneId)
-      : undefined;
-    if (!paneId || !sessionId) {
-      return { kind: "unavailable", message: "当前没有已连接的终端分屏。" };
-    }
-    const command = await findCommand(
-      { id: reference.id, kind: "snippet" },
-      sourceApi,
-      options.signal,
-    );
-    if (!command) {
-      return { kind: "unavailable", message: "该片段已不存在，请重新搜索。" };
-    }
-    throwIfAborted(options.signal);
-    await (options.writeTerminal ?? writeTerminal)(sessionId, command);
-    throwIfAborted(options.signal);
+    environment.onOpenTool("snippets");
+    requestSnippetPanelOpen({
+      ...(environment.focusedPaneId
+        ? { paneId: environment.focusedPaneId }
+        : {}),
+      snippetId: reference.id,
+    });
     return { kind: "completed" };
   }
   if (reference.kind === "command-history") {

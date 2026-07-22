@@ -2,7 +2,7 @@
 //!
 //! @author kongweiguang
 
-use std::{io::Read, time::Duration};
+use std::{io::Read, sync::Arc, time::Duration};
 
 pub(crate) mod native;
 
@@ -24,10 +24,10 @@ use crate::{
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
             facade::{SshRuntimeFacade, SshRuntimeTargetContext},
+            native_backend::NativeSshRuntimeBackend,
             policy::{
-                external_target_not_available_error, is_capability_unsupported,
-                is_external_runtime_target_id, is_managed_runtime_unwired,
-                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
+                external_target_not_available_error, is_external_runtime_target_id,
+                runtime_host_key_policy_for_host_id,
             },
             session_key::ssh_session_key_for_route,
             ManagedSshSessionManager, ManagedSshStreamingExecSession, SshRuntimeConnectRequest,
@@ -39,8 +39,7 @@ use crate::{
 use tokio_util::sync::CancellationToken;
 
 use native::{
-    build_native_command_execution, build_native_connection_execution,
-    connect_native_command_target, disconnect_native_connection, execute_native_ssh_command,
+    build_native_connection_execution, connect_native_command_target, disconnect_native_connection,
     resolve_native_auth_material, NativeHostKeyPolicy, NativeSshAuthMaterial, NativeSshPrivateKey,
 };
 
@@ -51,13 +50,8 @@ const DEFAULT_OUTPUT_BYTES: usize = 16 * 1024;
 const MIN_OUTPUT_BYTES: usize = 256;
 const MAX_OUTPUT_BYTES: usize = 128 * 1024;
 const MAX_COMMAND_CHARS: usize = 16 * 1024;
-const LEGACY_FALLBACK_EXEC_UNWIRED: &str = "managed-exec-backend-unwired";
-const LEGACY_FALLBACK_EXEC_UNSUPPORTED: &str = "managed-exec-unsupported";
-const LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED: &str = "managed-streaming-exec-backend-unwired";
-const LEGACY_FALLBACK_STREAMING_EXEC_UNSUPPORTED: &str = "managed-streaming-exec-unsupported";
-
 /// SSH 非交互命令业务入口。
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SshCommandService {
     managed_runtime: Option<ManagedSshSessionManager>,
     auth_broker: Option<SshAuthBroker>,
@@ -65,10 +59,12 @@ pub struct SshCommandService {
 }
 
 impl SshCommandService {
-    /// 创建 SSH 非交互命令服务。
+    /// 创建使用当前 native Managed SSH backend 的非交互命令服务。
     pub fn new() -> Self {
         Self {
-            managed_runtime: None,
+            managed_runtime: Some(ManagedSshSessionManager::with_backend(Arc::new(
+                NativeSshRuntimeBackend::new(),
+            ))),
             auth_broker: None,
             external_targets: None,
         }
@@ -111,14 +107,8 @@ impl SshCommandService {
             return Err(command_cancelled_error());
         }
         let (host, route_auth) = self.resolve_native_runtime_host(paths, &request.host_id)?;
-        if let Some(output) = self
-            .try_execute_managed_exec(paths, &host, &route_auth, &request, cancel_token.clone())
-            .await?
-        {
-            return Ok(output);
-        }
-        let execution = build_native_command_execution(&host, paths, request)?;
-        execute_native_ssh_command(&host, execution, cancel_token).await
+        self.try_execute_managed_exec(paths, &host, &route_auth, &request, cancel_token)
+            .await
     }
 
     /// 测试未保存或已保存 SSH 主机配置能否完成 native 连接与认证。
@@ -162,8 +152,7 @@ impl SshCommandService {
 
     /// Open a streaming exec channel through the managed SSH runtime.
     ///
-    /// Returns `Ok(None)` only for explicit migration fallback cases: runtime
-    /// unwired or backend streaming exec unsupported.
+    /// 不支持 streaming exec 的 backend 直接返回稳定错误，不切换到第二条 SSH 路径。
     pub async fn open_managed_streaming_exec(
         &self,
         paths: &KerminalPaths,
@@ -171,7 +160,7 @@ impl SshCommandService {
         command: String,
         timeout_seconds: u64,
         cancel_token: CancellationToken,
-    ) -> AppResult<Option<ManagedSshStreamingExecSession>> {
+    ) -> AppResult<ManagedSshStreamingExecSession> {
         let (host, route_auth) = self.resolve_native_runtime_host(paths, host_id)?;
         self.try_open_managed_streaming_exec(
             paths,
@@ -222,10 +211,11 @@ impl SshCommandService {
         route_auth: &ResolvedSshRouteAuth,
         request: &SshCommandRequest,
         cancel_token: CancellationToken,
-    ) -> AppResult<Option<SshCommandOutput>> {
-        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
-            return Ok(None);
-        };
+    ) -> AppResult<SshCommandOutput> {
+        let managed_runtime = self
+            .managed_runtime
+            .as_ref()
+            .ok_or_else(|| AppError::SshCommand("Managed SSH runtime 未配置".to_owned()))?;
         let known_hosts_path = paths.root.join("known_hosts");
         let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
         let connect_request = SshRuntimeConnectRequest::native(
@@ -244,22 +234,10 @@ impl SshCommandService {
             normalize_output_bytes(request.max_output_bytes),
         )
         .with_cancel_token(cancel_token);
-        match facade.execute_exec(&context, runtime_request).await {
-            Ok(output) => Ok(Some(ssh_command_output_from_runtime(host, output))),
-            Err(error) if is_managed_runtime_unwired(&error) => {
-                facade.record_legacy_fallback("exec", LEGACY_FALLBACK_EXEC_UNWIRED, Some(&context));
-                Ok(None)
-            }
-            Err(error) if is_capability_unsupported(&error, SshRuntimeCapability::Exec) => {
-                facade.record_legacy_fallback(
-                    "exec",
-                    LEGACY_FALLBACK_EXEC_UNSUPPORTED,
-                    Some(&context),
-                );
-                Ok(None)
-            }
-            Err(error) => Err(error),
-        }
+        facade
+            .execute_exec(&context, runtime_request)
+            .await
+            .map(|output| ssh_command_output_from_runtime(host, output))
     }
 
     async fn try_open_managed_streaming_exec(
@@ -270,10 +248,11 @@ impl SshCommandService {
         command: String,
         timeout_seconds: u64,
         cancel_token: CancellationToken,
-    ) -> AppResult<Option<ManagedSshStreamingExecSession>> {
-        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
-            return Ok(None);
-        };
+    ) -> AppResult<ManagedSshStreamingExecSession> {
+        let managed_runtime = self
+            .managed_runtime
+            .as_ref()
+            .ok_or_else(|| AppError::SshCommand("Managed SSH runtime 未配置".to_owned()))?;
         let known_hosts_path = paths.root.join("known_hosts");
         let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
         let connect_request =
@@ -286,28 +265,13 @@ impl SshCommandService {
         let context = SshRuntimeTargetContext::new(connect_request);
         let runtime_request = SshRuntimeStreamingExecRequest::new(command, timeout_seconds)
             .with_cancel_token(cancel_token);
-        match facade.open_streaming_exec(&context, runtime_request).await {
-            Ok(session) => Ok(Some(session)),
-            Err(error) if is_managed_runtime_unwired(&error) => {
-                facade.record_legacy_fallback(
-                    "streaming-exec",
-                    LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED,
-                    Some(&context),
-                );
-                Ok(None)
-            }
-            Err(error)
-                if is_capability_unsupported(&error, SshRuntimeCapability::StreamingExec) =>
-            {
-                facade.record_legacy_fallback(
-                    "streaming-exec",
-                    LEGACY_FALLBACK_STREAMING_EXEC_UNSUPPORTED,
-                    Some(&context),
-                );
-                Ok(None)
-            }
-            Err(error) => Err(error),
-        }
+        facade.open_streaming_exec(&context, runtime_request).await
+    }
+}
+
+impl Default for SshCommandService {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it, vi } from "vitest";
 import type { CommandSuggestionCandidate } from "../../../../src/lib/terminalSuggestionApi";
 import { TerminalSuggestionCache } from "../../../../src/features/terminal/terminalSuggestionCache";
@@ -72,8 +74,10 @@ function candidate(
   overrides: Partial<CommandSuggestionCandidate> = {},
 ): CommandSuggestionCandidate {
   return {
+    activation: "insert",
     acceptBoundaries: [10, 17],
     allowedPresentations: ["inline", "menu"],
+    candidateKind: "command",
     displayText: "git status --short",
     id: "history:git-status",
     provider: "history",

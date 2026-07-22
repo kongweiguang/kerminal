@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
@@ -19,7 +21,6 @@ function xtermWebviewCompatibilityPlugin(): Plugin {
       if (!isXtermBrowserBundle(id)) {
         return null;
       }
-
       const patchedCode = patchXtermWebviewNamespace(code);
       return patchedCode === code ? null : { code: patchedCode, map: null };
     },
@@ -36,13 +37,9 @@ function xtermWebviewOptimizeDepsPlugin() {
       ) => void;
     }) {
       build.onLoad(
-        {
-          filter: /[\\/]@xterm[\\/]xterm[\\/]lib[\\/]xterm\.mjs$/,
-        },
+        { filter: /[\\/]@xterm[\\/]xterm[\\/]lib[\\/]xterm\.mjs$/ },
         (args) => ({
-          contents: patchXtermWebviewNamespace(
-            readFileSync(args.path, "utf8"),
-          ),
+          contents: patchXtermWebviewNamespace(readFileSync(args.path, "utf8")),
           loader: "js",
         }),
       );

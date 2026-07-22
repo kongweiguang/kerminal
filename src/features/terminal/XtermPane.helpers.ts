@@ -13,10 +13,6 @@ import type {
   CommandSuggestionCandidate,
   CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
-import {
-  resolveRuntimeSnippetFeatureGates,
-  snippetV2NavigationEnabled,
-} from "../snippets/contracts/index";
 import type { TerminalAppearance } from "../settings/contracts/index";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
@@ -72,7 +68,7 @@ export function terminalSuggestionProviders({
   inlineSuggestion: TerminalAppearance["inlineSuggestion"];
   remoteHostProduction?: boolean;
 }): CommandSuggestionProvider[] {
-  if (!inlineSuggestion.enabled) {
+  if (inlineSuggestion.presentation === "off") {
     return [];
   }
   const providers: CommandSuggestionProvider[] = [];
@@ -99,9 +95,7 @@ export function terminalSuggestionProviders({
   if (inlineSuggestion.providers.spec) {
     providers.push("spec");
   }
-  if (snippetV2NavigationEnabled(resolveRuntimeSnippetFeatureGates())) {
-    providers.push("snippet");
-  }
+  providers.push("snippet");
   return providers;
 }
 
@@ -112,7 +106,7 @@ function terminalInlineSuggestionAllowsRemoteProbe({
   inlineSuggestion: TerminalAppearance["inlineSuggestion"];
   remoteHostProduction?: boolean;
 }) {
-  if (!inlineSuggestion.remoteProbeEnabled) {
+  if (inlineSuggestion.remoteRefresh === "off") {
     return false;
   }
   return !(

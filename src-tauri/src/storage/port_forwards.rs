@@ -17,7 +17,7 @@ use crate::{
 };
 
 const PORT_FORWARD_STATE_FILE: &str = "data/port-forwards/sessions.json";
-const PORT_FORWARD_STATE_SCHEMA_VERSION: u32 = 1;
+const PORT_FORWARD_STATE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PortForwardStateFile {

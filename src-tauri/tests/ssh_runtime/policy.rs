@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 //! SSH runtime 策略与错误分类集成测试。
 
 use super::fixtures::*;
@@ -103,7 +105,7 @@ fn runtime_facade_context_captures_native_target_without_exposing_secret_materia
 }
 
 #[test]
-fn runtime_facade_acquire_session_respects_lane_flags_and_fallback_target_label() {
+fn runtime_facade_acquire_session_respects_lane_flags() {
     let backend = Arc::new(FakeBackend::default());
     let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
     let facade = SshRuntimeFacade::new(manager);
@@ -125,7 +127,6 @@ fn runtime_facade_acquire_session_respects_lane_flags_and_fallback_target_label(
     let _bulk_transfer_session = facade
         .acquire_session(&bulk_transfer)
         .expect("bulk transfer session");
-    facade.record_legacy_fallback("exec", "backend unsupported", Some(&interactive));
 
     let snapshot = facade.snapshot().expect("snapshot");
     let mut runtime_flags = snapshot
@@ -144,17 +145,11 @@ fn runtime_facade_acquire_session_respects_lane_flags_and_fallback_target_label(
             vec![MANAGED_SSH_CAPABILITY_RUNTIME_FLAG.to_owned()],
         ]
     );
-    assert_eq!(snapshot.recent_legacy_fallbacks.len(), 1);
-    assert_eq!(snapshot.recent_legacy_fallbacks[0].capability, "exec");
-    assert_eq!(
-        snapshot.recent_legacy_fallbacks[0].target.as_deref(),
-        Some("deploy@example.com:22")
-    );
     assert_eq!(backend.connect_count(), 3);
 }
 
 #[test]
-fn runtime_policy_centralizes_host_key_external_target_and_fallback_rules() {
+fn runtime_policy_centralizes_host_key_and_external_target_rules() {
     assert!(is_external_runtime_target_id("external:launch-1"));
     assert!(!is_external_runtime_target_id("saved-host-1"));
     assert_eq!(

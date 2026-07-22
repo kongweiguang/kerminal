@@ -248,19 +248,6 @@ impl SshRuntimeFacade {
             .start_remote_dynamic_forward(request)
     }
 
-    pub fn record_legacy_fallback(
-        &self,
-        capability: impl Into<String>,
-        reason: impl Into<String>,
-        context: Option<&SshRuntimeTargetContext>,
-    ) {
-        self.manager.record_legacy_fallback(
-            capability,
-            reason,
-            context.map(|context| context.target.target_label.clone()),
-        );
-    }
-
     pub fn snapshot(&self) -> AppResult<ManagedSshRuntimeSnapshot> {
         self.manager.snapshot()
     }

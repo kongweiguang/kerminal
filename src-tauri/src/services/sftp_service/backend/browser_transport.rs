@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 //! SFTP 目录浏览连接复用、空闲回收与一次重连。
 
 use super::*;
@@ -29,12 +31,6 @@ pub(super) async fn list_directory_with_browser_transport(
                 Some(&path),
                 Some(&sftp_error.to_string()),
             );
-            if let Some(listing) =
-                list_external_directory_with_shell(endpoint, &path, settings, managed_runtime)
-                    .await?
-            {
-                return Ok(listing);
-            }
             return Err(sftp_error);
         }
         Err(error) => return Err(error),

@@ -86,7 +86,7 @@ fn versions_events_storage_and_sensitive_field_rejection_remain_explicit() {
         "CONFIG_FILE_SCHEMA_VERSION: u32 = 1",
     );
     assert_source_contains(
-        "src-tauri/src/storage/command_migrations.rs",
+        "src-tauri/src/storage/command_schema.rs",
         "CURRENT_COMMAND_SCHEMA_VERSION: u32 = 3",
     );
 
@@ -99,8 +99,7 @@ fn versions_events_storage_and_sensitive_field_rejection_remain_explicit() {
         );
     }
     let migrations =
-        fs::read_to_string(repo_root().join("src-tauri/src/storage/command_migrations.rs"))
-            .unwrap();
+        fs::read_to_string(repo_root().join("src-tauri/src/storage/command_schema.rs")).unwrap();
     for table in expected["sqlite"]["tables"].as_array().unwrap() {
         assert!(
             migrations.contains(&format!("TABLE IF NOT EXISTS {}", table.as_str().unwrap()))

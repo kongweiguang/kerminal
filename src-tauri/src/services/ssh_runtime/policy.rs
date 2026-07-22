@@ -18,7 +18,7 @@ use super::{
 const EXTERNAL_TARGET_ID_PREFIX: &str = "external:";
 const MANAGED_RUNTIME_UNWIRED: &str = "managed SSH runtime backend is not wired yet";
 
-/// Managed SSH capability used for fallback and unsupported classification.
+/// Managed SSH capability used for unsupported classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SshRuntimeCapability {
     Shell,

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -454,22 +456,4 @@ describe("WorkspaceFileTabSurface", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("maps legacy binary read errors to the same non-retryable notice", async () => {
-    transportMocks.readRemoteWorkspaceTextFile.mockRejectedValueOnce(
-      new Error("远程文件包含二进制内容，暂不支持作为文本编辑"),
-    );
-
-    render(
-      <WorkspaceFileTabSurface
-        active
-        tab={{ ...editableTab, path: "/srv/data/blob.unknown" }}
-      />,
-    );
-
-    expect(await screen.findByText("此文件不支持文本预览")).toBeVisible();
-    expect(screen.queryByText("文件读取失败")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "重试" }),
-    ).not.toBeInTheDocument();
-  });
 });
