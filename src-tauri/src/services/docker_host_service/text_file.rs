@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 
 use crate::models::file_preview::{file_preview_response_encoding, is_binary_file_preview_content};
@@ -57,8 +55,10 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
     )
     .await?;
     let (metadata, captured_content) = split_text_output(&output.stdout)?;
-    // SSH 命令输出会先做 UTF-8 lossy 展示，二进制判断只采用容器内生成的原始字节探针。
-    let binary = is_binary_file_preview_content(&metadata.preview_probe);
+    // SSH 命令输出会先做 UTF-8 lossy 展示，因此优先使用容器内生成的原始字节探针；
+    // raw 内容判断仅作为旧输出或探针工具不可用时的兼容兜底。
+    let binary = is_binary_file_preview_content(&metadata.preview_probe)
+        || is_binary_file_preview_content(captured_content.as_bytes());
     let (visible_content, content_limited) = limit_text_content(&captured_content, max_bytes);
     let visible_bytes_read = visible_content.len();
     let truncated =
@@ -140,10 +140,7 @@ pub fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, Stri
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned);
-    let preview_probe_hex = fields
-        .next()
-        .ok_or_else(|| AppError::Docker("容器文本文件缺少预览探针元数据".to_owned()))?;
-    let preview_probe = decode_preview_probe_hex(preview_probe_hex)?;
+    let preview_probe = decode_preview_probe_hex(fields.next().unwrap_or_default())?;
 
     Ok((
         ContainerTextMetadata {

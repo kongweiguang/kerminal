@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 // 项目测试 tsconfig 不加载 Node 类型；Vitest 运行时仍提供该内置模块。
 // @ts-expect-error Node 内置模块由 Vitest 的 Node 运行时提供。
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -285,7 +283,7 @@ describe("Context Workspace performance matrix", () => {
       capabilities: new Set(
         Array.from({ length: 12 }, (_, index) => `capability-${index}`),
       ),
-      revision: "1",
+      revision: 1,
     };
     let itemCount = 0;
     measureSync(

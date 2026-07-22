@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 use kerminal_lib::models::command_suggestion::{
     CommandSuggestionActivation, CommandSuggestionCandidateKind, SuggestionPresentation,
@@ -57,7 +55,7 @@ fn parameterized_snippet_menu_opens_panel_without_inline_replacement() {
 }
 
 #[test]
-fn base_suggestion_service_does_not_inject_snippet_catalog() {
+fn legacy_provider_requests_do_not_enable_snippets() {
     let (_home, state) = test_state();
     let input = "docker";
     let suggestions = state

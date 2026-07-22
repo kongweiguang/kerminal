@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type { CommandSuggestionCandidate } from "../../../../src/lib/terminalSuggestionApi";
 import { createTerminalSuggestionViewState } from "../../../../src/features/terminal/terminalSuggestionModel";
@@ -40,10 +38,8 @@ describe("terminalSuggestionStateMachine", () => {
 
 function candidate(): CommandSuggestionCandidate {
   return {
-    activation: "insert",
     acceptBoundaries: [10, 17],
     allowedPresentations: ["inline", "menu"],
-    candidateKind: "command",
     displayText: "git status --short",
     id: "history:git-status",
     provider: "history",

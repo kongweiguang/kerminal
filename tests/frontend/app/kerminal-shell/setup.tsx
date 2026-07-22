@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import {
   act,
   fireEvent,
@@ -273,6 +271,7 @@ export function resetKerminalShellTestState() {
     activeChannels: 0,
     activeSessions: 0,
     generatedAt: "1",
+    recentLegacyFallbacks: [],
     sessions: [],
   });
   mocks.serverInfoApi.getServerInfoSnapshot.mockResolvedValue({

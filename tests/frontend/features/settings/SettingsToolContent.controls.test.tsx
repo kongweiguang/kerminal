@@ -208,6 +208,7 @@ describe("SettingsToolContent controls", () => {
       expect.objectContaining({
         terminal: expect.objectContaining({
           inlineSuggestion: expect.objectContaining({
+            enabled: false,
             presentation: "off",
           }),
         }),
@@ -219,6 +220,7 @@ describe("SettingsToolContent controls", () => {
       expect.objectContaining({
         terminal: expect.objectContaining({
           inlineSuggestion: expect.objectContaining({
+            remoteProbeEnabled: false,
             remoteRefresh: "off",
           }),
         }),
@@ -230,6 +232,7 @@ describe("SettingsToolContent controls", () => {
       expect.objectContaining({
         terminal: expect.objectContaining({
           inlineSuggestion: expect.objectContaining({
+            enabled: true,
             presentation: "inline",
           }),
         }),

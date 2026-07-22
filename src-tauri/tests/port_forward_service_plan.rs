@@ -219,6 +219,25 @@ fn build_dynamic_forward_plan_does_not_require_target() {
 }
 
 #[test]
+fn build_http_network_assist_plan_is_rejected() {
+    let mut request = request(PortForwardKind::Remote);
+    request.source_port = 18080;
+    request.target_host = None;
+    request.target_port = None;
+    request.proxy_protocol = Some(PortForwardProxyProtocol::Http);
+
+    let error = build_forward_plan(
+        &remote_host(RemoteHostAuthType::Agent),
+        "ssh".to_owned(),
+        None,
+        &request,
+    )
+    .expect_err("HTTP network assist should be rejected");
+
+    assert!(error.to_string().contains("HTTP 网络助手已移除"));
+}
+
+#[test]
 fn build_remote_dynamic_socks_plan_uses_remote_dynamic() {
     let mut request = request(PortForwardKind::RemoteDynamic);
     request.remote_bind_host = Some("127.0.0.1".to_owned());

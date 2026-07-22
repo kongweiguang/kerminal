@@ -294,13 +294,13 @@ fn splits_container_text_output_metadata() {
 }
 
 #[test]
-fn rejects_container_text_metadata_without_preview_probe() {
-    let error = match split_text_output("__KERMINAL_TEXT:5:644:1770000000:-rw-r--__\nhello") {
-        Ok(_) => panic!("current metadata format requires the preview probe field"),
-        Err(error) => error,
-    };
+fn keeps_legacy_container_text_metadata_without_a_probe_compatible() {
+    let (metadata, content) =
+        split_text_output("__KERMINAL_TEXT:5:644:1770000000:-rw-r--__\nhello")
+            .expect("split legacy text");
 
-    assert!(error.to_string().contains("缺少预览探针元数据"));
+    assert_eq!(content, "hello");
+    assert!(metadata.preview_probe.is_empty());
 }
 
 #[test]

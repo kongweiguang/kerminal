@@ -62,7 +62,7 @@ fn accepts_utf8_chinese_and_common_whitespace() {
 }
 
 #[test]
-fn accepts_lossy_multibyte_text_and_sparse_controls() {
+fn accepts_lossy_legacy_text_and_sparse_controls() {
     let gbk_like = [
         0xc4, 0xe3, 0xba, 0xc3, b',', b' ', 0xca, 0xc0, 0xbd, 0xe7, b'\r', b'\n',
     ];

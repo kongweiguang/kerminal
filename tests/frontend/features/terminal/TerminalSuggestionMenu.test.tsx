@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CommandSuggestionCandidate } from "../../../../src/lib/terminalSuggestionApi";
@@ -167,10 +165,8 @@ function candidate(
   overrides: Partial<CommandSuggestionCandidate> = {},
 ): CommandSuggestionCandidate {
   return {
-    activation: "insert",
     acceptBoundaries: [4],
     allowedPresentations: ["inline", "menu"],
-    candidateKind: "command",
     contextKey: "ctx",
     displayText: "git status",
     id: "candidate",

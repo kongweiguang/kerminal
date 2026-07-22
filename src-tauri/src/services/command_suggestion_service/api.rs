@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 use crate::models::command_suggestion::{SuggestionPresentation, SuggestionQueryMode};
 
@@ -563,8 +561,8 @@ impl CommandSuggestionService {
             production_host_policy_label(&skip.production_host_policy).to_owned(),
         );
         metadata.insert(
-            "remoteRefreshEnabled".to_owned(),
-            skip.remote_refresh_enabled.to_string(),
+            "remoteProbeEnabled".to_owned(),
+            skip.remote_probe_enabled.to_string(),
         );
         self.record_audit_event_best_effort(
             storage,
@@ -599,11 +597,11 @@ impl CommandSuggestionService {
             return Ok(None);
         };
         let production_host_policy = inline_settings.production_host_policy.clone();
-        if inline_settings.remote_refresh == TerminalCommandSuggestionRemoteRefresh::Off {
+        if !inline_settings.remote_probe_enabled {
             return Ok(Some(RemoteProbePolicySkip {
                 production_host: host.production,
                 production_host_policy,
-                remote_refresh_enabled: false,
+                remote_probe_enabled: false,
                 reason: "remote-probe-disabled",
             }));
         }
@@ -616,7 +614,7 @@ impl CommandSuggestionService {
             return Ok(Some(RemoteProbePolicySkip {
                 production_host: true,
                 production_host_policy,
-                remote_refresh_enabled: true,
+                remote_probe_enabled: true,
                 reason: "production-host-restricted",
             }));
         }

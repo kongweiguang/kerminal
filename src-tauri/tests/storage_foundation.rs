@@ -16,7 +16,7 @@ use kerminal_lib::{
     },
     state::{AppState, AppStateBuildObserver, AppStateBuildPhase, AppStateBuilder},
     storage::{
-        command_schema::{self, CURRENT_COMMAND_SCHEMA_VERSION},
+        command_migrations::{self, CURRENT_COMMAND_SCHEMA_VERSION},
         local_file_operations::LocalFileOperationAuditWrite,
     },
 };
@@ -151,7 +151,7 @@ fn leaves_non_current_user_home_notation_unchanged() {
 }
 
 #[test]
-fn app_state_initialization_creates_only_the_command_database() {
+fn app_state_initialization_creates_command_database_without_legacy_runtime_db() {
     let home = tempdir().expect("create temp home");
     let paths = KerminalPaths::from_home_dir(home.path());
     let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
@@ -266,11 +266,29 @@ fn command_database_rejects_future_schema_version() {
 }
 
 #[test]
-fn current_command_schema_accepts_snippet_provider() {
+fn command_schema_upgrade_preserves_v1_rows_and_accepts_snippet_provider() {
     let mut conn = Connection::open_in_memory().expect("open command database");
-    command_schema::ensure_current_schema(&mut conn).expect("create current schema");
+    command_migrations::migrate(&mut conn).expect("create current schema");
+    conn.execute(
+        "INSERT INTO command_suggestion_feedback (id, action, provider, replacement_text, input, created_at_unix_ms) VALUES ('old', 'accepted', 'history', 'pwd', 'pw', 1)",
+        [],
+    )
+    .expect("seed existing feedback");
+    conn.pragma_update(None, "user_version", 1)
+        .expect("simulate v1 database");
+
+    command_migrations::migrate(&mut conn).expect("migrate v1 database");
+
+    let preserved: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM command_suggestion_feedback WHERE id = 'old'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read preserved feedback");
+    assert_eq!(preserved, 1);
     assert_eq!(
-        command_schema::schema_version(&conn).expect("read initialized schema version"),
+        command_migrations::schema_version(&conn).expect("read migrated version"),
         CURRENT_COMMAND_SCHEMA_VERSION
     );
 
@@ -294,23 +312,6 @@ fn current_command_schema_accepts_snippet_provider() {
         [],
     )
     .expect("insert snippet audit");
-}
-
-#[test]
-fn command_database_rejects_historical_schema_version() {
-    let mut conn = Connection::open_in_memory().expect("open command database");
-    conn.pragma_update(None, "user_version", 1)
-        .expect("set historical schema version");
-
-    let error = command_schema::ensure_current_schema(&mut conn)
-        .expect_err("historical command schema must fail closed");
-    assert!(matches!(
-        error,
-        AppError::UnsupportedSchemaVersion {
-            database_version: 1,
-            supported_version: CURRENT_COMMAND_SCHEMA_VERSION
-        }
-    ));
 }
 
 #[test]

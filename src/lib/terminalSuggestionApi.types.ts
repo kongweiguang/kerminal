@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type { CommandHistoryTarget } from "./commandHistoryApi";
 
 export type CommandSuggestionProvider =
@@ -81,13 +79,32 @@ export interface CommandSuggestionCandidate {
   allowedPresentations: CommandSuggestionPresentation[];
   acceptBoundaries: number[];
   contextKey?: string;
-  candidateKind: CommandSuggestionCandidateKind;
-  activation: CommandSuggestionActivation;
+  /** 旧候选缺省为 command，归一化边界会补齐。 */
+  candidateKind?: CommandSuggestionCandidateKind;
+  /** 旧候选缺省为 insert；openSnippetPanel 永远不能写入终端。 */
+  activation?: CommandSuggestionActivation;
   sourceExplanation?: string;
   mergedSourceExplanations?: string[];
 }
 
-export type CommandSuggestionCandidatePayload = CommandSuggestionCandidate;
+export type CommandSuggestionCandidatePayload = Omit<
+  CommandSuggestionCandidate,
+  | "acceptBoundaries"
+  | "activation"
+  | "allowedPresentations"
+  | "candidateKind"
+  | "contextKey"
+> &
+  Partial<
+    Pick<
+      CommandSuggestionCandidate,
+      | "acceptBoundaries"
+      | "activation"
+      | "allowedPresentations"
+      | "candidateKind"
+      | "contextKey"
+    >
+  >;
 
 export interface CommandSuggestionFeedbackRecordRequest {
   action: CommandSuggestionFeedbackAction;

@@ -59,7 +59,7 @@ pub(crate) fn recover_pending_locked(store: &FileStore) -> FileStoreResult<()> {
     Ok(())
 }
 
-/// 恢复指定已提交 change-set；只接受带显式 original state 的当前 journal 格式。
+/// 恢复指定已提交 change-set；新事务使用显式 original state，旧 manifest 走隔离兼容路径。
 pub(crate) fn restore_change_set_locked(
     store: &FileStore,
     id: &str,
@@ -97,10 +97,7 @@ pub(crate) fn restore_change_set_locked(
         return Ok(manifest);
     }
 
-    Err(recovery_error(
-        id,
-        "committed transaction journal is missing; legacy manifest-only restore is unsupported",
-    ))
+    restore_legacy_change_set(store, &mut manifest, &change_set, timestamp)
 }
 
 fn recover_rollback(
@@ -220,6 +217,40 @@ fn target_matches_intended_state(entry: &TransactionJournalEntry, target_digest:
         JournalAction::Write => entry.intended_sha256.as_deref() == Some(target_digest),
         JournalAction::Delete => false,
     }
+}
+
+fn restore_legacy_change_set(
+    store: &FileStore,
+    manifest: &mut StorageManifest,
+    change_set: &super::super::storage_manifest::ManifestChangeSet,
+    timestamp: &str,
+) -> FileStoreResult<StorageManifest> {
+    let backup_dir = change_set.backup_dir.clone().ok_or_else(|| {
+        FileStoreError::InvalidPath(format!("change set has no backup dir: {}", change_set.id))
+    })?;
+    let backup_dir = PathBuf::from(backup_dir);
+
+    // 兼容 TASK-014 之前已经落盘的 manifest。旧格式没有 original state，只能保留
+    // 显式人工 restore 的历史语义；启动自动恢复绝不会走这条推断路径。
+    for touched_file in &change_set.touched_files {
+        let relative_path = PathBuf::from(touched_file);
+        store.validate_change_path(&relative_path)?;
+        let backup_relative_path = backup_dir.join(&relative_path);
+        let backup_path = store.path_for(&backup_relative_path)?;
+        if backup_path.is_file() {
+            store.atomic_write_locked(&relative_path, &fs::read(backup_path)?)?;
+        } else if backup_path.exists() {
+            return Err(FileStoreError::InvalidPath(format!(
+                "backup is not a file: {}",
+                backup_relative_path.display()
+            )));
+        } else {
+            store.remove_file_locked(&relative_path)?;
+        }
+    }
+    manifest.mark_repaired(&change_set.id, timestamp);
+    store.write_storage_manifest_locked(manifest)?;
+    Ok(manifest.clone())
 }
 
 fn mark_manifest_repaired_if_present(manifest: &mut StorageManifest, id: &str, completed_at: &str) {

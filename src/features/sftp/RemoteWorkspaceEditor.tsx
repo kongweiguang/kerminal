@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type * as Monaco from "monaco-editor";
 import {
   useCallback,
@@ -58,6 +56,7 @@ import {
   runRemoteWorkspaceEditorMonacoCommand,
 } from "./remoteWorkspaceEditorCommandRuntime";
 import {
+  isRemoteWorkspaceBinaryFileReadError,
   listRemoteWorkspaceDirectory,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
@@ -403,6 +402,14 @@ export function RemoteWorkspaceEditor({
         if (!isCurrentFileRequest(normalizedPath, requestId)) {
           return;
         }
+        if (isRemoteWorkspaceBinaryFileReadError(error)) {
+          setTab(normalizedPath, applyUnsupportedPreview);
+          onStatus?.({
+            kind: "info",
+            message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+          });
+          return;
+        }
         const message = errorMessage(error);
         setTabs((current) =>
           current.map((tab) =>
@@ -499,6 +506,14 @@ export function RemoteWorkspaceEditor({
         );
       } catch (error) {
         if (!isCurrentFileRequest(path, requestId)) {
+          return;
+        }
+        if (isRemoteWorkspaceBinaryFileReadError(error)) {
+          setTab(path, applyUnsupportedPreview);
+          onStatus?.({
+            kind: "info",
+            message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+          });
           return;
         }
         const message = errorMessage(error);

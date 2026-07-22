@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import {
   useCallback,
   useEffect,
@@ -70,6 +68,7 @@ import {
 } from "../sftp/editor/index";
 import { RemoteWorkspaceEditorContextMenu } from "../sftp/editor/index";
 import {
+  isRemoteWorkspaceBinaryFileReadError,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
@@ -209,6 +208,11 @@ export function WorkspaceFileTabSurface({
       if (requestIdRef.current !== requestId) {
         return;
       }
+      if (isRemoteWorkspaceBinaryFileReadError(error)) {
+        setFileTab(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
+        return;
+      }
       const message = errorMessage(error);
       const notice = buildUserFacingError(error, {
         recoveryAction: "请检查连接和文件权限后重试。",
@@ -315,6 +319,12 @@ export function WorkspaceFileTabSurface({
       setErrorNotice(null);
     } catch (error) {
       if (requestIdRef.current !== requestId) {
+        return;
+      }
+      if (isRemoteWorkspaceBinaryFileReadError(error)) {
+        setFileTab(null);
+        setStatus(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
         return;
       }
       const message = errorMessage(error);

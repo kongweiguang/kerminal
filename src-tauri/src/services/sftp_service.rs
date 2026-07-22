@@ -39,7 +39,7 @@ use crate::{
 
 mod archive;
 mod backend;
-mod host_key_trust;
+mod native_ssh;
 
 mod remote_text;
 mod runtime_tasks;
@@ -57,7 +57,7 @@ use self::backend::{
     load_sftp_runtime_settings, resolve_endpoint_with_auth_broker, resolve_host,
     resolve_transient_endpoint, RusshSftpBackend, SftpBackend, SftpEndpoint, SftpRuntimeSettings,
 };
-use self::host_key_trust::trust_host_key_without_authentication;
+use self::native_ssh::trust_native_host_key;
 use self::runtime_tasks::{
     should_stage_remote_copy, ArchiveDownloadTaskInput, ArchiveUploadTaskInput,
     ClipboardDownloadTaskInput, RemoteCopyTaskInput,
@@ -434,7 +434,7 @@ impl SftpService {
             resolve_host(paths, &request.host_id)?
         };
         let known_hosts_path = paths.root.join("known_hosts");
-        trust_host_key_without_authentication(&host, &known_hosts_path, settings).await?;
+        trust_native_host_key(&host, &known_hosts_path, settings).await?;
         Ok(SftpHostKeyTrustSummary {
             host_id: host.id,
             host: host.host,

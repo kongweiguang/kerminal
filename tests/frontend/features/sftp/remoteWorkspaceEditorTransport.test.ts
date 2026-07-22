@@ -1,8 +1,7 @@
-// @author kongweiguang
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE,
+  isRemoteWorkspaceBinaryFileReadError,
   listRemoteWorkspaceDirectory,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
@@ -223,4 +222,24 @@ describe("remoteWorkspaceEditorTransport", () => {
     ).rejects.toThrow(MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE);
   });
 
+  it("only classifies the stable binary marker as an unsupported preview", () => {
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        new Error("远程文件包含二进制内容，暂不支持作为文本编辑"),
+      ),
+    ).toBe(true);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        "容器文件包含二进制内容，暂不支持作为文本编辑",
+      ),
+    ).toBe(true);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        new Error("permission denied while reading remote file"),
+      ),
+    ).toBe(false);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError({ message: "文件包含二进制内容" }),
+    ).toBe(false);
+  });
 });

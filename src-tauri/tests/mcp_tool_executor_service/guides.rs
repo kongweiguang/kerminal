@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::fixtures::*;
 
 #[tokio::test]
@@ -216,9 +214,10 @@ async fn mcp_tool_help_query_managed_ssh_discovers_runtime_snapshot() {
         &output.data["managedSshRuntime"]["diagnosticFields"],
         "managedSsh.sessions[].recentFailure"
     ));
-    assert!(output.data["managedSshRuntime"]
-        .get("fallbackRule")
-        .is_none());
+    assert!(output.data["managedSshRuntime"]["fallbackRule"]
+        .as_str()
+        .expect("fallback rule")
+        .contains("unsupported or unwired"));
 }
 
 #[tokio::test]
@@ -407,9 +406,10 @@ async fn mcp_runtime_snapshot_reports_managed_ssh_runtime_without_secrets() {
     assert_eq!(output.data["runtime"]["managedSshActiveChannelCount"], 0);
     assert_eq!(output.data["managedSsh"]["activeSessions"], 1);
     assert_eq!(output.data["managedSsh"]["activeChannels"], 0);
-    assert!(output.data["managedSsh"]
-        .get("recentLegacyFallbacks")
-        .is_none());
+    assert_eq!(
+        output.data["managedSsh"]["recentLegacyFallbacks"],
+        json!([])
+    );
     assert_eq!(
         output.data["managedSsh"]["sessions"][0]["key"]["target"],
         "deploy@dev.internal:2222"

@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 
 pub fn collect_terminal_output_until(
@@ -131,9 +129,9 @@ pub fn queue_external_client_loopback_password_launch(
 }
 
 #[tokio::test]
-async fn unsupported_managed_sftp_fails_without_opening_a_second_connection() {
+async fn unsupported_managed_sftp_fallback_does_not_record_lease_only_channel() {
     let server_root = tempdir().expect("server root");
-    fs::write(server_root.path().join("managed-only.txt"), b"managed")
+    fs::write(server_root.path().join("legacy-fallback.txt"), b"fallback")
         .await
         .expect("seed remote file");
     let server = start_loopback_sftp_server(server_root.path().to_path_buf()).await;
@@ -170,7 +168,7 @@ async fn unsupported_managed_sftp_fails_without_opening_a_second_connection() {
         state.external_session_materializer().clone(),
     );
 
-    let error = service
+    let listing = service
         .list_directory(
             state.paths(),
             SftpListDirectoryRequest {
@@ -179,13 +177,16 @@ async fn unsupported_managed_sftp_fails_without_opening_a_second_connection() {
             },
         )
         .await
-        .expect_err("unsupported managed SFTP must remain visible");
+        .expect("fall back to legacy SFTP when managed backend lacks SFTP");
 
-    assert!(error.to_string().contains("does not support SFTP"));
+    assert!(listing
+        .entries
+        .iter()
+        .any(|entry| { entry.name == "legacy-fallback.txt" && entry.kind == SftpEntryKind::File }));
     assert_eq!(
         server.auth_successes.load(Ordering::SeqCst),
-        0,
-        "unsupported Managed SSH must not start a second SSH authentication"
+        1,
+        "legacy fallback performs the actual SSH/SFTP authentication once"
     );
     assert_eq!(fake_runtime.connect_count(), 1);
     assert_eq!(
@@ -197,6 +198,13 @@ async fn unsupported_managed_sftp_fails_without_opening_a_second_connection() {
 
     let snapshot = manager.snapshot().expect("runtime snapshot");
     assert_eq!(snapshot.active_channels, 0);
+    assert_eq!(snapshot.recent_legacy_fallbacks.len(), 1);
+    assert_eq!(snapshot.recent_legacy_fallbacks[0].capability, "sftp");
+    assert_eq!(
+        snapshot.recent_legacy_fallbacks[0].reason,
+        "managed-sftp-unsupported"
+    );
+    assert_eq!(snapshot.recent_legacy_fallbacks[0].count, 1);
     assert_eq!(
         snapshot.sessions[0]
             .channel_counts

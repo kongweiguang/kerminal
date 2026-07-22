@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { describe, expect, it } from "vitest";
@@ -239,7 +237,7 @@ describe("XtermPane remote suggestions", () => {
         paneId="pane-local"
         resolvedTheme="dark"
         terminalAppearance={terminalAppearanceWithInlineSuggestion({
-          presentation: "off",
+          enabled: false,
         })}
         title="本地 PowerShell"
       />,
@@ -409,7 +407,7 @@ describe("XtermPane remote suggestions", () => {
         remoteHostId="host-prod"
         resolvedTheme="dark"
         terminalAppearance={terminalAppearanceWithInlineSuggestion({
-          remoteRefresh: "off",
+          remoteProbeEnabled: false,
         })}
         title="生产 SSH"
       />,

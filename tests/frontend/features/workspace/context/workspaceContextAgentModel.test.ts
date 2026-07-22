@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRecord } from "../../../../../src/lib/agentLauncherApi";
 import { resolveWorkspaceContextAgent } from "../../../../../src/features/workspace/context";
@@ -9,8 +7,8 @@ function record(
 ): AgentSessionRecord {
   return {
     session: {
-      agent_session_id: "agent-1",
-      agent_id: "codex",
+      agentSessionId: "agent-1",
+      agentId: "codex",
       title: "Agent session",
       status: "active",
       launch: { args: [], cwd: "/workspace", shell: "codex" },
@@ -29,22 +27,22 @@ describe("resolveWorkspaceContextAgent", () => {
       },
       [
         record({
-          agent_session_id: "agent-tab",
+          agentSessionId: "agent-tab",
           title: "Tab session",
-          updated_at: "2026-07-12T01:02:00.000Z",
-          target: { tab_id: "tab-1" },
+          updatedAt: "2026-07-12T01:02:00.000Z",
+          target: { tabId: "tab-1" },
         }),
         record({
-          agent_session_id: "agent-pane-old",
+          agentSessionId: "agent-pane-old",
           title: "Old pane session",
-          updated_at: "2026-07-12T01:00:00.000Z",
-          target: { pane_id: "pane-1", tab_id: "tab-1" },
+          updatedAt: "2026-07-12T01:00:00.000Z",
+          target: { paneId: "pane-1", tabId: "tab-1" },
         }),
         record({
-          agent_session_id: "agent-pane-new",
+          agentSessionId: "agent-pane-new",
           title: "Current pane session",
-          updated_at: "2026-07-12T01:03:00.000Z",
-          target: { pane_id: "pane-1", tab_id: "tab-1" },
+          updatedAt: "2026-07-12T01:03:00.000Z",
+          target: { paneId: "pane-1", tabId: "tab-1" },
         }),
       ],
     );
@@ -65,17 +63,17 @@ describe("resolveWorkspaceContextAgent", () => {
       },
       [
         record({
-          agent_session_id: "agent-other",
-          target: { pane_id: "pane-2", tab_id: "tab-2" },
+          agentSessionId: "agent-other",
+          target: { paneId: "pane-2", tabId: "tab-2" },
         }),
         record({
-          agent_session_id: "agent-unbound",
+          agentSessionId: "agent-unbound",
           target: null,
         }),
         record({
-          agent_session_id: "agent-archived",
+          agentSessionId: "agent-archived",
           status: "archived",
-          target: { pane_id: "pane-1", tab_id: "tab-1" },
+          target: { paneId: "pane-1", tabId: "tab-1" },
         }),
       ],
     );
@@ -95,13 +93,13 @@ describe("resolveWorkspaceContextAgent", () => {
       },
       [
         record({
-          agent_session_id: "agent-stale",
+          agentSessionId: "agent-stale",
           status: "stale",
           title: "Stale session",
           target: {
-            pane_id: "pane-1",
-            tab_id: "tab-1",
-            live_status: "stale",
+            paneId: "pane-1",
+            tabId: "tab-1",
+            liveStatus: "stale",
           },
         }),
       ],

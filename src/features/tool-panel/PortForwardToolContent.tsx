@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -42,6 +40,7 @@ import {
 import {
   buildRemoteSocksCommand,
   flowForScenario,
+  isLegacyHttpNetworkAssist,
   opensshForScenario,
   portForwardScenarioOptions,
   proxyUrlForSession,
@@ -343,6 +342,15 @@ export function PortForwardToolContent({
   }
   function handleEdit(session: PortForwardSummary) {
     if (!active || !selectedHostId || session.hostId !== selectedHostId) {
+      return;
+    }
+    if (isLegacyHttpNetworkAssist(session)) {
+      setError(
+        portForwardUserError(
+          "旧版 HTTP 网络助手已移除。",
+          "请删除该记录并创建远端 SOCKS。",
+        ),
+      );
       return;
     }
     applySession(session);

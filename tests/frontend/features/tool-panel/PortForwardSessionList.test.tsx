@@ -52,6 +52,30 @@ describe("PortForwardSessionList", () => {
     ).toContain("text-rose-700");
   });
 
+  it("keeps runtime diagnostics out of restored legacy fallback sessions", () => {
+    render(
+      <PortForwardSessionList
+        canInject={false}
+        injectDisabledReason="not focused"
+        loading={false}
+        onCopy={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        onInject={vi.fn()}
+        onStart={vi.fn()}
+        onStop={vi.fn()}
+        onToggleAutoUse={vi.fn()}
+        sessions={[legacyFallbackForward]}
+      />,
+    );
+
+    expect(screen.getByText("Legacy fallback")).toBeInTheDocument();
+    expect(screen.queryByText(/Runtime:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fallback:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/OpenSSH process/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SSH 端口转发进程已退出/)).not.toBeInTheDocument();
+  });
+
   it("shows a non-terminal direct-tcpip failure on a running tunnel", () => {
     render(
       <PortForwardSessionList
@@ -105,6 +129,21 @@ const localForward: PortForwardSummary = {
   status: "running",
   targetHost: "127.0.0.1",
   targetPort: 80,
+};
+
+const legacyFallbackForward: PortForwardSummary = {
+  ...localForward,
+  id: "forward-legacy",
+  name: "Legacy fallback",
+  runtime: {
+    backend: "openssh",
+    cleanupStatus: "cleanedUp",
+    fallbackReason: "managed SSH forward runtime unavailable or unsupported",
+    mode: "openSshProcess",
+    recentFailure: "SSH 端口转发进程已退出，退出码: exit code: 255",
+    tunnelKind: "local",
+  },
+  status: "exited",
 };
 
 const runningFailedForward: PortForwardSummary = {

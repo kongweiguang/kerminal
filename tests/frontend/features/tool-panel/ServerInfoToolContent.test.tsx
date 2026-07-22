@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServerInfoToolContent } from "../../../../src/features/tool-panel/ServerInfoToolContent";

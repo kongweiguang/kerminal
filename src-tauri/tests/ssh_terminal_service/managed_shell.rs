@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::support::*;
 
 #[test]
@@ -144,6 +142,8 @@ fn managed_shell_prompt_required_returns_recoverable_prompt_plan() {
     .expect_err("prompt-only terminal should return a recoverable prompt plan");
 
     assert_eq!(backend.connect_count(), 0);
+    let snapshot = managed_runtime.snapshot().expect("runtime snapshot");
+    assert!(snapshot.recent_legacy_fallbacks.is_empty());
     let AppError::SshAuthPromptRequired {
         message,
         prompt_plan,
@@ -232,6 +232,11 @@ fn create_session_uses_managed_shell_for_remote_cwd_without_legacy_fallback() {
         backend.written_inputs(),
         vec![b"cd -- '/srv/app'\\''s data' && exec \"${SHELL:-/bin/sh}\" -l\r".to_vec()]
     );
+    assert!(managed_runtime
+        .snapshot()
+        .expect("runtime snapshot")
+        .recent_legacy_fallbacks
+        .is_empty());
 
     let output = receiver
         .recv_timeout(Duration::from_secs(2))
@@ -287,6 +292,11 @@ fn create_session_uses_managed_shell_for_remote_command_without_legacy_fallback(
     assert_eq!(backend.shell_open_count(), 1);
     wait_until(Duration::from_secs(2), || backend.write_count() == 1);
     assert_eq!(backend.written_inputs(), vec![b"exec uptime\r".to_vec()]);
+    assert!(managed_runtime
+        .snapshot()
+        .expect("runtime snapshot")
+        .recent_legacy_fallbacks
+        .is_empty());
 
     let output = receiver
         .recv_timeout(Duration::from_secs(2))
@@ -371,6 +381,11 @@ fn create_session_uses_managed_shell_for_jump_host_remote_cwd_without_legacy_fal
         backend.written_inputs(),
         vec![b"cd -- '/dev' && exec \"${SHELL:-/bin/sh}\" -l\r".to_vec()]
     );
+    assert!(managed_runtime
+        .snapshot()
+        .expect("runtime snapshot")
+        .recent_legacy_fallbacks
+        .is_empty());
 
     let output = receiver
         .recv_timeout(Duration::from_secs(2))

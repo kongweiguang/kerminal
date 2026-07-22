@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type {
   CommandSnippet,
   SnippetCatalogVariable,
@@ -36,7 +34,7 @@ export interface SnippetImportDryRun {
 export function serializeSnippetExport(snippets: readonly CommandSnippet[]): string {
   return JSON.stringify(
     {
-      schemaVersion: 2,
+      schemaVersion: 1,
       exportedAt: new Date().toISOString(),
       snippets: snippets.map(toCandidate),
     },
@@ -53,7 +51,7 @@ export function dryRunSnippetImport(source: string): SnippetImportDryRun {
   } catch {
     return { candidates: [], errors: ["导入文件不是有效 JSON。"] };
   }
-  if (!isRecord(parsed) || parsed.schemaVersion !== 2 || !Array.isArray(parsed.snippets)) {
+  if (!isRecord(parsed) || parsed.schemaVersion !== 1 || !Array.isArray(parsed.snippets)) {
     return { candidates: [], errors: ["导入文件版本或结构不受支持。"] };
   }
   if (parsed.snippets.length > MAX_IMPORT_ITEMS) {

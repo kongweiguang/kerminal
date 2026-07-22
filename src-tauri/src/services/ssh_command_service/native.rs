@@ -8,13 +8,17 @@ mod forwarded;
 mod output;
 mod remote_forward;
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use russh::{
     client,
     keys::{self, PublicKey},
     Channel, ChannelMsg, Pty,
 };
+use tokio_util::sync::CancellationToken;
 
 use self::{
     auth::{
@@ -23,7 +27,7 @@ use self::{
     },
     connection::{
         authenticate_native_ssh, connect_native_ssh, connect_native_ssh_through_direct_tcpip,
-        native_ssh_error,
+        exec_cancelled_error, native_ssh_error,
     },
     forwarded::proxy_forwarded_tcpip_to_target,
     output::LimitedRawOutputBuffer,
@@ -31,7 +35,10 @@ use self::{
 
 use crate::{
     error::{AppError, AppResult},
-    models::remote_host::{RemoteHost, SshJumpHostOptions},
+    models::{
+        remote_host::{RemoteHost, SshJumpHostOptions},
+        ssh_command::{SshCommandOutput, SshCommandRequest},
+    },
     paths::KerminalPaths,
     services::{
         ssh_credential_resolver::{NativeSshHopMaterial, NativeSshRouteMaterial},
@@ -45,11 +52,16 @@ use crate::{
 pub(crate) use auth::resolve_native_auth_material;
 pub(crate) use remote_forward::{NativeRemoteForwardRegistry, NativeRemoteForwardTarget};
 
-use super::normalize_timeout_seconds;
+use super::{
+    normalize_command_script, normalize_output_bytes, normalize_timeout_seconds,
+    LimitedOutputBuffer, DEFAULT_OUTPUT_BYTES,
+};
 
 #[derive(Clone)]
 pub(crate) struct NativeSshCommandExecution {
     jumps: Vec<NativeSshHopExecution>,
+    max_output_bytes: usize,
+    script: String,
     target: NativeSshHopExecution,
     timeout_seconds: u64,
 }
@@ -164,6 +176,36 @@ impl client::Handler for NativeCommandClientHandler {
     }
 }
 
+pub(crate) fn build_native_command_execution(
+    host: &RemoteHost,
+    paths: &KerminalPaths,
+    request: SshCommandRequest,
+) -> AppResult<NativeSshCommandExecution> {
+    let _route_plan = build_ssh_route_plan(host)?;
+    let known_hosts_path = paths.root.join("known_hosts");
+    build_native_command_execution_for_known_hosts(host, known_hosts_path, request)
+}
+
+pub(crate) fn build_native_command_execution_for_known_hosts(
+    host: &RemoteHost,
+    known_hosts_path: PathBuf,
+    request: SshCommandRequest,
+) -> AppResult<NativeSshCommandExecution> {
+    Ok(NativeSshCommandExecution {
+        jumps: host
+            .ssh_options
+            .jump_hosts
+            .iter()
+            .enumerate()
+            .map(|(index, jump)| build_native_jump_execution(index, jump, known_hosts_path.clone()))
+            .collect::<AppResult<Vec<_>>>()?,
+        max_output_bytes: normalize_output_bytes(request.max_output_bytes),
+        script: normalize_command_script(&request.command)?,
+        target: build_native_target_execution(host, known_hosts_path)?,
+        timeout_seconds: normalize_timeout_seconds(request.timeout_seconds),
+    })
+}
+
 pub(crate) fn build_native_connection_execution(
     host: &RemoteHost,
     paths: &KerminalPaths,
@@ -187,6 +229,8 @@ pub(crate) fn build_native_connection_execution_for_known_hosts(
             .enumerate()
             .map(|(index, jump)| build_native_jump_execution(index, jump, known_hosts_path.clone()))
             .collect::<AppResult<Vec<_>>>()?,
+        max_output_bytes: DEFAULT_OUTPUT_BYTES,
+        script: String::new(),
         target: build_native_target_execution(host, known_hosts_path)?,
         timeout_seconds,
     })
@@ -200,14 +244,18 @@ pub(crate) fn build_native_connection_execution_from_material(
     build_native_execution_from_material(
         route_material,
         known_hosts_path,
+        String::new(),
         normalize_timeout_seconds(Some(timeout_seconds)),
+        DEFAULT_OUTPUT_BYTES,
     )
 }
 
 fn build_native_execution_from_material(
     route_material: &NativeSshRouteMaterial,
     known_hosts_path: PathBuf,
+    script: String,
     timeout_seconds: u64,
+    max_output_bytes: usize,
 ) -> AppResult<NativeSshCommandExecution> {
     Ok(NativeSshCommandExecution {
         jumps: route_material
@@ -215,8 +263,121 @@ fn build_native_execution_from_material(
             .iter()
             .map(|jump| build_native_hop_execution_from_material(jump, known_hosts_path.clone()))
             .collect::<AppResult<Vec<_>>>()?,
+        max_output_bytes,
+        script,
         target: build_native_hop_execution_from_material(&route_material.target, known_hosts_path)?,
         timeout_seconds,
+    })
+}
+
+pub(crate) async fn execute_native_ssh_command(
+    host: &RemoteHost,
+    execution: NativeSshCommandExecution,
+    cancel_token: CancellationToken,
+) -> AppResult<SshCommandOutput> {
+    if cancel_token.is_cancelled() {
+        return Err(exec_cancelled_error());
+    }
+    let started = Instant::now();
+    let timeout = Duration::from_secs(execution.timeout_seconds);
+    match tokio::select! {
+        result = tokio::time::timeout(timeout, execute_native_ssh_command_inner(host, execution)) => result,
+        _ = cancel_token.cancelled() => return Err(exec_cancelled_error()),
+    } {
+        Ok(result) => result.map(|mut output| {
+            output.duration_ms = started.elapsed().as_millis();
+            output
+        }),
+        Err(_) => Err(AppError::SshCommand(format!(
+            "远程命令执行超时（{} 秒）",
+            timeout.as_secs()
+        ))),
+    }
+}
+
+async fn execute_native_ssh_command_inner(
+    host: &RemoteHost,
+    execution: NativeSshCommandExecution,
+) -> AppResult<SshCommandOutput> {
+    let connection =
+        connect_native_command_target(&execution, NativeHostKeyPolicy::RequireKnown).await?;
+
+    let mut channel = connection
+        .target
+        .channel_open_session()
+        .await
+        .map_err(native_ssh_error)?;
+    channel
+        .exec(true, "sh -s")
+        .await
+        .map_err(native_ssh_error)?;
+    channel
+        .data_bytes(execution.script.into_bytes())
+        .await
+        .map_err(native_ssh_error)?;
+    channel.eof().await.map_err(native_ssh_error)?;
+
+    let mut stdout = LimitedOutputBuffer::new(execution.max_output_bytes);
+    let mut stderr = LimitedOutputBuffer::new(execution.max_output_bytes);
+    let mut exit_code = None;
+    let mut exec_request_failed = false;
+
+    while let Some(message) = channel.wait().await {
+        match message {
+            ChannelMsg::Data { data } => stdout.push(data.as_ref()),
+            ChannelMsg::ExtendedData { data, .. } => stderr.push(data.as_ref()),
+            ChannelMsg::ExitStatus { exit_status } => {
+                exit_code = i32::try_from(exit_status).ok();
+            }
+            ChannelMsg::ExitSignal {
+                signal_name,
+                error_message,
+                ..
+            } => {
+                if !error_message.trim().is_empty() {
+                    stderr.push(error_message.as_bytes());
+                    stderr.push(b"\n");
+                }
+                stderr.push(
+                    format!("remote process terminated by signal: {signal_name:?}\n").as_bytes(),
+                );
+            }
+            ChannelMsg::Failure => {
+                exec_request_failed = true;
+            }
+            ChannelMsg::Close => break,
+            _ => {}
+        }
+    }
+
+    let _ = channel.close().await;
+    disconnect_native_connection(connection, "command completed").await;
+
+    if exec_request_failed {
+        return Err(AppError::SshCommand(
+            "远端拒绝执行非交互命令请求".to_owned(),
+        ));
+    }
+
+    let stdout = stdout.finish();
+    let stderr = stderr.finish();
+    let success = exit_code == Some(0);
+    Ok(SshCommandOutput {
+        host_id: host.id.clone(),
+        host_name: host.name.clone(),
+        host: host.host.clone(),
+        port: host.port,
+        username: host.username.clone(),
+        exit_code,
+        success,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdout_bytes: stdout.captured_bytes,
+        stderr_bytes: stderr.captured_bytes,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
+        max_output_bytes: execution.max_output_bytes,
+        duration_ms: 0,
     })
 }
 

@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 
 #[tokio::test]
@@ -13,7 +11,7 @@ async fn loopback_production_host_restricted_policy_skips_remote_probes_without_
     let config = loopback_policy_config(server.addr.port());
     let remote_host = harness.create_remote_host_with_production(&config, true);
     let mut settings = harness.inline_settings();
-    settings.remote_refresh = TerminalCommandSuggestionRemoteRefresh::Safe;
+    settings.remote_probe_enabled = true;
     settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Restricted;
     let inline_settings = settings;
 
@@ -27,7 +25,7 @@ async fn loopback_production_host_restricted_policy_skips_remote_probes_without_
             policy: "restricted",
             production_host: "true",
             reason: "production-host-restricted",
-            remote_refresh_enabled: "true",
+            remote_probe_enabled: "true",
         },
     )
     .await;
@@ -44,7 +42,7 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
     let config = loopback_policy_config(server.addr.port());
     let remote_host = harness.create_remote_host_with_production(&config, false);
     let mut settings = harness.inline_settings();
-    settings.remote_refresh = TerminalCommandSuggestionRemoteRefresh::Off;
+    settings.remote_probe_enabled = false;
     settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Normal;
     let inline_settings = settings;
 
@@ -58,7 +56,7 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
             policy: "normal",
             production_host: "false",
             reason: "remote-probe-disabled",
-            remote_refresh_enabled: "false",
+            remote_probe_enabled: "false",
         },
     )
     .await;
@@ -68,7 +66,7 @@ struct ExpectedRemoteProbeSkip {
     policy: &'static str,
     production_host: &'static str,
     reason: &'static str,
-    remote_refresh_enabled: &'static str,
+    remote_probe_enabled: &'static str,
 }
 
 async fn assert_all_remote_refreshes_skipped_without_connecting(
@@ -208,11 +206,8 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             Some(expected.production_host)
         );
         assert_eq!(
-            event
-                .metadata
-                .get("remoteRefreshEnabled")
-                .map(String::as_str),
-            Some(expected.remote_refresh_enabled)
+            event.metadata.get("remoteProbeEnabled").map(String::as_str),
+            Some(expected.remote_probe_enabled)
         );
         assert_eq!(
             event

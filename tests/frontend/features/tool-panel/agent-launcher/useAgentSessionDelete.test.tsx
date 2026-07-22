@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,8 +34,8 @@ const runtimeSession: AgentTerminalSession = {
 
 const persistedSession: AgentSessionRecord = {
   session: {
-    agent_id: "codex",
-    agent_session_id: runtimeSession.agentSessionId,
+    agentId: "codex",
+    agentSessionId: runtimeSession.agentSessionId,
     launch: {
       args: [],
       cwd: "C:/workspace",

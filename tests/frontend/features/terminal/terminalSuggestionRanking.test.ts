@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type { CommandSuggestionCandidate } from "../../../../src/lib/terminalSuggestionApi";
 import { rankTerminalSuggestions } from "../../../../src/features/terminal/terminalSuggestionRanking";
@@ -133,10 +131,8 @@ function candidate(
   overrides: Partial<CommandSuggestionCandidate> = {},
 ): CommandSuggestionCandidate {
   return {
-    activation: "insert",
     acceptBoundaries: [10, 17],
     allowedPresentations: ["inline", "menu"],
-    candidateKind: "command",
     displayText: "git status --short",
     id: "history:git-status",
     provider: "history",

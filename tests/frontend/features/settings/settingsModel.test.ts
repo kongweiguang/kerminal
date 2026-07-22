@@ -65,6 +65,7 @@ describe("settingsModel", () => {
         fontWeight: "heavy",
         inlineSuggestion: {
           acceptKey: "tab",
+          enabled: "yes",
           productionHostPolicy: "open",
           providers: {
             git: false,
@@ -73,6 +74,7 @@ describe("settingsModel", () => {
             remotePath: false,
             spec: "no",
           },
+          remoteProbeEnabled: "no",
           auditRetentionDays: -1,
           feedbackRetentionDays: 99999,
         },
@@ -129,6 +131,7 @@ describe("settingsModel", () => {
       fontWeight: defaultAppSettings.terminal.fontWeight,
       inlineSuggestion: {
         acceptKey: defaultAppSettings.terminal.inlineSuggestion.acceptKey,
+        enabled: defaultAppSettings.terminal.inlineSuggestion.enabled,
         productionHostPolicy:
           defaultAppSettings.terminal.inlineSuggestion.productionHostPolicy,
         providers: {
@@ -139,6 +142,8 @@ describe("settingsModel", () => {
           remotePath: false,
           spec: defaultAppSettings.terminal.inlineSuggestion.providers.spec,
         },
+        remoteProbeEnabled:
+          defaultAppSettings.terminal.inlineSuggestion.remoteProbeEnabled,
         auditRetentionDays: 1,
         feedbackRetentionDays: 3650,
       },
@@ -173,35 +178,39 @@ describe("settingsModel", () => {
     expect(settings.sftp.hostTransfers).toBe(2);
   });
 
-  it("uses presentation and remote refresh as the only suggestion switches", () => {
+  it("migrates legacy command suggestion switches to the governed settings", () => {
     const disabled = normalizeAppSettings({
       terminal: {
         inlineSuggestion: {
-          presentation: "off",
-          remoteRefresh: "off",
+          enabled: false,
+          remoteProbeEnabled: false,
         },
       },
-    } as unknown as Partial<typeof defaultAppSettings>);
+    } as Partial<typeof defaultAppSettings>);
 
     expect(disabled.terminal.inlineSuggestion).toMatchObject({
+      enabled: false,
       presentation: "off",
       menuShortcut: "ctrlSpace",
       tabOpensMenu: false,
       partialAccept: true,
+      remoteProbeEnabled: false,
       remoteRefresh: "off",
     });
 
-    const currentDefaults = normalizeAppSettings({
+    const legacyDefaults = normalizeAppSettings({
       terminal: {
         inlineSuggestion: {
-          presentation: "inlineAndMenu",
-          remoteRefresh: "safe",
+          enabled: true,
+          remoteProbeEnabled: true,
         },
       },
-    } as unknown as Partial<typeof defaultAppSettings>);
+    } as Partial<typeof defaultAppSettings>);
 
-    expect(currentDefaults.terminal.inlineSuggestion).toMatchObject({
+    expect(legacyDefaults.terminal.inlineSuggestion).toMatchObject({
+      enabled: true,
       presentation: "inlineAndMenu",
+      remoteProbeEnabled: true,
       remoteRefresh: "safe",
     });
   });

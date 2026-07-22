@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use std::{
     sync::{atomic::Ordering, mpsc, Arc},
     time::Duration,
@@ -125,6 +123,7 @@ fn ssh_terminal_and_sftp_share_one_session_only_managed_transport() {
         snapshot.active_channels, 2,
         "terminal shell and retained browser SFTP channel should both be active on separate lanes"
     );
+    assert!(snapshot.recent_legacy_fallbacks.is_empty());
     let interactive = snapshot
         .sessions
         .iter()
@@ -341,6 +340,11 @@ fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
             "{} terminal shell and retained browser SFTP channel should both be active on separate lanes",
             client.label()
         );
+        assert!(
+            snapshot.recent_legacy_fallbacks.is_empty(),
+            "{}",
+            client.label()
+        );
         let interactive = snapshot
             .sessions
             .iter()
@@ -377,14 +381,14 @@ fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
             .expect("external browser capability lane");
         assert_eq!(
             browser.channel_counts.get(&SshChannelKind::Sftp),
-            Some(&2),
+            Some(&1),
             "{}",
             client.label()
         );
         assert_eq!(
             browser.channel_counts.get(&SshChannelKind::Exec),
-            None,
-            "{} external SFTP directory operations must stay on pure SFTP",
+            Some(&1),
+            "{} external SFTP helper exec should share the browser capability transport",
             client.label()
         );
         let debug = format!("{snapshot:?}");
@@ -510,7 +514,7 @@ fn external_browser_transport_reconnects_after_retained_sftp_channel_breaks() {
 }
 
 #[test]
-fn external_launch_sftp_directory_listing_does_not_fall_back_to_exec() {
+fn external_launch_sftp_directory_listing_falls_back_to_managed_exec() {
     let runtime = Runtime::new().expect("create test runtime");
     let (_home, state) = test_state();
     let launch_id = queue_putty_loopback_password_launch(&state, 1);
@@ -541,7 +545,7 @@ fn external_launch_sftp_directory_listing_does_not_fall_back_to_exec() {
         state.external_session_materializer().clone(),
     );
 
-    let error = runtime
+    let listing = runtime
         .block_on(service.list_directory(
             state.paths(),
             SftpListDirectoryRequest {
@@ -549,12 +553,50 @@ fn external_launch_sftp_directory_listing_does_not_fall_back_to_exec() {
                 path: "/srv".to_owned(),
             },
         ))
-        .expect_err("unsupported SFTP must remain visible instead of using exec");
+        .expect("external SFTP directory listing should fall back to managed exec");
+    let repeat_listing = runtime
+        .block_on(service.list_directory(
+            state.paths(),
+            SftpListDirectoryRequest {
+                host_id: target.host_id.clone(),
+                path: "/srv".to_owned(),
+            },
+        ))
+        .expect("repeat listing should be served from external directory cache");
 
-    assert!(error.to_string().contains("does not support SFTP"));
-    assert_eq!(fake_runtime.exec_count(), 0);
+    assert_eq!(listing.path, "/srv");
+    assert_eq!(repeat_listing.entries, listing.entries);
+    assert!(listing.entries.iter().any(|entry| {
+        entry.name == "app"
+            && entry.path == "/srv/app"
+            && entry.kind == SftpEntryKind::Directory
+            && entry.size == Some(4096)
+    }));
+    assert!(listing.entries.iter().any(|entry| {
+        entry.name == "readme.txt"
+            && entry.path == "/srv/readme.txt"
+            && entry.kind == SftpEntryKind::File
+            && entry.size == Some(12)
+    }));
+    assert_eq!(fake_runtime.exec_count(), 1);
+    let key = fake_runtime.last_key().expect("last managed key");
+    assert!(key
+        .runtime_flags
+        .iter()
+        .any(|flag| flag == MANAGED_SSH_CAPABILITY_RUNTIME_FLAG));
     let snapshot = manager.snapshot().expect("runtime snapshot");
-    assert_eq!(snapshot.active_channels, 0);
+    let browser = snapshot
+        .sessions
+        .iter()
+        .find(|session| {
+            session
+                .key
+                .runtime_flags
+                .iter()
+                .any(|flag| flag == MANAGED_SSH_CAPABILITY_RUNTIME_FLAG)
+        })
+        .expect("browser capability session");
+    assert_eq!(browser.channel_counts.get(&SshChannelKind::Exec), Some(&1));
     assert_eq!(manager.close_idle_sessions().expect("close idle"), 1);
 }
 
@@ -686,6 +728,7 @@ async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connec
         snapshot.active_channels, 1,
         "browser SFTP transport should keep one interactive channel open until service drop or idle close"
     );
+    assert!(snapshot.recent_legacy_fallbacks.is_empty());
     let browser = snapshot
         .sessions
         .iter()
@@ -710,10 +753,10 @@ async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connec
         .expect("bulk transfer SFTP lane");
     assert_eq!(
         browser.channel_counts.get(&SshChannelKind::Sftp),
-        Some(&2),
-        "browser listing and recursive delete should use pure SFTP channels"
+        Some(&1),
+        "two browser listings should reuse one retained SFTP subsystem"
     );
-    assert_eq!(browser.channel_counts.get(&SshChannelKind::Exec), None);
+    assert_eq!(browser.channel_counts.get(&SshChannelKind::Exec), Some(&1));
     assert_eq!(bulk.channel_counts.get(&SshChannelKind::Sftp), Some(&1));
     let debug = format!("{snapshot:?}");
     assert!(!debug.contains("secret"));

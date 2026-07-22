@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type { CommandSuggestionCandidate } from "../../../../src/lib/terminalSuggestionApi";
 import {
@@ -140,10 +138,8 @@ function candidate(
   overrides: Partial<CommandSuggestionCandidate> = {},
 ): CommandSuggestionCandidate {
   return {
-    activation: "insert",
     acceptBoundaries: [4],
     allowedPresentations: ["inline", "menu"],
-    candidateKind: "command",
     contextKey: "ctx",
     displayText: "git status",
     id: "candidate",

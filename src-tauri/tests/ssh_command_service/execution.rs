@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 //! SSH 命令执行与托管运行时集成测试。
 
 use super::support::*;
@@ -114,6 +112,7 @@ async fn native_command_uses_session_only_password_from_auth_broker() {
         .snapshot()
         .expect("second runtime snapshot");
     assert_eq!(second_snapshot.active_sessions, 1);
+    assert!(second_snapshot.recent_legacy_fallbacks.is_empty());
     assert_eq!(
         second_snapshot.sessions[0].session_id,
         first_snapshot.sessions[0].session_id
@@ -135,7 +134,7 @@ async fn native_command_uses_session_only_password_from_auth_broker() {
 }
 
 #[tokio::test]
-async fn managed_command_honors_pre_cancelled_token_before_connecting() {
+async fn native_command_fallback_honors_pre_cancelled_token() {
     let (_home, state) = test_state();
     let mut host = remote_host(RemoteHostAuthType::Password);
     host.host = "127.0.0.1".to_owned();
@@ -157,7 +156,7 @@ async fn managed_command_honors_pre_cancelled_token_before_connecting() {
             cancel_token,
         )
         .await
-        .expect_err("pre-cancelled managed command should not connect");
+        .expect_err("pre-cancelled native fallback should not connect");
 
     assert!(matches!(error, AppError::SshCommand(_)));
     assert_eq!(error.to_string(), "SSH 远程命令执行失败: 远程命令已取消");
@@ -187,7 +186,6 @@ async fn native_command_opens_managed_exec_channel_with_redacted_session_key() {
         })
         .expect("remember session-only password");
     let backend = Arc::new(FakeRuntimeBackend::default());
-    backend.enable_exec();
     let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
     let service = SshCommandService::with_ssh_runtime(
         manager.clone(),
@@ -281,6 +279,11 @@ async fn native_command_uses_managed_exec_stream_when_backend_supports_exec() {
     assert_eq!(backend.last_exec_timeout_seconds(), Some(5));
     assert_eq!(backend.last_exec_max_output_bytes(), Some(256));
     assert_eq!(backend.last_exec_cancelled(), Some(false));
+    assert!(manager
+        .snapshot()
+        .expect("managed exec stream snapshot")
+        .recent_legacy_fallbacks
+        .is_empty());
 }
 
 #[tokio::test]
@@ -358,7 +361,8 @@ async fn open_managed_streaming_exec_passes_timeout_and_cancel_token_to_runtime(
             cancel_token,
         )
         .await
-        .expect("open managed streaming exec");
+        .expect("open managed streaming exec")
+        .expect("managed streaming exec supported");
 
     assert!(!session.session_id().is_empty());
     assert_eq!(backend.connect_count(), 1);

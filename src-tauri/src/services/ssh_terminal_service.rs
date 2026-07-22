@@ -27,10 +27,10 @@ use crate::{
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
             facade::{SshRuntimeFacade, SshRuntimeTargetContext},
-            native_backend::NativeSshRuntimeBackend,
             policy::{
-                external_target_not_available_error, is_external_runtime_target_id,
-                runtime_host_key_policy_for_host_id,
+                external_target_not_available_error, is_capability_unsupported,
+                is_external_runtime_target_id, is_managed_runtime_unwired,
+                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
             },
             session_key::ssh_session_key_for_route,
             ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeShellRequest,
@@ -40,7 +40,7 @@ use crate::{
         },
     },
 };
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path};
 
 mod identity;
 
@@ -49,8 +49,11 @@ use identity::{
     ResolvedSshIdentity,
 };
 
+const LEGACY_FALLBACK_SHELL_UNWIRED: &str = "managed-shell-backend-unwired";
+const LEGACY_FALLBACK_SHELL_UNSUPPORTED: &str = "managed-shell-unsupported";
+
 /// SSH 远程终端业务入口。
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SshTerminalService {
     managed_runtime: Option<ManagedSshSessionManager>,
     auth_broker: Option<SshAuthBroker>,
@@ -58,12 +61,10 @@ pub struct SshTerminalService {
 }
 
 impl SshTerminalService {
-    /// 创建使用当前 native Managed SSH backend 的远程终端服务。
+    /// 创建 SSH 远程终端服务。
     pub fn new() -> Self {
         Self {
-            managed_runtime: Some(ManagedSshSessionManager::with_backend(Arc::new(
-                NativeSshRuntimeBackend::new(),
-            ))),
+            managed_runtime: None,
             auth_broker: None,
             external_targets: None,
         }
@@ -72,9 +73,7 @@ impl SshTerminalService {
     /// 创建可解析外部启动临时 target 的 SSH 远程终端服务。
     pub fn with_external_targets(external_targets: ExternalSessionMaterializer) -> Self {
         Self {
-            managed_runtime: Some(ManagedSshSessionManager::with_backend(Arc::new(
-                NativeSshRuntimeBackend::new(),
-            ))),
+            managed_runtime: None,
             auth_broker: None,
             external_targets: Some(external_targets),
         }
@@ -110,8 +109,24 @@ impl SshTerminalService {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
-        let managed_launch = self.try_open_managed_shell(remote_hosts, paths, &request)?;
-        terminals.create_managed_shell_session(managed_launch.request, managed_launch.shell, output)
+        if let Some(managed_launch) = self.try_open_managed_shell(remote_hosts, paths, &request)? {
+            return terminals.create_managed_shell_session(
+                managed_launch.request,
+                managed_launch.shell,
+                output,
+            );
+        }
+
+        let launch = self.resolve_terminal_launch(remote_hosts, paths, request)?;
+        if let Some(secret_input_plan) = launch.secret_input_plan {
+            terminals.create_session_with_secret_input_plan(
+                launch.request,
+                Some(secret_input_plan),
+                output,
+            )
+        } else {
+            terminals.create_session(launch.request, output)
+        }
     }
 
     /// 将 SSH 主机配置解析为本地受控 OpenSSH 命令。
@@ -191,11 +206,10 @@ impl SshTerminalService {
         remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
         request: &SshTerminalCreateRequest,
-    ) -> AppResult<ManagedTerminalLaunch> {
-        let managed_runtime = self
-            .managed_runtime
-            .as_ref()
-            .ok_or_else(|| AppError::Terminal("Managed SSH runtime 未配置".to_owned()))?;
+    ) -> AppResult<Option<ManagedTerminalLaunch>> {
+        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
+            return Ok(None);
+        };
 
         validate_terminal_size(request.rows, request.cols)?;
         let (host, route_auth) =
@@ -232,9 +246,28 @@ impl SshTerminalService {
             .enable_all()
             .build()
             .map_err(|error| AppError::Terminal(error.to_string()))?;
-        let shell = runtime.block_on(facade.open_shell(&context, shell_request))?;
+        let shell = match runtime.block_on(facade.open_shell(&context, shell_request)) {
+            Ok(shell) => shell,
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                facade.record_legacy_fallback(
+                    "shell",
+                    LEGACY_FALLBACK_SHELL_UNWIRED,
+                    Some(&context),
+                );
+                return Ok(None);
+            }
+            Err(error) if is_capability_unsupported(&error, SshRuntimeCapability::Shell) => {
+                facade.record_legacy_fallback(
+                    "shell",
+                    LEGACY_FALLBACK_SHELL_UNSUPPORTED,
+                    Some(&context),
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
 
-        Ok(ManagedTerminalLaunch {
+        Ok(Some(ManagedTerminalLaunch {
             request: TerminalManagedShellCreateRequest {
                 shell: managed_shell_label(&runtime_host),
                 cwd: normalized_remote_cwd(initial_cwd).map(ToOwned::to_owned),
@@ -244,13 +277,7 @@ impl SshTerminalService {
                 target_ref: Some(request.host_id.clone()),
             },
             shell: TerminalManagedShellRuntime { shell, runtime },
-        })
-    }
-}
-
-impl Default for SshTerminalService {
-    fn default() -> Self {
-        Self::new()
+        }))
     }
 }
 
@@ -346,9 +373,9 @@ pub mod rules {
         paths: &KerminalPaths,
         request: SshTerminalCreateRequest,
     ) -> AppResult<bool> {
-        service
-            .try_open_managed_shell(remote_hosts, paths, &request)
-            .map(|_| true)
+        Ok(service
+            .try_open_managed_shell(remote_hosts, paths, &request)?
+            .is_some())
     }
 
     pub fn cleanup_temporary_identity_files(

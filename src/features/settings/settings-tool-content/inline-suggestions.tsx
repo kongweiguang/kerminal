@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import {
   Activity,
   Network,
@@ -38,8 +36,8 @@ export function InlineSuggestionPolicyStatus({
     {
       icon: Network,
       label: "远端探测",
-      tone: inlineSuggestion.remoteRefresh !== "off" ? "sky" : "zinc",
-      value: inlineSuggestion.remoteRefresh !== "off" ? "后台只读" : "已关闭",
+      tone: inlineSuggestion.remoteProbeEnabled ? "sky" : "zinc",
+      value: inlineSuggestion.remoteProbeEnabled ? "后台只读" : "已关闭",
     },
     {
       icon: Server,
@@ -50,8 +48,8 @@ export function InlineSuggestionPolicyStatus({
     {
       icon: Activity,
       label: "反馈调权",
-      tone: inlineSuggestion.presentation !== "off" ? "sky" : "zinc",
-      value: inlineSuggestion.presentation !== "off" ? "接受/忽略" : "暂停",
+      tone: inlineSuggestion.enabled ? "sky" : "zinc",
+      value: inlineSuggestion.enabled ? "接受/忽略" : "暂停",
     },
   ];
 

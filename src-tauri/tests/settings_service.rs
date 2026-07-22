@@ -67,12 +67,14 @@ fn settings_service_persists_settings_in_toml() {
         settings.terminal.selection_copy = true;
         settings.terminal.show_tab_numbers = true;
         settings.terminal.confirm_close_tab = false;
+        settings.terminal.inline_suggestion.enabled = false;
         settings.terminal.inline_suggestion.presentation =
-            TerminalCommandSuggestionPresentation::Off;
+            TerminalCommandSuggestionPresentation::Inline;
         settings.terminal.inline_suggestion.accept_key =
             TerminalInlineSuggestionAcceptKey::Disabled;
         settings.terminal.inline_suggestion.tab_opens_menu = true;
         settings.terminal.inline_suggestion.partial_accept = false;
+        settings.terminal.inline_suggestion.remote_probe_enabled = false;
         settings.terminal.inline_suggestion.remote_refresh =
             TerminalCommandSuggestionRemoteRefresh::Off;
         settings.terminal.inline_suggestion.production_host_policy =
@@ -184,6 +186,7 @@ fn settings_service_persists_settings_in_toml() {
     assert!(settings.terminal.selection_copy);
     assert!(settings.terminal.show_tab_numbers);
     assert!(!settings.terminal.confirm_close_tab);
+    assert!(!settings.terminal.inline_suggestion.enabled);
     assert_eq!(
         settings.terminal.inline_suggestion.presentation,
         TerminalCommandSuggestionPresentation::Off
@@ -192,6 +195,7 @@ fn settings_service_persists_settings_in_toml() {
         settings.terminal.inline_suggestion.accept_key,
         TerminalInlineSuggestionAcceptKey::Disabled
     );
+    assert!(!settings.terminal.inline_suggestion.remote_probe_enabled);
     assert_eq!(
         settings.terminal.inline_suggestion.remote_refresh,
         TerminalCommandSuggestionRemoteRefresh::Off
@@ -255,6 +259,63 @@ fn settings_service_persists_settings_in_toml() {
         vec!["putty", "kerminal-native"]
     );
     assert!(!settings_source.contains("shimBridge"));
+}
+
+#[test]
+fn settings_service_migrates_legacy_command_suggestion_switches() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+
+    {
+        AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
+    }
+
+    let settings_path = paths.root.join("settings.toml");
+    let source = std::fs::read_to_string(&settings_path).expect("read generated settings toml");
+    let mut document: toml::Value = toml::from_str(&source).expect("parse generated settings toml");
+    let inline_suggestion = document
+        .get_mut("terminal")
+        .and_then(|terminal| terminal.get_mut("inlineSuggestion"))
+        .and_then(toml::Value::as_table_mut)
+        .expect("terminal inline suggestion table");
+    inline_suggestion.insert("enabled".to_string(), toml::Value::Boolean(false));
+    inline_suggestion.insert(
+        "remoteProbeEnabled".to_string(),
+        toml::Value::Boolean(false),
+    );
+    for key in [
+        "presentation",
+        "menuShortcut",
+        "tabOpensMenu",
+        "partialAccept",
+        "remoteRefresh",
+    ] {
+        inline_suggestion.remove(key);
+    }
+    std::fs::write(
+        &settings_path,
+        toml::to_string_pretty(&document).expect("serialize legacy settings toml"),
+    )
+    .expect("write legacy settings toml");
+
+    let state = AppState::initialize_with_paths(paths).expect("reopen legacy app state");
+    let settings = state
+        .settings()
+        .load_settings()
+        .expect("load migrated legacy settings");
+
+    assert!(!settings.terminal.inline_suggestion.enabled);
+    assert_eq!(
+        settings.terminal.inline_suggestion.presentation,
+        TerminalCommandSuggestionPresentation::Off
+    );
+    assert!(!settings.terminal.inline_suggestion.remote_probe_enabled);
+    assert_eq!(
+        settings.terminal.inline_suggestion.remote_refresh,
+        TerminalCommandSuggestionRemoteRefresh::Off
+    );
+    assert!(!settings.terminal.inline_suggestion.tab_opens_menu);
+    assert!(settings.terminal.inline_suggestion.partial_accept);
 }
 
 #[test]

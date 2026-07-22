@@ -380,7 +380,7 @@ fn resolver_supports_inline_private_key_from_vault() {
 }
 
 #[test]
-fn resolver_uses_session_only_plaintext_without_vault_ref() {
+fn resolver_ignores_transient_plaintext_without_vault_ref() {
     let fixture = Fixture::new();
     let mut host = password_host("host-1");
     host.credential_secret = Some("transient-secret".to_owned());
@@ -388,18 +388,16 @@ fn resolver_uses_session_only_plaintext_without_vault_ref() {
     let resolved = fixture.resolver().resolve_host(&host).expect("resolve");
 
     match &resolved.target.material {
-        ResolvedSshAuthMaterial::Password { source, .. } => {
-            assert!(matches!(
-                source,
-                ResolvedSshCredentialSource::SessionOnly { .. }
-            ));
+        ResolvedSshAuthMaterial::PromptOnly { source, reason } => {
+            assert_eq!(source, &ResolvedSshCredentialSource::PromptOnly);
+            assert!(reason.contains("password"));
         }
-        other => panic!("expected session-only password material, got {other:?}"),
+        other => panic!("expected prompt-only material, got {other:?}"),
     }
-    assert!(matches!(
+    assert_eq!(
         resolved.summary.target.source,
-        ResolvedSshCredentialSource::SessionOnly { .. }
-    ));
+        ResolvedSshCredentialSource::PromptOnly
+    );
     assert_redacted(&resolved, "transient-secret");
 }
 

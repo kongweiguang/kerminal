@@ -11,6 +11,8 @@ type CompatibilityCategory =
   | "preview-adapter"
   | "runtime-fallback"
   | "runtime-patch"
+  | "schema-compatibility"
+  | "semantic-compatibility"
   | "startup-recovery";
 
 type CompatibilityLifecycle =
@@ -88,6 +90,8 @@ export function validateCompatibilityRegistry(
     "preview-adapter",
     "runtime-fallback",
     "runtime-patch",
+    "schema-compatibility",
+    "semantic-compatibility",
     "startup-recovery",
   ]);
   const lifecycles = new Set<CompatibilityLifecycle>([

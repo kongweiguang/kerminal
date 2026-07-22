@@ -332,7 +332,7 @@ export function createXtermPaneGhostSuggestions({
     }
     clearSuggestionTimer();
     const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-    if (inlineSuggestion.presentation === "off") {
+    if (!inlineSuggestion.enabled) {
       clearGhostSuggestion();
       return;
     }
@@ -379,8 +379,7 @@ export function createXtermPaneGhostSuggestions({
       latestLifecycle = {
         ...latestLifecycle,
         alternateScreen: model.bufferKind === "alternate",
-        enabled:
-          eligibility.eligible && inlineSuggestion.presentation !== "off",
+        enabled: eligibility.eligible && inlineSuggestion.enabled,
         hidden: !canScheduleSuggestion(),
         imeComposing: model.imeComposing,
         pasting: model.hideReason === "paste",

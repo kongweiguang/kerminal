@@ -38,6 +38,7 @@ use std::{
     fs::{self, File as StdFile},
     io::{Read, Write},
     path::{Path, PathBuf},
+    process::{Command, Stdio},
     thread,
 };
 use tar::{Archive, Builder};

@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::*;
 
 impl fmt::Debug for ManagedSshSessionManager {
@@ -18,7 +16,8 @@ impl Default for ManagedSshSessionManager {
 }
 
 impl ManagedSshSessionManager {
-    /// Creates a manager whose backend reports that Managed SSH is unavailable.
+    /// Create a manager with a placeholder backend. Real adapters will replace
+    /// this once session-backed SFTP/terminal migration starts.
     pub fn new() -> Self {
         Self::with_backend(Arc::new(UnavailableSshRuntimeBackend))
     }
@@ -39,6 +38,7 @@ impl ManagedSshSessionManager {
                 backend,
                 channel_open_semaphores: Mutex::new(HashMap::new()),
                 exec_semaphores: Mutex::new(HashMap::new()),
+                legacy_fallbacks: Mutex::new(Vec::new()),
                 max_concurrent_exec_channels: max_concurrent_exec_channels.max(1),
                 sessions: Mutex::new(HashMap::new()),
             }),
@@ -193,6 +193,7 @@ impl ManagedSshSessionManager {
                 .sum(),
             active_sessions: session_summaries.len(),
             generated_at: unix_timestamp(),
+            recent_legacy_fallbacks: self.recent_legacy_fallbacks(),
             sessions: session_summaries,
         })
     }
@@ -200,5 +201,42 @@ impl ManagedSshSessionManager {
     /// Number of sessions currently kept in the registry.
     pub fn active_session_count(&self) -> AppResult<usize> {
         Ok(self.sessions()?.len())
+    }
+
+    /// Record an intentional legacy fallback for diagnostics.
+    ///
+    /// This is only for migration gaps such as an unwired backend or a request
+    /// shape that the managed runtime explicitly does not support yet.
+    pub fn record_legacy_fallback(
+        &self,
+        capability: impl Into<String>,
+        reason: impl Into<String>,
+        target: Option<String>,
+    ) {
+        let Ok(mut fallbacks) = self.inner.legacy_fallbacks.lock() else {
+            return;
+        };
+        let now = unix_timestamp();
+        let capability = truncate_diagnostic_text(capability.into(), 80);
+        let reason = truncate_diagnostic_text(reason.into(), 160);
+        let target = target.map(|value| truncate_diagnostic_text(value, 160));
+        if let Some(existing) = fallbacks.iter_mut().find(|event| {
+            event.capability == capability && event.reason == reason && event.target == target
+        }) {
+            existing.count = existing.count.saturating_add(1);
+            existing.last_at = now;
+            return;
+        }
+        fallbacks.push(ManagedSshLegacyFallbackSnapshot {
+            capability,
+            count: 1,
+            last_at: now,
+            reason,
+            target,
+        });
+        if fallbacks.len() > MAX_RECENT_LEGACY_FALLBACKS {
+            let overflow = fallbacks.len() - MAX_RECENT_LEGACY_FALLBACKS;
+            fallbacks.drain(0..overflow);
+        }
     }
 }

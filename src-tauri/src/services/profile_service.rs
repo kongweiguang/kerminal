@@ -89,7 +89,7 @@ impl ProfileService {
 
         let mut writes = Vec::new();
         if profile.is_default {
-            clear_default_profiles(&mut profiles, &timestamp, None, &mut writes);
+            clear_default_profiles(&mut profiles, &timestamp, &mut writes);
         }
         writes.push(profile.clone());
         self.config
@@ -127,12 +127,7 @@ impl ProfileService {
 
         let mut writes = Vec::new();
         if profile.is_default {
-            clear_default_profiles(
-                &mut profiles,
-                &timestamp,
-                Some(profile.id.as_str()),
-                &mut writes,
-            );
+            clear_default_profiles(&mut profiles, &timestamp, &mut writes);
         }
         writes.push(profile.clone());
         self.config
@@ -220,11 +215,10 @@ impl ProfileService {
 fn clear_default_profiles(
     profiles: &mut [TerminalProfile],
     timestamp: &str,
-    excluded_profile_id: Option<&str>,
     writes: &mut Vec<TerminalProfile>,
 ) {
     for profile in profiles {
-        if profile.is_default && excluded_profile_id != Some(profile.id.as_str()) {
+        if profile.is_default {
             profile.is_default = false;
             profile.updated_at = timestamp.to_owned();
             writes.push(profile.clone());

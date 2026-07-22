@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { screen } from "@testing-library/react";
 import { beforeEach, expect, vi } from "vitest";
 import type { Machine, TerminalTab } from "../../../../src/features/workspace/types";
@@ -215,6 +213,7 @@ const emptyManagedSshSnapshot = {
   activeChannels: 0,
   activeSessions: 0,
   generatedAt: "1",
+  recentLegacyFallbacks: [],
   sessions: [],
 };
 
@@ -222,6 +221,7 @@ export const readyManagedSshSnapshot = {
   activeChannels: 2,
   activeSessions: 1,
   generatedAt: "1",
+  recentLegacyFallbacks: [],
   sessions: [
     {
       activeChannels: 2,

@@ -1,6 +1,5 @@
-//! @author kongweiguang
-
 use super::*;
+use crate::models::remote_host::RemoteHostAuthType;
 use crate::services::ssh_runtime::{ManagedSshStreamingExecSession, SshRuntimeStreamingExecExit};
 use tokio_util::sync::CancellationToken;
 
@@ -37,7 +36,7 @@ pub(super) async fn upload_to_container(
 
     let remote_parent = parent_remote_path(&request.remote_path).unwrap_or_else(|| "/".to_owned());
     let remote_name = remote_file_name(&request.remote_path)?;
-    let session = open_managed_docker_cp_session(
+    if let Some(session) = open_managed_docker_cp_session(
         paths,
         ssh_commands,
         host,
@@ -46,8 +45,44 @@ pub(super) async fn upload_to_container(
         &remote_parent,
         DockerCpDirection::Upload,
     )
-    .await?;
-    upload_to_container_with_managed_exec(session, local_path, remote_name, request.kind).await
+    .await?
+    {
+        return upload_to_container_with_managed_exec(
+            session,
+            local_path,
+            remote_name,
+            request.kind,
+        )
+        .await;
+    }
+
+    let mut child = spawn_docker_cp_process(
+        host,
+        request.runtime,
+        &request.container_id,
+        &remote_parent,
+        DockerCpDirection::Upload,
+    )?;
+    let stdout = child.stdout.take().map(spawn_byte_reader);
+    let stderr = child.stderr.take().map(spawn_byte_reader);
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| AppError::Docker("无法打开 docker cp stdin".to_owned()))?;
+
+    let write_result = write_tar_stream(stdin, &local_path, &remote_name, request.kind);
+    if let Err(error) = write_result {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+
+    let status = child
+        .wait()
+        .map_err(|error| AppError::Docker(format!("等待 docker cp 上传失败: {error}")))?;
+    let stdout = join_byte_reader(stdout)?;
+    let stderr = join_byte_reader(stderr)?;
+    ensure_command_success(status.success(), "容器上传失败", &stdout, &stderr)
 }
 
 pub(super) async fn download_from_container(
@@ -56,7 +91,7 @@ pub(super) async fn download_from_container(
     host: &RemoteHost,
     request: DockerContainerTransferRequest,
 ) -> AppResult<()> {
-    let session = open_managed_docker_cp_session(
+    if let Some(session) = open_managed_docker_cp_session(
         paths,
         ssh_commands,
         host,
@@ -65,8 +100,31 @@ pub(super) async fn download_from_container(
         &request.remote_path,
         DockerCpDirection::Download,
     )
-    .await?;
-    download_from_container_with_managed_exec(session, request).await
+    .await?
+    {
+        return download_from_container_with_managed_exec(session, request).await;
+    }
+
+    let mut child = spawn_docker_cp_process(
+        host,
+        request.runtime,
+        &request.container_id,
+        &request.remote_path,
+        DockerCpDirection::Download,
+    )?;
+    let stderr = child.stderr.take().map(spawn_byte_reader);
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Docker("无法打开 docker cp stdout".to_owned()))?;
+
+    let extract_result = extract_tar_stream(stdout, Path::new(&request.local_path), request.kind);
+    let status = child
+        .wait()
+        .map_err(|error| AppError::Docker(format!("等待 docker cp 下载失败: {error}")))?;
+    let stderr = join_byte_reader(stderr)?;
+    extract_result?;
+    ensure_command_success(status.success(), "容器下载失败", &[], &stderr)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +141,7 @@ async fn open_managed_docker_cp_session(
     container_id: &str,
     remote_path: &str,
     direction: DockerCpDirection,
-) -> AppResult<ManagedSshStreamingExecSession> {
+) -> AppResult<Option<ManagedSshStreamingExecSession>> {
     let remote_command =
         build_docker_cp_remote_command(runtime, container_id, remote_path, direction);
     ssh_commands
@@ -180,6 +238,65 @@ fn build_docker_cp_remote_command(
     }
 }
 
+pub(super) fn spawn_docker_cp_process(
+    host: &RemoteHost,
+    runtime: ContainerRuntime,
+    container_id: &str,
+    remote_path: &str,
+    direction: DockerCpDirection,
+) -> AppResult<std::process::Child> {
+    let ssh = resolve_legacy_docker_cp_ssh_executable()?;
+    let remote_command =
+        build_docker_cp_remote_command(runtime, container_id, remote_path, direction);
+    let mut args = vec![
+        "-p".to_owned(),
+        host.port.to_string(),
+        "-o".to_owned(),
+        "ServerAliveInterval=30".to_owned(),
+        "-o".to_owned(),
+        "ServerAliveCountMax=3".to_owned(),
+    ];
+    args.extend(legacy_docker_cp_auth_args(host.auth_type));
+    args.push(format!("{}@{}", host.username, host.host));
+    args.push(remote_command);
+
+    let mut command = Command::new(ssh);
+    command.args(args).stderr(Stdio::piped());
+    match direction {
+        DockerCpDirection::Upload => {
+            command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        }
+        DockerCpDirection::Download => {
+            command.stdin(Stdio::null()).stdout(Stdio::piped());
+        }
+    }
+    command
+        .spawn()
+        .map_err(|error| AppError::Docker(format!("无法启动 docker cp SSH 进程: {error}")))
+}
+
+fn legacy_docker_cp_auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
+    let preferred = match auth_type {
+        RemoteHostAuthType::Password => "password,keyboard-interactive",
+        RemoteHostAuthType::Key => "publickey",
+        RemoteHostAuthType::Agent => "publickey,keyboard-interactive,password",
+    };
+
+    vec![
+        "-o".to_owned(),
+        format!("PreferredAuthentications={preferred}"),
+    ]
+}
+
+fn resolve_legacy_docker_cp_ssh_executable() -> AppResult<String> {
+    which::which("ssh")
+        .or_else(|_| which::which("ssh.exe"))
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|_| {
+            AppError::Docker("未找到 OpenSSH 客户端，无法使用 docker cp legacy fallback".to_owned())
+        })
+}
+
 pub fn write_tar_stream<W: Write>(
     writer: W,
     local_path: &Path,
@@ -238,6 +355,17 @@ pub fn extract_first_file<R: Read>(reader: R, local_path: &Path) -> AppResult<()
         return Ok(());
     }
     Err(AppError::Docker("下载归档中没有文件条目".to_owned()))
+}
+
+pub(super) fn spawn_byte_reader<R>(mut reader: R) -> thread::JoinHandle<std::io::Result<Vec<u8>>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut output = Vec::new();
+        reader.read_to_end(&mut output)?;
+        Ok(output)
+    })
 }
 
 pub(super) fn spawn_limited_byte_reader<R>(

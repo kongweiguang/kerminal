@@ -44,7 +44,7 @@ Read this file before editing Kerminal configuration. Do not guess field names o
 
 1. Identify whether the request changes settings, a terminal profile, a host, a host group, a snippet, or a workflow.
 2. Use precise search for an id, name, host, tag, or field. Do not reformat every TOML file.
-3. Preserve the file's supported `schema_version`, comments, unknown fields, timestamps, and sort order unless the request needs them changed. Host files require schema v2; other ordinary TOML files currently use schema v1.
+3. Preserve `schema_version = 1`, comments, unknown fields, timestamps, and sort order unless the request needs them changed.
 4. Keep each file relationship valid: host `group_id` must reference `hosts/groups.toml`; file names must match `id`; workflow step ids must be unique.
 5. Do not write passwords, inline private keys, key passphrases, tokens, or other plaintext secrets to ordinary TOML files. Do not read or edit `secrets/` unless the user explicitly asks for credential work.
 6. After edits, call MCP tool `kerminal.config.validate` with `scope = "all"` or the narrowest matching scope. If Kerminal MCP is unavailable, manually check the rules below and tell the user validation was manual only.
@@ -85,7 +85,7 @@ If a save leaves TOML temporarily invalid, Kerminal keeps the last-known-good UI
 | `settings.toml` | App appearance, terminal appearance, keybindings, SFTP performance | Standalone; business ranges are validated by Kerminal. |
 | `profiles/*.toml` | Local terminal launch profiles | Filename must be `<id>.toml`; optional `sidebar_group_id` pins the profile into an existing host group in the left sidebar. |
 | `hosts/groups.toml` | Host groups and ordering | `groups[].id` is referenced by host `group_id`; `__ungrouped__` is runtime-only and must not be written. |
-| `hosts/*.toml` | Host metadata for SSH/SFTP/Telnet/Serial/RDP/container targets | Filename must be `<id>.toml`; every host uses schema v2 with an explicit `protocol`; saved secret values are referenced by `secret_ref` / `key_passphrase_ref` and encrypted in the vault. |
+| `hosts/*.toml` | Host metadata for SSH/SFTP/Telnet/Serial/RDP/container targets | Filename must be `<id>.toml`; every newly saved host uses schema v2 with an explicit `protocol`; saved secret values are referenced by `secret_ref` / `key_passphrase_ref` and encrypted in the vault. |
 | `snippets/*.toml` | Reusable single commands | Filename must be `<id>.toml`; `scope` is `any`, `local`, or `ssh`. |
 | `workflows/*.toml` | Multi-step command workflows | Filename must be `<id>.toml`; `[[steps]]` are stored in the same file and sorted by `sort_order`. |
 | `data/command.sqlite` | Command history and suggestion data | Do not edit directly. Use MCP `history.search` to read history. |
@@ -94,7 +94,7 @@ If a save leaves TOML temporarily invalid, Kerminal keeps the last-known-good UI
 
 ## Common Rules
 
-- Host TOML files use top-level `schema_version = 2`; other ordinary TOML files currently use `schema_version = 1`.
+- Host TOML files use top-level `schema_version = 2`; other ordinary TOML files currently use schema v1.
 - Wrapper fields use snake_case: `schema_version`, `group_id`, `sidebar_group_id`, `auth_type`, `sort_order`, `created_at`, `updated_at`, `ssh_options`, `requires_confirmation`.
 - `settings.toml` business fields follow the app settings model and often use camelCase, for example `themeMode` and `interfaceDensity`. Preserve existing settings field spelling.
 - IDs should be stable ASCII identifiers using letters, numbers, `.`, `_`, or `-`.
@@ -252,7 +252,7 @@ Rules:
 
 Purpose: ordinary host metadata. Credentials and inline private keys are not stored here.
 
-Every saved host uses schema v2 and declares its protocol explicitly. Tags are ordinary user labels and never determine protocol:
+Every newly saved host uses schema v2 and declares its protocol explicitly. Tags are ordinary user labels and never determine protocol. Existing schema v1 files are accepted only as a read-migration input so they remain visible until the next successful save:
 
 ```toml
 schema_version = 2
@@ -318,7 +318,7 @@ max_concurrent_transfers = 2
 Fields:
 
 - `id`: stable host id and filename stem.
-- `protocol`: required and one of `ssh`, `sftp`, `rdp`, `telnet`, or `serial`. It is authoritative; tags do not override it.
+- `protocol`: required for newly saved hosts and one of `ssh`, `sftp`, `rdp`, `telnet`, or `serial`.
 - `group_id`: optional group id from `hosts/groups.toml`.
 - `name`: user-visible host name.
 - `host`: DNS name, IP, serial endpoint, or target host value depending on target type.
@@ -336,7 +336,7 @@ Fields:
 Rules:
 
 - `production` is required for Agent-authored host files. Use `true` for production or safety-sensitive hosts and `false` for ordinary dev/test/local targets. Do not omit it.
-- Use schema v2 for every host and always provide the explicit protocol. Host schema v1 is rejected and is not migrated automatically.
+- Use schema v2 for every newly created or rewritten host and always provide the explicit protocol. Schema v1 is a read-only migration input and is never written back.
 - Do not put `credential_secret`, `password`, `inline_private_key`, private key bodies, key passphrases, API keys, or tokens here.
 - Passwords, inline keys, key passphrases, and jump-host secrets are encrypted in `secrets/vault.toml`; ordinary host files only keep `secret_ref` / `key_passphrase_ref`.
 
@@ -353,7 +353,7 @@ Host creation checklist:
 Common host failures:
 
 - File exists but app does not show it: check `id` versus filename, TOML parse errors, missing required fields, and validator diagnostics.
-- Host is rejected: confirm `schema_version = 2` and a supported explicit `protocol`. Host schema v1 and missing/unknown protocols intentionally fail closed. Kerminal does not rewrite old files automatically; export them with a version that still reads v1 or manually rewrite them after making a backup.
+- Host is rejected: confirm `schema_version = 2` and a supported explicit `protocol`; schema v2 with a missing or unknown protocol intentionally fails closed.
 - Host appears in wrong group: check `group_id` references an id in `hosts/groups.toml`; `__ungrouped__` must not be written.
 - Login still asks for credentials: ordinary host TOML intentionally does not store password, inline key, or key passphrase plaintext. Credential work requires explicit user instruction and the UI/vault save flow so valid `secret_ref` / `key_passphrase_ref` references exist.
 - Validator passes manually but app behaves differently: rerun MCP `kerminal.config.validate` because it uses Kerminal runtime loaders.

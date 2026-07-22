@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type PortForwardKind =
@@ -12,12 +10,16 @@ type PortForwardStatus = "running" | "exited";
 
 /** 端口转发仅支持 SOCKS 代理；HTTP network-assist 已退役。 */
 type PortForwardRuntimeMode =
+  | "unknown"
   | "managedSshRuntime"
+  | "openSshProcess"
+  | "openSshPty"
   | "restored";
 
 export type PortForwardOrigin =
   | "user"
   | "mcpTool"
+  | "networkAssist"
   | "hostPreset";
 
 type PortForwardAccessScope =
@@ -37,6 +39,7 @@ interface PortForwardEndpoint {
 interface PortForwardRuntimeDiagnostics {
   backend: string;
   cleanupStatus: string;
+  fallbackReason?: string;
   managedChannelId?: string;
   managedChannelKind?: string;
   managedSessionId?: string;
@@ -82,7 +85,8 @@ export interface PortForwardSummary {
   localBindHost?: string;
   localEndpoint?: PortForwardEndpoint;
   origin?: PortForwardOrigin;
-  proxyProtocol?: "socks5";
+  // 仅用于读取和标识旧会话；新建请求只能传入 socks5。
+  proxyProtocol?: "http" | "socks5";
   proxyUrl?: string;
   remoteAccessScope?: PortForwardAccessScope;
   remoteBindHost?: string;

@@ -1,8 +1,7 @@
-// @author kongweiguang
-
 export interface TerminalRendererFeatureGates {
   adaptiveOutputScheduler: boolean;
   healthWatchdog: boolean;
+  lifecycleV2: boolean;
   performanceTelemetry: boolean;
   privateCleanupCompat: boolean;
 }
@@ -11,6 +10,7 @@ export const DEFAULT_TERMINAL_RENDERER_FEATURE_GATES: Readonly<TerminalRendererF
   Object.freeze({
     adaptiveOutputScheduler: true,
     healthWatchdog: true,
+    lifecycleV2: true,
     performanceTelemetry: true,
     privateCleanupCompat: false,
   });
@@ -30,7 +30,8 @@ interface ResolveRuntimeTerminalRendererFeatureGatesOptions {
 /**
  * 解析 renderer 灰度开关。
  *
- * 各 gate 可独立关闭，不改变 terminal/session 契约；renderer 生命周期只保留当前实现。
+ * lifecycle V2 关闭时 GPU attach 会被禁止并稳定使用 CPU，作为无需数据迁移的
+ * 紧急回滚路径；其它 gate 可独立关闭，不改变 terminal/session 契约。
  */
 export function resolveTerminalRendererFeatureGates(
   overrides: Partial<TerminalRendererFeatureGates> = {},
@@ -65,6 +66,7 @@ function readEnvironmentOverrides(
       env.VITE_TERMINAL_ADAPTIVE_OUTPUT_SCHEDULER,
     ),
     healthWatchdog: readBoolean(env.VITE_TERMINAL_RENDERER_HEALTH_WATCHDOG),
+    lifecycleV2: readBoolean(env.VITE_TERMINAL_RENDERER_LIFECYCLE_V2),
     performanceTelemetry: readBoolean(
       env.VITE_TERMINAL_RENDERER_PERFORMANCE_TELEMETRY,
     ),
@@ -89,6 +91,7 @@ function readStorageOverrides(
     return compactBooleanOverrides({
       adaptiveOutputScheduler: readBoolean(parsed.adaptiveOutputScheduler),
       healthWatchdog: readBoolean(parsed.healthWatchdog),
+      lifecycleV2: readBoolean(parsed.lifecycleV2),
       performanceTelemetry: readBoolean(parsed.performanceTelemetry),
       privateCleanupCompat: readBoolean(parsed.privateCleanupCompat),
     });

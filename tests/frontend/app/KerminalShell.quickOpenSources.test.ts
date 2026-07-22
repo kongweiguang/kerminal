@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it, vi } from "vitest";
 import {
   createKerminalQuickOpenRegistry,
@@ -11,7 +9,7 @@ function sourceApi(overrides: Partial<KerminalQuickOpenSourceApi> = {}) {
   return {
     listAgentSessions: async () => ({ sessions: [] }),
     listCommandHistory: async () => [],
-    listSnippetCatalog: async () => [],
+    listSnippets: async () => [],
     listWorkflows: async () => [],
     ...overrides,
   } satisfies KerminalQuickOpenSourceApi;
@@ -66,31 +64,17 @@ describe("Kerminal Quick Open production sources", () => {
             target: "local",
           },
         ],
-        listSnippetCatalog: async () => [
+        listSnippets: async () => [
           {
-            capabilities: [],
-            category: "network",
-            contextBindings: [],
-            defaultAction: "insert",
-            deprecated: false,
+            command: "curl -H 'Authorization: Bearer secret'",
+            createdAt: "2026-07-11T00:00:00.000Z",
             description: "安全说明",
-            duration: "instant",
-            favorite: false,
             id: "snippet-1",
-            origin: "user",
-            pack: "custom",
-            platforms: [],
-            risk: "inspect",
             scope: "local",
-            sensitive: false,
-            shells: [],
             sortOrder: 10,
             tags: ["daily"],
-            template: "curl -H 'Authorization: Bearer secret'",
             title: "检查状态",
             updatedAt: "2026-07-11T00:00:00.000Z",
-            useCount: 0,
-            variables: [],
           },
         ],
         listWorkflows: async () => [
@@ -144,7 +128,7 @@ describe("Kerminal Quick Open production sources", () => {
       terminalPanes: [],
       terminalTabs: [],
       sourceApi: sourceApi({
-        listSnippetCatalog: async () => {
+        listSnippets: async () => {
           controller.abort();
           return [];
         },
@@ -190,22 +174,57 @@ describe("Kerminal Quick Open production sources", () => {
     expect(writeTerminal.mock.calls[0]?.[1]).not.toMatch(/[\r\n]$/);
   });
 
-  it("deep-links snippets to the current snippet panel", async () => {
-    const targetEnvironment = environment();
+  it("deep-links snippets in V2 and restores insert-only behavior during rollback", async () => {
+    const v2Environment = environment();
     const writeTerminal = vi.fn(
       async (_sessionId: string, _data: string) => undefined,
     );
-    const result = await resolveKerminalQuickOpenReference(
+    const v2Result = await resolveKerminalQuickOpenReference(
       { id: "snippet-1", kind: "snippet" },
-      targetEnvironment,
+      v2Environment,
       {
         signal: new AbortController().signal,
+        snippetFeatureGates: { snippetCatalogV2: true, snippetPanelV2: true },
         writeTerminal,
       },
     );
-    expect(result).toEqual({ kind: "completed" });
-    expect(targetEnvironment.onOpenTool).toHaveBeenCalledWith("snippets");
+    expect(v2Result).toEqual({ kind: "completed" });
+    expect(v2Environment.onOpenTool).toHaveBeenCalledWith("snippets");
     expect(writeTerminal).not.toHaveBeenCalled();
+
+    const rollbackEnvironment = environment();
+    const rollbackResult = await resolveKerminalQuickOpenReference(
+      { id: "snippet-1", kind: "snippet" },
+      rollbackEnvironment,
+      {
+        getTerminalPaneSession: () => "session-1",
+        signal: new AbortController().signal,
+        snippetFeatureGates: { snippetCatalogV2: false, snippetPanelV2: false },
+        sourceApi: sourceApi({
+          listSnippets: async () => [
+            {
+              command: "git status --short",
+              createdAt: "1",
+              id: "snippet-1",
+              scope: "local",
+              sortOrder: 1,
+              tags: [],
+              title: "状态",
+              updatedAt: "1",
+            },
+          ],
+        }),
+        writeTerminal,
+      },
+    );
+    expect(rollbackResult).toEqual({ kind: "completed" });
+    expect(writeTerminal).toHaveBeenLastCalledWith(
+      "session-1",
+      "git status --short",
+    );
+    expect(
+      writeTerminal.mock.calls[writeTerminal.mock.calls.length - 1]?.[1],
+    ).not.toMatch(/[\r\n]$/u);
   });
 
   it("opens honest deep entries when exact workflow or agent selection is unavailable", async () => {

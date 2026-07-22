@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSessionRecord } from "../../../../src/lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../../../src/lib/terminalApi";
@@ -15,8 +13,8 @@ function session(
 ): AgentSessionRecord {
   return {
     session: {
-      agent_id: "codex",
-      agent_session_id: id,
+      agentId: "codex",
+      agentSessionId: id,
       launch: { args: [], cwd: "C:/repo", shell: "codex" },
       status,
       title: `Session ${id}`,

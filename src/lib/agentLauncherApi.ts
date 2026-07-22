@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { parseAgentCommandLine } from "./agentCommandLine";
 
@@ -93,18 +91,16 @@ export interface AgentSessionTargetRequest {
   lastSeenAt?: string;
 }
 
-interface AgentSessionTargetRecord {
+interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
   binding_id?: string;
   binding_generation?: number;
-  cwd?: string;
-  last_seen_at?: string;
-  live_status?: AgentTargetLiveStatus;
   pane_id?: string;
-  shell?: string;
   tab_id?: string;
   target_terminal_session_id?: string;
   target_ref?: string;
   target_kind?: string;
+  live_status?: AgentTargetLiveStatus;
+  last_seen_at?: string;
 }
 
 export interface AgentSessionCreateRequest {
@@ -120,15 +116,22 @@ export interface AgentSessionUpdateRequest {
 
 export interface AgentSessionRecord {
   session: {
+    agentSessionId?: string;
     agent_session_id?: string;
+    agentId?: ExternalAgentId;
     agent_id?: ExternalAgentId;
     title: string;
+    sessionRoot?: string;
     session_root?: string;
+    workspaceRoot?: string;
     workspace_root?: string;
+    createdAt?: string;
     created_at?: string;
+    updatedAt?: string;
     updated_at?: string;
-    status: AgentSessionRecordStatus;
+    status?: AgentSessionRecordStatus;
     launch: {
+      commandLabel?: string;
       command_label?: string;
       shell: string;
       args: string[];
@@ -204,7 +207,7 @@ export function archiveAgentSession(
 }
 
 export function agentSessionRecordId(record: AgentSessionRecord): string {
-  const id = record.session.agent_session_id;
+  const id = record.session.agentSessionId ?? record.session.agent_session_id;
   if (!id?.trim()) {
     throw new Error("agent_session_create did not return an agent session id.");
   }
@@ -214,7 +217,7 @@ export function agentSessionRecordId(record: AgentSessionRecord): string {
 export function agentSessionRecordAgentId(
   record: AgentSessionRecord,
 ): ExternalAgentId | undefined {
-  return record.session.agent_id;
+  return record.session.agentId ?? record.session.agent_id;
 }
 
 export function agentSessionRecordTarget(
@@ -225,24 +228,25 @@ export function agentSessionRecordTarget(
     return undefined;
   }
   return {
-    bindingId: target.binding_id,
-    bindingGeneration: target.binding_generation,
+    bindingId: target.bindingId ?? target.binding_id,
+    bindingGeneration: target.bindingGeneration ?? target.binding_generation,
     cwd: target.cwd,
-    lastSeenAt: target.last_seen_at,
-    liveStatus: target.live_status,
-    paneId: target.pane_id,
+    lastSeenAt: target.lastSeenAt ?? target.last_seen_at,
+    liveStatus: target.liveStatus ?? target.live_status,
+    paneId: target.paneId ?? target.pane_id,
     shell: target.shell,
-    tabId: target.tab_id,
-    targetKind: target.target_kind,
-    targetRef: target.target_ref,
-    targetTerminalSessionId: target.target_terminal_session_id,
+    tabId: target.tabId ?? target.tab_id,
+    targetKind: target.targetKind ?? target.target_kind,
+    targetRef: target.targetRef ?? target.target_ref,
+    targetTerminalSessionId:
+      target.targetTerminalSessionId ?? target.target_terminal_session_id,
   };
 }
 
 export function agentSessionRecordStatus(
   record: AgentSessionRecord,
 ): AgentSessionRecordStatus {
-  return record.session.status;
+  return record.session.status ?? "active";
 }
 
 export function prepareExternalAgentWorkspace(
@@ -351,19 +355,19 @@ function previewAgentSessionRecord(
         : "Codex");
   return {
     session: {
-      agent_id: request.agentId,
-      agent_session_id: agentSessionId,
+      agentId: request.agentId,
+      agentSessionId,
       launch: {
         args: [],
-        command_label: request.agentId,
+        commandLabel: request.agentId,
         cwd: sessionRoot,
         shell: request.agentId === "custom" ? "" : request.agentId,
       },
-      session_root: sessionRoot,
+      sessionRoot,
       status: "active",
-      target: request.target ? targetRecordFromRequest(request.target) : undefined,
+      target: request.target,
       title,
-      workspace_root: workspaceRoot,
+      workspaceRoot,
     },
   };
 }
@@ -375,17 +379,17 @@ function previewArchivedAgentSessionRecord(
   const sessionRoot = `${workspaceRoot}/agents/sessions/${agentSessionId}`;
   return {
     session: {
-      agent_session_id: agentSessionId,
+      agentSessionId,
       launch: {
         args: [],
-        command_label: "archived",
+        commandLabel: "archived",
         cwd: sessionRoot,
         shell: "",
       },
-      session_root: sessionRoot,
+      sessionRoot,
       status: "archived",
       title: "Archived Agent Session",
-      workspace_root: workspaceRoot,
+      workspaceRoot,
     },
   };
 }
@@ -398,36 +402,18 @@ function previewUpdatedAgentSessionRecord(
   const sessionRoot = `${workspaceRoot}/agents/sessions/${agentSessionId}`;
   return {
     session: {
-      agent_id: "custom",
-      agent_session_id: agentSessionId,
+      agentId: "custom",
+      agentSessionId,
       launch: {
         args: [],
-        command_label: "custom",
+        commandLabel: "custom",
         cwd: sessionRoot,
         shell: "",
       },
-      session_root: sessionRoot,
+      sessionRoot,
       status: "active",
       title: request.title ?? "Custom",
-      workspace_root: workspaceRoot,
+      workspaceRoot,
     },
-  };
-}
-
-function targetRecordFromRequest(
-  target: AgentSessionTargetRequest,
-): AgentSessionTargetRecord {
-  return {
-    binding_generation: target.bindingGeneration,
-    binding_id: target.bindingId,
-    cwd: target.cwd,
-    last_seen_at: target.lastSeenAt,
-    live_status: target.liveStatus,
-    pane_id: target.paneId,
-    shell: target.shell,
-    tab_id: target.tabId,
-    target_kind: target.targetKind,
-    target_ref: target.targetRef,
-    target_terminal_session_id: target.targetTerminalSessionId,
   };
 }

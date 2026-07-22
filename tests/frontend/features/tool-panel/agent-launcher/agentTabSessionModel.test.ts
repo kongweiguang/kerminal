@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRecord } from "../../../../../src/lib/agentLauncherApi";
 import {
@@ -51,8 +49,8 @@ function record(
 ): AgentSessionRecord {
   return {
     session: {
-      agent_id: "codex",
-      agent_session_id: agentSessionId,
+      agentId: "codex",
+      agentSessionId,
       launch: {
         args: [],
         cwd: `C:/Users/me/.kerminal/agents/sessions/${agentSessionId}`,
@@ -61,7 +59,7 @@ function record(
       status,
       target:
         targetOverride ??
-        (tabId ? { pane_id: `pane-${tabId}`, tab_id: tabId } : undefined),
+        (tabId ? { paneId: `pane-${tabId}`, tabId } : undefined),
       title: "Codex",
     },
   };
@@ -227,7 +225,7 @@ describe("agentTabSessionModel", () => {
 
   it("restores active unbound records only for the fallback scope", () => {
     const unboundActive = record("ags-unbound", undefined, "active", {
-      live_status: "unbound",
+      liveStatus: "unbound",
     });
     const legacyActive = record("ags-legacy", undefined, "active");
     const tabAActive = record("ags-a-active", "tab-a", "active");

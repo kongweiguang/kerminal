@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import {
   buildCompatibilityMetricSnapshot,
@@ -10,13 +8,17 @@ import {
 } from "../../../../src/architecture/compatibility/compatibilityRegistry";
 
 const expectedIds = [
+  "command-history.empty-scope-clear",
   "config-watcher.polling",
   "diagnostics.silent-catch-policy",
+  "managed-ssh.legacy-fallback",
   "runtime.browser-preview",
   "sftp.transfer-polling",
+  "snippet.schema-v1",
   "startup.dynamic-import-retry",
   "terminal.gpu-fallback",
   "terminal.xterm-webview-patch",
+  "workspace.schema-v1-migration",
 ];
 
 describe("compatibility registry", () => {
@@ -31,6 +33,12 @@ describe("compatibility registry", () => {
     expect(
       evaluateCompatibilityActivation("terminal.gpu-fallback", "context-lost"),
     ).toMatchObject({ allowed: true });
+    expect(
+      evaluateCompatibilityActivation(
+        "managed-ssh.legacy-fallback",
+        "authentication-failed",
+      ),
+    ).toMatchObject({ allowed: false });
     expect(() =>
       evaluateCompatibilityActivation("unknown.compatibility", "anything"),
     ).toThrow(/未登记/);

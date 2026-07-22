@@ -8,7 +8,7 @@ use kerminal_lib::{
     models::settings::AppSettings,
     paths::KerminalPaths,
     services::{diagnostics_service::DiagnosticsService, terminal_manager::TerminalManager},
-    storage::{command_schema::CURRENT_COMMAND_SCHEMA_VERSION, CommandSqliteStore},
+    storage::{command_migrations::CURRENT_COMMAND_SCHEMA_VERSION, CommandSqliteStore},
 };
 use serde_json::Value;
 use tempfile::tempdir;

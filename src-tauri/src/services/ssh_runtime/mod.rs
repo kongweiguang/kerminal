@@ -37,7 +37,7 @@ pub mod utils;
 
 use entry::ManagedSshSessionEntry;
 use unavailable::UnavailableSshRuntimeBackend;
-use utils::{missing_session_error, unix_timestamp};
+use utils::{missing_session_error, truncate_diagnostic_text, unix_timestamp};
 
 pub use connect::*;
 pub use exec::*;
@@ -49,6 +49,7 @@ pub use traits::*;
 pub use types::*;
 
 const DEFAULT_MAX_CONCURRENT_EXEC_CHANNELS: usize = 4;
+const MAX_RECENT_LEGACY_FALLBACKS: usize = 20;
 
 /// Global manager for authenticated SSH sessions.
 #[derive(Clone)]
@@ -60,6 +61,7 @@ struct ManagedSshSessionManagerInner {
     backend: Arc<dyn SshRuntimeBackend>,
     channel_open_semaphores: Mutex<HashMap<SshSessionKey, Arc<Semaphore>>>,
     exec_semaphores: Mutex<HashMap<SshSessionKey, Arc<Semaphore>>>,
+    legacy_fallbacks: Mutex<Vec<ManagedSshLegacyFallbackSnapshot>>,
     max_concurrent_exec_channels: usize,
     sessions: Mutex<HashMap<SshSessionKey, ManagedSshSessionEntry>>,
 }
@@ -339,6 +341,14 @@ impl ManagedSshSessionManager {
         &self,
     ) -> AppResult<MutexGuard<'_, HashMap<SshSessionKey, ManagedSshSessionEntry>>> {
         lock_sessions(&self.inner)
+    }
+
+    fn recent_legacy_fallbacks(&self) -> Vec<ManagedSshLegacyFallbackSnapshot> {
+        self.inner
+            .legacy_fallbacks
+            .lock()
+            .map(|fallbacks| fallbacks.clone())
+            .unwrap_or_default()
     }
 }
 

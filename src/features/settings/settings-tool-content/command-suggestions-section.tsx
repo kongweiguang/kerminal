@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { Network, Puzzle, ShieldCheck, Terminal } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -69,19 +67,20 @@ export function CommandSuggestionSettingsSection({
           <div
             className={cn(
               "flex min-w-[220px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-2",
-              inlineSuggestion.presentation !== "off"
+              inlineSuggestion.enabled
                 ? "border-sky-500/30 bg-[var(--surface-selected)] text-sky-800 dark:border-sky-300/25 dark:text-sky-100"
                 : "bg-[var(--surface-content)] text-[var(--text-secondary)]",
             )}
           >
             <span className="truncate text-xs font-semibold">
-              {inlineSuggestion.presentation !== "off" ? "已启用" : "已暂停"}
+              {inlineSuggestion.enabled ? "已启用" : "已暂停"}
             </span>
             <Switch
               aria-label="启用灰色提示"
-              checked={inlineSuggestion.presentation !== "off"}
+              checked={inlineSuggestion.enabled}
               onCheckedChange={(enabled) =>
                 updateTerminalInlineSuggestion({
+                  enabled,
                   presentation: enabled ? "inlineAndMenu" : "off",
                 })
               }
@@ -105,6 +104,7 @@ export function CommandSuggestionSettingsSection({
                   className="mt-1"
                   onValueChange={(value) =>
                     updateTerminalInlineSuggestion({
+                      enabled: value !== "off",
                       presentation:
                         value as TerminalCommandSuggestionPresentation,
                     })
@@ -138,6 +138,7 @@ export function CommandSuggestionSettingsSection({
                   className="mt-1"
                   onValueChange={(value) =>
                     updateTerminalInlineSuggestion({
+                      remoteProbeEnabled: value !== "off",
                       remoteRefresh:
                         value as TerminalCommandSuggestionRemoteRefresh,
                     })
@@ -192,10 +193,11 @@ export function CommandSuggestionSettingsSection({
                 </span>
                 <Switch
                   aria-label="允许远端只读探测"
-                  checked={inlineSuggestion.remoteRefresh !== "off"}
-                  onCheckedChange={(remoteRefreshEnabled) =>
+                  checked={inlineSuggestion.remoteProbeEnabled}
+                  onCheckedChange={(remoteProbeEnabled) =>
                     updateTerminalInlineSuggestion({
-                      remoteRefresh: remoteRefreshEnabled ? "safe" : "off",
+                      remoteProbeEnabled,
+                      remoteRefresh: remoteProbeEnabled ? "safe" : "off",
                     })
                   }
                 />

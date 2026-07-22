@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRuntimeHealthSnapshot } from "../../lib/diagnosticsApi";
 import {
@@ -187,6 +189,10 @@ export function useServerInfoSnapshot(
     return () => {
       requestIdRef.current += 1;
       loadingRef.current = false;
+      if (selectedTargetKey) {
+        // 收起面板或切换目标后允许重新采集；挂起的旧请求不能永久占住目标。
+        runtime.inFlight.delete(selectedTargetKey);
+      }
     };
   }, [refresh, runtime, selectedTargetKey]);
 

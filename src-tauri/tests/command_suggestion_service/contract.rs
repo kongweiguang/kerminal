@@ -4,13 +4,14 @@
 
 use kerminal_lib::models::command_suggestion::{
     CommandSuggestionActivation, CommandSuggestionCandidate, CommandSuggestionCandidateKind,
-    CommandSuggestionRequest, CommandSuggestionSensitivity, SuggestionProviderKind,
+    CommandSuggestionRequest, CommandSuggestionSensitivity, SuggestionPresentation,
+    SuggestionProviderKind, SuggestionQueryMode,
 };
 use serde_json::json;
 
 #[test]
-fn request_requires_explicit_mode() {
-    let error = serde_json::from_value::<CommandSuggestionRequest>(json!({
+fn legacy_request_defaults_to_inline_mode() {
+    let request: CommandSuggestionRequest = serde_json::from_value(json!({
         "input": "git status",
         "cursor": 10,
         "target": "local",
@@ -23,13 +24,44 @@ fn request_requires_explicit_mode() {
         "providers": null,
         "limit": 8
     }))
-    .expect_err("mode is required");
-    assert!(error.to_string().contains("mode"));
+    .expect("deserialize legacy suggestion request");
+
+    assert_eq!(request.mode, SuggestionQueryMode::Inline);
+    assert_eq!(request.generation, None);
+    assert_eq!(request.context_key, None);
+}
+
+#[test]
+fn legacy_candidates_receive_safe_presentation_defaults() {
+    let normal: CommandSuggestionCandidate =
+        serde_json::from_value(legacy_candidate_json("normal"))
+            .expect("deserialize normal legacy candidate");
+    let dangerous: CommandSuggestionCandidate =
+        serde_json::from_value(legacy_candidate_json("dangerous"))
+            .expect("deserialize dangerous legacy candidate");
+
+    assert_eq!(
+        normal.allowed_presentations,
+        vec![SuggestionPresentation::Inline]
+    );
+    assert_eq!(
+        dangerous.allowed_presentations,
+        vec![SuggestionPresentation::Menu]
+    );
+    assert!(normal.accept_boundaries.is_empty());
+    assert!(dangerous.accept_boundaries.is_empty());
+    assert_eq!(
+        normal.candidate_kind,
+        CommandSuggestionCandidateKind::Command
+    );
+    assert_eq!(normal.activation, CommandSuggestionActivation::Insert);
+    assert_eq!(normal.source_explanation, None);
+    assert!(normal.merged_source_explanations.is_empty());
 }
 
 #[test]
 fn snippet_candidate_contract_uses_stable_camel_case_values() {
-    let mut payload = current_candidate_json("normal");
+    let mut payload = legacy_candidate_json("normal");
     payload["provider"] = json!("snippet");
     payload["candidateKind"] = json!("snippet");
     payload["activation"] = json!("openSnippetPanel");
@@ -90,7 +122,7 @@ fn unicode_candidate_contract_round_trips_without_offset_conversion() {
     assert_eq!(candidate.accept_boundaries, vec![9, 11]);
 }
 
-fn current_candidate_json(sensitivity: &str) -> serde_json::Value {
+fn legacy_candidate_json(sensitivity: &str) -> serde_json::Value {
     json!({
         "id": format!("history-{sensitivity}"),
         "provider": "history",
@@ -102,13 +134,6 @@ fn current_candidate_json(sensitivity: &str) -> serde_json::Value {
         "sensitivity": sensitivity,
         "description": null,
         "sourceId": null,
-        "metadata": null,
-        "candidateKind": "command",
-        "activation": "insert",
-        "sourceExplanation": null,
-        "mergedSourceExplanations": [],
-        "allowedPresentations": ["inline", "menu"],
-        "acceptBoundaries": [],
-        "contextKey": null
+        "metadata": null
     })
 }

@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::diagnostics_common::{absent_tool_families, exposed_tool_definitions, tool_references};
 use super::*;
 use crate::models::target::RemoteTargetRef;
@@ -124,7 +122,7 @@ pub(super) fn execute_kerminal_tool_help(
                 ],
                 "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
                 "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens separate shell, SFTP, exec, and forwarding channels for host-bound tools.",
-                "failureRule": "Managed SSH is the only SSH runtime. Unsupported or unwired capabilities return a stable error; auth, host-key, connect, subsystem, exec, or channel-open failures never create a second SSH connection through another implementation.",
+                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures should not silently create a new legacy SSH connection.",
                 "secretBoundary": "managedSsh output is redacted and must not include passwords, private keys, key passphrases, raw env, or vault refs."
             },
             "safetyBoundaries": {

@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it, vi } from "vitest";
 import { AgentWorkflowController } from "../../../src/features/agent-workflow";
 import { createTerminalArtifactIndex } from "../../../src/features/terminal/artifacts/public";
@@ -73,8 +71,8 @@ function createProjectionFixture() {
 function createAgentSession(): AgentSessionRecord {
   return {
     session: {
-      agent_id: "codex",
-      agent_session_id: "agent-1",
+      agentId: "codex",
+      agentSessionId: "agent-1",
       launch: { args: [], cwd: "C:/repo", shell: "codex" },
       status: "active",
       title: "Agent session",

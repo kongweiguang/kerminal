@@ -3,27 +3,11 @@
 import { describe, expect, it } from "vitest";
 import {
   appendTerminalOutputHistory,
-  decodeWorkspaceSessionSnapshot,
   normalizeWorkspaceSessionSnapshot,
   TERMINAL_OUTPUT_HISTORY_MAX_CHARS,
 } from "../../../../src/features/workspace/workspaceSession";
 
 describe("workspaceSession", () => {
-  it("只接受当前 workspace session v2", () => {
-    const body = {
-      activeTabId: "",
-      focusedPaneId: "",
-      selectedMachineId: "",
-      sidebarMachines: [],
-      terminalPanes: [],
-      terminalTabs: [],
-    };
-
-    expect(decodeWorkspaceSessionSnapshot({ ...body, version: 2 })).not.toBeNull();
-    expect(decodeWorkspaceSessionSnapshot({ ...body, version: 1 })).toBeNull();
-    expect(decodeWorkspaceSessionSnapshot(body)).toBeNull();
-  });
-
   it("归一化空工作区时清除持久化的最近主机选择", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "",

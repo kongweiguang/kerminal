@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type { TerminalRendererType } from "../settings/contracts/index";
 import {
   createXtermWebglCompatibilityAdapter,
@@ -70,6 +68,7 @@ export function createTerminalRendererController({
   contextLossWindowMs = DEFAULT_CONTEXT_LOSS_WINDOW_MS,
   healthWatchdogEnabled = true,
   gpuPlatformClass,
+  lifecycleV2Enabled = true,
   loadWebglAddon = defaultLoadWebglAddon,
   logger = console,
   maxRecoveryAttempts = DEFAULT_MAX_RECOVERY_ATTEMPTS,
@@ -554,6 +553,7 @@ export function createTerminalRendererController({
     if (
       disposed ||
       activeWebgl ||
+      !lifecycleV2Enabled ||
       !shouldAttemptGpuRenderer(mode) ||
       lifecycle.getSnapshot().state === "suspended"
     ) {
@@ -649,7 +649,7 @@ export function createTerminalRendererController({
     const healthDecision = health.observe({
       ...observation,
       backend:
-        healthWatchdogEnabled && activeWebgl
+        healthWatchdogEnabled && lifecycleV2Enabled && activeWebgl
           ? "gpu"
           : "cpu",
     });
@@ -747,7 +747,8 @@ export function createTerminalRendererController({
 
   return {
     attach,
-    canAttemptGpu: () => mode !== "auto" || autoGpuAllowed,
+    canAttemptGpu: () =>
+      lifecycleV2Enabled && (mode !== "auto" || autoGpuAllowed),
     clearTextureAtlas,
     dispose,
     getDiagnostics,

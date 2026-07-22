@@ -13,7 +13,7 @@ use rusqlite::Connection;
 use crate::{
     error::{AppError, AppResult},
     paths::KerminalPaths,
-    storage::command_schema,
+    storage::command_migrations,
 };
 
 /// Dedicated SQLite store for command history and command suggestions.
@@ -30,7 +30,7 @@ impl CommandSqliteStore {
 
         let mut conn = Connection::open(&paths.command_database_file)?;
         configure_connection(&conn)?;
-        command_schema::ensure_current_schema(&mut conn)?;
+        command_migrations::migrate(&mut conn)?;
 
         Ok(Self {
             database_file: paths.command_database_file.clone(),
@@ -45,7 +45,7 @@ impl CommandSqliteStore {
 
     /// Reads the command schema version.
     pub fn schema_version(&self) -> AppResult<u32> {
-        self.with_connection(command_schema::schema_version)
+        self.with_connection(command_migrations::schema_version)
     }
 
     pub(crate) fn with_connection<T>(

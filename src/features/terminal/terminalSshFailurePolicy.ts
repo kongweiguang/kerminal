@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 type SshTerminalFailureClass =
   | "authCanceled"
   | "badCredential"
@@ -353,11 +351,11 @@ function sshFailureForClass(
     case "channelUnsupported":
       return {
         class: failureClass,
-        nextAction: "切换到支持该能力的 Managed SSH backend 后重试。",
+        nextAction: "切换到支持该能力的 backend，或显式使用 legacy compatibility mode。",
         reconnectHint: "当前 backend 不支持该 SSH channel，自动重连不会修复。",
         retryable: false,
         userMessage:
-          "当前 SSH backend 不支持该 channel。下一步：切换 Managed SSH backend。",
+          "当前 SSH backend 不支持该 channel。下一步：切换 backend 或显式使用兼容模式。",
       };
     case "permissionDenied":
       return {

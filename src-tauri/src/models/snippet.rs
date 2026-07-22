@@ -63,16 +63,16 @@ pub struct CommandSnippet {
     pub created_at: String,
     /// 更新时间。
     pub updated_at: String,
-    /// 用户分类；缺省时不推断。
+    /// 用户分类；旧 v1 文件缺省时不推断。
     pub category: Option<String>,
-    /// 风险标注；缺省时由统一投影计算。
+    /// 风险标注；旧 v1 文件缺省时由统一投影计算。
     pub risk: Option<String>,
     /// 默认动作；缺省时保持只插入的兼容策略。
     pub default_action: Option<String>,
-    /// 显式变量声明；缺省为空。
+    /// 显式变量声明；旧 v1 文件缺省为空。
     #[serde(default)]
     pub variables: Vec<SnippetCatalogVariable>,
-    /// 可用上下文绑定；缺省为空。
+    /// 可用上下文绑定；旧 v1 文件缺省为空。
     #[serde(default)]
     pub context_bindings: Vec<SnippetContextBinding>,
     /// 从内置片段复制时记录的稳定来源 id。

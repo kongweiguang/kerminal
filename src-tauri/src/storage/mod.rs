@@ -5,7 +5,7 @@
 mod atomic_file;
 pub mod audit_log_store;
 pub mod command_history;
-pub mod command_schema;
+pub mod command_migrations;
 pub mod command_sqlite;
 pub mod command_suggestion_audit;
 pub mod command_suggestion_cache;

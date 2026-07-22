@@ -242,6 +242,7 @@ pub struct CommandSuggestionRequest {
     /// 光标字符偏移。
     pub cursor: usize,
     /// 目标类型。
+    #[serde(default)]
     pub target: CommandHistoryTarget,
     /// 当前终端 session id。
     pub session_id: Option<String>,
@@ -259,7 +260,8 @@ pub struct CommandSuggestionRequest {
     pub providers: Option<Vec<SuggestionProviderKind>>,
     /// 返回数量上限。
     pub limit: Option<usize>,
-    /// 查询展示模式。
+    /// 查询展示模式；旧请求缺少该字段时保持 inline 行为。
+    #[serde(default)]
     pub mode: SuggestionQueryMode,
     /// 前端请求代次，仅用于关联诊断和丢弃过期响应。
     pub generation: Option<u64>,
@@ -601,7 +603,7 @@ pub struct CommandSuggestionAuditRecordResult {
 }
 
 /// 一条命令建议候选。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandSuggestionCandidate {
     /// 稳定候选 id。
@@ -654,5 +656,70 @@ impl CommandSuggestionCandidate {
             CommandSuggestionSensitivity::Sensitive => Vec::new(),
             CommandSuggestionSensitivity::Dangerous => vec![SuggestionPresentation::Menu],
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CandidatePayload {
+            id: String,
+            provider: SuggestionProviderKind,
+            #[serde(default)]
+            candidate_kind: CommandSuggestionCandidateKind,
+            #[serde(default)]
+            activation: CommandSuggestionActivation,
+            display_text: String,
+            replacement_text: String,
+            replacement_range: CommandSuggestionReplacementRange,
+            suffix: String,
+            score: f64,
+            sensitivity: CommandSuggestionSensitivity,
+            description: Option<String>,
+            source_explanation: Option<String>,
+            #[serde(default)]
+            merged_source_explanations: Vec<String>,
+            source_id: Option<String>,
+            metadata: Option<BTreeMap<String, String>>,
+            allowed_presentations: Option<Vec<SuggestionPresentation>>,
+            #[serde(default)]
+            accept_boundaries: Vec<usize>,
+            context_key: Option<String>,
+        }
+
+        let payload = CandidatePayload::deserialize(deserializer)?;
+        let allowed_presentations = match payload.allowed_presentations {
+            Some(presentations) => presentations,
+            None => match payload.sensitivity {
+                CommandSuggestionSensitivity::Normal => vec![SuggestionPresentation::Inline],
+                CommandSuggestionSensitivity::Sensitive => Vec::new(),
+                CommandSuggestionSensitivity::Dangerous => vec![SuggestionPresentation::Menu],
+            },
+        };
+
+        Ok(Self {
+            id: payload.id,
+            provider: payload.provider,
+            candidate_kind: payload.candidate_kind,
+            activation: payload.activation,
+            display_text: payload.display_text,
+            replacement_text: payload.replacement_text,
+            replacement_range: payload.replacement_range,
+            suffix: payload.suffix,
+            score: payload.score,
+            sensitivity: payload.sensitivity,
+            description: payload.description,
+            source_explanation: payload.source_explanation,
+            merged_source_explanations: payload.merged_source_explanations,
+            source_id: payload.source_id,
+            metadata: payload.metadata,
+            allowed_presentations,
+            accept_boundaries: payload.accept_boundaries,
+            context_key: payload.context_key,
+        })
     }
 }

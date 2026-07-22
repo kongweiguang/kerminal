@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type { SnippetShell } from "./snippetTargetPolicy";
 
 type SnippetVariableKind =
@@ -32,7 +30,7 @@ export interface SnippetVariableDefinition {
 export interface SnippetRenderPlan {
   command: string;
   containsSensitiveValue: boolean;
-  unsafeLiteral: boolean;
+  legacyRaw: boolean;
   variableNames: readonly string[];
 }
 
@@ -83,7 +81,7 @@ export function renderSnippetTemplate({
   }
 
   let containsSensitiveValue = false;
-  let unsafeLiteral = false;
+  let legacyRaw = false;
   const rendered = new Map<string, string>();
   for (const name of referenced) {
     const variable = definitions.get(name)!;
@@ -91,15 +89,14 @@ export function renderSnippetTemplate({
     if (variable.required && !value) throw new SnippetVariableError(name, "missing");
     validateValue(variable, value);
     containsSensitiveValue ||= Boolean((variable.sensitive || variable.kind === "secret") && value);
-    unsafeLiteral ||=
-      variable.kind === "raw" || variable.renderStrategy === "literal";
+    legacyRaw ||= variable.kind === "raw" || variable.renderStrategy === "literal";
     rendered.set(name, renderValue(variable, value, shell));
   }
 
   return {
     command: template.replace(PLACEHOLDER, (_placeholder, name: string) => rendered.get(name) ?? ""),
     containsSensitiveValue,
-    unsafeLiteral,
+    legacyRaw,
     variableNames: [...referenced],
   };
 }

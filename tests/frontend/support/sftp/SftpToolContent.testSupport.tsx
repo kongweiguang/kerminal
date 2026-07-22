@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 import type { Machine } from "../../../../src/features/workspace/types";
@@ -210,6 +212,16 @@ export const sshMachine: Machine = {
   status: "warning",
   tags: ["ssh", "prod"],
   username: "deploy",
+};
+
+export const sftpMachine: Machine = {
+  ...sshMachine,
+  description: "upload@files.internal:22",
+  host: "files.internal",
+  id: "prod-files",
+  kind: "sftp",
+  name: "prod files",
+  username: "upload",
 };
 
 export const localMachine: Machine = {

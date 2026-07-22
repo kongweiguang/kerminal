@@ -364,25 +364,6 @@ fn clear_history_scoped_keeps_other_panes_and_hosts() {
 }
 
 #[test]
-fn clear_history_scoped_rejects_empty_scope() {
-    let (_home, state) = test_state();
-    let error = state
-        .command_history()
-        .clear_history_scoped(
-            state.command_store(),
-            CommandHistoryClearRequest {
-                target: None,
-                pane_id: None,
-                remote_host_id: None,
-                session_id: None,
-            },
-        )
-        .expect_err("empty scope must fail closed");
-
-    assert!(error.to_string().contains("必须明确指定"));
-}
-
-#[test]
 fn record_history_rejects_empty_or_too_long_commands() {
     let (_home, state) = test_state();
 

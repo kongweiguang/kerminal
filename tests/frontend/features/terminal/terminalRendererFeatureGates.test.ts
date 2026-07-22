@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TERMINAL_RENDERER_FEATURE_GATES,
@@ -13,19 +11,22 @@ describe("terminalRendererFeatureGates", () => {
     expect(DEFAULT_TERMINAL_RENDERER_FEATURE_GATES).toEqual({
       adaptiveOutputScheduler: true,
       healthWatchdog: true,
+      lifecycleV2: true,
       performanceTelemetry: true,
       privateCleanupCompat: false,
     });
   });
 
-  it("supports independent operational gates without a legacy lifecycle switch", () => {
+  it("supports an independent CPU rollback for lifecycle V2", () => {
     expect(
       resolveTerminalRendererFeatureGates({
         adaptiveOutputScheduler: false,
+        lifecycleV2: false,
       }),
     ).toEqual({
       adaptiveOutputScheduler: false,
       healthWatchdog: true,
+      lifecycleV2: false,
       performanceTelemetry: true,
       privateCleanupCompat: false,
     });
@@ -37,6 +38,7 @@ describe("terminalRendererFeatureGates", () => {
         key === TERMINAL_RENDERER_FEATURE_GATES_STORAGE_KEY
           ? JSON.stringify({
               adaptiveOutputScheduler: false,
+              lifecycleV2: true,
             })
           : null,
       ),
@@ -46,12 +48,14 @@ describe("terminalRendererFeatureGates", () => {
       resolveRuntimeTerminalRendererFeatureGates({
         env: {
           VITE_TERMINAL_RENDERER_HEALTH_WATCHDOG: "0",
+          VITE_TERMINAL_RENDERER_LIFECYCLE_V2: "false",
         },
         storage,
       }),
     ).toEqual({
       adaptiveOutputScheduler: false,
       healthWatchdog: false,
+      lifecycleV2: true,
       performanceTelemetry: true,
       privateCleanupCompat: false,
     });

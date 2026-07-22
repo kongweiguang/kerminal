@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   fireEvent,
   render,
@@ -13,6 +15,7 @@ import {  containerFilesApiMocks,
   fileDialogMocks,
   openCurrentDirectoryContextMenu,
   sftpApiMocks,
+  sftpMachine,
   sshMachine,
   containerMachine,
 } from "../../support/sftp/SftpToolContent.testSupport.tsx";
@@ -460,7 +463,7 @@ describe("SftpToolContent transfers and containers", () => {
       },
     );
 
-    render(<SftpToolContent selectedMachine={sshMachine} />);
+    render(<SftpToolContent selectedMachine={sftpMachine} />);
 
     await screen.findByText("var");
     await waitFor(() =>
@@ -494,7 +497,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       conflictPolicy: "overwrite",
       direction: "upload",
-      hostId: "prod-api",
+      hostId: "prod-files",
       kind: "file",
       localPath: "/Users/me/release.tgz",
       remotePath: "/release.tgz",
@@ -502,7 +505,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       conflictPolicy: "overwrite",
       direction: "upload",
-      hostId: "prod-api",
+      hostId: "prod-files",
       kind: "directory",
       localPath: "/Users/me/dist",
       remotePath: "/dist",

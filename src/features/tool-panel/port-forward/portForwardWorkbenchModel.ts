@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type {
   PortForwardOrigin,
   PortForwardSummary,
@@ -364,7 +362,23 @@ export function buildUserProxyUndoScript(
 }
 
 export function isRemoteDynamicSocks(session: PortForwardSummary): boolean {
-  return session.kind === "remoteDynamic";
+  return (
+    session.kind === "remoteDynamic" ||
+    (session.kind === "remote" &&
+      session.proxyProtocol === "socks5" &&
+      !session.targetHost &&
+      !session.targetPort)
+  );
+}
+
+export function isLegacyHttpNetworkAssist(
+  session: PortForwardSummary,
+): boolean {
+  return (
+    session.kind === "remote" &&
+    session.proxyProtocol === "http" &&
+    session.origin === "networkAssist"
+  );
 }
 
 export function sessionOrigin(session: PortForwardSummary): PortForwardOrigin {

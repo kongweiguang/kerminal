@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import type {
   ManagedSshRuntimeSnapshot,
@@ -57,7 +55,7 @@ describe("managedSshToolAvailabilityModel", () => {
     expectUserFacingCopy(availability);
   });
 
-  it("does not treat a terminal pane without a reusable session as connected", () => {
+  it("does not treat a matching legacy terminal pane as reusable", () => {
     const availability = resolveManagedSshToolAvailability({
       focusedPane: focusedSshPane,
       managedSsh: emptySnapshot(),
@@ -68,7 +66,7 @@ describe("managedSshToolAvailabilityModel", () => {
     expect(availability).toMatchObject({
       canAttemptConnection: true,
       canUseConnectedSession: false,
-      kind: "terminal-connected",
+      kind: "legacy-terminal-only",
       label: "需连接",
     });
     expectUserFacingCopy(availability);
@@ -135,14 +133,19 @@ describe("managedSshToolAvailabilityModel", () => {
     expectUserFacingCopy(availability);
   });
 
-  it("marks a managed capability error as unsupported", () => {
+  it("marks unsupported capability fallback as unsupported", () => {
     const availability = resolveManagedSshToolAvailability({
       managedSsh: {
         ...snapshot(),
-        sessions: snapshot().sessions.map((session) => ({
-          ...session,
-          lastError: "managed SSH SFTP channel unsupported",
-        })),
+        recentLegacyFallbacks: [
+          {
+            capability: "sftp",
+            count: 1,
+            lastAt: "1234",
+            reason: "backend unsupported",
+            target: "deploy@prod.internal:22",
+          },
+        ],
       },
       requiredCapability: "sftp",
       selectedMachine: sshMachine,
@@ -155,6 +158,7 @@ describe("managedSshToolAvailabilityModel", () => {
       label: "当前不可用",
     });
     expect(availability.detail).toContain("当前主机不支持此操作");
+    expect(availability.legacyFallback?.reason).toBe("backend unsupported");
     expect(availability.session?.sessionId).toBe("session-1");
     expectUserFacingCopy(availability);
   });
@@ -220,6 +224,8 @@ function expectUserFacingCopy(
   for (const internalTerm of [
     /ready managed session/i,
     /SshAuthBroker/i,
+    /legacy fallback/i,
+    /legacy terminal/i,
     /unsupported/i,
     /unwired/i,
     /managed SSH runtime/i,
@@ -259,6 +265,7 @@ function snapshot(
     activeChannels: session.activeChannels,
     activeSessions: 1,
     generatedAt: "1234",
+    recentLegacyFallbacks: [],
     sessions: [session],
   };
 }
@@ -268,6 +275,7 @@ function emptySnapshot(): ManagedSshRuntimeSnapshot {
     activeChannels: 0,
     activeSessions: 0,
     generatedAt: "1234",
+    recentLegacyFallbacks: [],
     sessions: [],
   };
 }

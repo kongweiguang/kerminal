@@ -144,8 +144,8 @@ pub struct CommandHistoryListRequest {
     pub limit: Option<usize>,
 }
 
-/// 命令历史清理范围；至少一个字段必须明确指定。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// 命令历史清理范围；所有字段为空时保留清空全部历史的兼容语义。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandHistoryClearRequest {
     /// 目标类型过滤。

@@ -6,7 +6,7 @@ use std::{
     fs::{self},
     io::{self, ErrorKind},
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, MutexGuard, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -26,9 +26,14 @@ const LOCK_FILE_NAME: &str = ".storage.lock";
 #[derive(Debug)]
 #[must_use = "锁守卫必须存活到受保护操作结束"]
 pub struct FileStoreLock {
+    _process_guard: MutexGuard<'static, ()>,
     path: PathBuf,
     nonce: String,
 }
+
+// 配置写入是低频事务；进程内先串行化，再用磁盘锁协调其它 Kerminal 进程。
+// 这避免 Windows 文件过滤器在同进程高并发 hard-link/ReplaceFileW 下产生假性拒绝。
+static PROCESS_FILE_STORE_LOCK: Mutex<()> = Mutex::new(());
 
 impl Drop for FileStoreLock {
     fn drop(&mut self) {
@@ -61,13 +66,22 @@ struct LockMetadata {
 
 /// 获取锁；只有 owner PID 已消失或已被另一个启动时间的进程复用时才接管。
 pub(crate) fn acquire(root: &Path) -> FileStoreResult<FileStoreLock> {
+    let process_guard = PROCESS_FILE_STORE_LOCK
+        .lock()
+        .map_err(|_| io::Error::other("process file-store lock is poisoned"))?;
     fs::create_dir_all(root)?;
     let lock_path = root.join(LOCK_FILE_NAME);
     let metadata = current_lock_metadata()?;
 
     for _ in 0..3 {
         match create_lock_file(root, &lock_path, &metadata) {
-            Ok(guard) => return Ok(guard),
+            Ok(()) => {
+                return Ok(FileStoreLock {
+                    _process_guard: process_guard,
+                    path: lock_path,
+                    nonce: metadata.nonce,
+                })
+            }
             Err(error)
                 if error.kind() == ErrorKind::AlreadyExists
                     || (error.kind() == ErrorKind::PermissionDenied && lock_path.exists()) =>
@@ -82,11 +96,7 @@ pub(crate) fn acquire(root: &Path) -> FileStoreResult<FileStoreLock> {
     Err(FileStoreError::Locked(lock_path))
 }
 
-fn create_lock_file(
-    root: &Path,
-    lock_path: &Path,
-    metadata: &LockMetadata,
-) -> io::Result<FileStoreLock> {
+fn create_lock_file(root: &Path, lock_path: &Path, metadata: &LockMetadata) -> io::Result<()> {
     let source = toml::to_string_pretty(metadata)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error.to_string()))?;
     let pending_path = root.join(format!(".storage.lock.pending-{}", metadata.nonce));
@@ -98,10 +108,7 @@ fn create_lock_file(
     let _ = fs::remove_file(&pending_path);
     published?;
     sync_parent_dir(root)?;
-    Ok(FileStoreLock {
-        path: lock_path.to_path_buf(),
-        nonce: metadata.nonce.clone(),
-    })
+    Ok(())
 }
 
 fn remove_if_provably_stale(lock_path: &Path) -> FileStoreResult<bool> {

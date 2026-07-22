@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type { CompatibilityMetricSnapshot } from "../../architecture/compatibility/compatibilityRegistry";
 import type { ManagedSshRuntimeSnapshot } from "../../lib/diagnosticsApi";
 import type { TerminalRendererRegistrySnapshot } from "./terminalRendererRegistry";
@@ -191,6 +189,7 @@ export interface RuntimePerformanceSnapshot {
 }
 
 type RuntimeProductionReadinessGateIssueKind =
+  | "legacy-fallback"
   | "missing-diagnostics"
   | "unknown-error-class";
 
@@ -201,6 +200,8 @@ interface RuntimeProductionReadinessGateIssue {
 }
 
 export interface RuntimeProductionReadinessGate {
+  fallbackCount: number;
+  fallbackRate: number;
   missingDiagnostics: string[];
   ready: boolean;
   statusLabel: string;
@@ -209,6 +210,7 @@ export interface RuntimeProductionReadinessGate {
 }
 
 export interface RuntimeProductionReadinessGateOptions {
+  fallbackRateThreshold?: number;
   requiredDiagnostics?: Array<"managedSsh" | "sftp" | "ssh" | "suggestions">;
   unknownErrorClassThreshold?: number;
 }
@@ -390,10 +392,21 @@ export function findRuntimePerformanceSnapshotSensitiveKeys(
 export function evaluateRuntimeProductionReadinessGate(
   snapshot: RuntimePerformanceSnapshot,
   {
+    fallbackRateThreshold = 0,
     requiredDiagnostics = ["managedSsh", "sftp", "ssh", "suggestions"],
     unknownErrorClassThreshold = 0,
   }: RuntimeProductionReadinessGateOptions = {},
 ): RuntimeProductionReadinessGate {
+  const fallbackCount =
+    snapshot.managedSsh?.recentLegacyFallbacks.reduce(
+      (sum, fallback) => sum + fallback.count,
+      0,
+    ) ?? 0;
+  const sessionEvidence =
+    (snapshot.managedSsh?.activeSessions ?? 0) +
+    (snapshot.ssh?.activeConnections ?? 0);
+  const fallbackRate =
+    fallbackCount <= 0 ? 0 : fallbackCount / (fallbackCount + sessionEvidence);
   const missingDiagnostics = requiredDiagnostics.filter(
     (section) => snapshot[section] === undefined,
   );
@@ -414,6 +427,13 @@ export function evaluateRuntimeProductionReadinessGate(
       message: `缺少 ${missingDiagnostics.join(", ")} diagnostics`,
     });
   }
+  if (fallbackRate > fallbackRateThreshold) {
+    issues.push({
+      count: fallbackCount,
+      kind: "legacy-fallback",
+      message: `legacy fallback rate ${formatGatePercent(fallbackRate)} 超过阈值 ${formatGatePercent(fallbackRateThreshold)}`,
+    });
+  }
   if (unknownErrorClassCount > unknownErrorClassThreshold) {
     issues.push({
       count: unknownErrorClassCount,
@@ -423,6 +443,8 @@ export function evaluateRuntimeProductionReadinessGate(
   }
 
   return {
+    fallbackCount,
+    fallbackRate,
     missingDiagnostics,
     ready: issues.length === 0,
     statusLabel: issues.length === 0 ? "默认启用门禁通过" : "默认启用门禁阻断",
@@ -433,6 +455,10 @@ export function evaluateRuntimeProductionReadinessGate(
 
 function normalizeDiagnosticKey(key: string): string {
   return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+function formatGatePercent(rate: number) {
+  return `${Math.round(rate * 100)}%`;
 }
 
 function maxDefinedNumber(

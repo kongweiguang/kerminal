@@ -158,8 +158,10 @@ fn persist_temp_file(temp_path: &Path, target_path: &Path) -> io::Result<()> {
         time::{Duration, Instant},
     };
 
-    const RETRY_WINDOW: Duration = Duration::from_secs(1);
-    const RETRY_INTERVAL: Duration = Duration::from_millis(10);
+    // Defender、索引器和 WebView 文件观察器可能短暂持有新发布的配置文件。
+    // 保留有界重试，避免一次暂态 ACCESS_DENIED 破坏事务 journal/manifest 一致性。
+    const RETRY_WINDOW: Duration = Duration::from_secs(5);
+    const RETRY_INTERVAL: Duration = Duration::from_millis(20);
 
     let deadline = Instant::now() + RETRY_WINDOW;
     loop {

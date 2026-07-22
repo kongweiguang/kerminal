@@ -1,5 +1,3 @@
-//! @author kongweiguang
-
 use super::fixtures::*;
 
 #[test]
@@ -121,6 +119,7 @@ fn create_local_forward_prefers_managed_runtime_and_releases_channel_on_stop() {
     let running_snapshot = manager.snapshot().expect("running managed snapshot");
     assert_eq!(running_snapshot.active_sessions, 1);
     assert_eq!(running_snapshot.active_channels, 1);
+    assert!(running_snapshot.recent_legacy_fallbacks.is_empty());
     assert_eq!(
         running_snapshot.sessions[0]
             .channel_counts
@@ -276,6 +275,7 @@ fn create_remote_forward_prefers_managed_runtime_and_releases_channel_on_stop() 
     let running_snapshot = manager.snapshot().expect("running managed snapshot");
     assert_eq!(running_snapshot.active_sessions, 1);
     assert_eq!(running_snapshot.active_channels, 1);
+    assert!(running_snapshot.recent_legacy_fallbacks.is_empty());
     assert_eq!(
         running_snapshot.sessions[0]
             .channel_counts
@@ -289,6 +289,40 @@ fn create_remote_forward_prefers_managed_runtime_and_releases_channel_on_stop() 
     let stopped_snapshot = manager.snapshot().expect("stopped managed snapshot");
     assert_eq!(stopped_snapshot.active_sessions, 1);
     assert_eq!(stopped_snapshot.active_channels, 0);
+}
+
+#[test]
+fn create_http_network_assist_is_rejected() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::default());
+    let manager = ManagedSshSessionManager::with_backend(backend);
+    let service = PortForwardService::with_ssh_runtime(
+        manager,
+        state.ssh_auth_broker().clone(),
+        state.external_session_materializer().clone(),
+    );
+    let source_port = unused_local_port();
+
+    let error = service
+        .create_with_context(
+            state.storage(),
+            state.remote_hosts(),
+            state.paths(),
+            PortForwardCreateRequest {
+                host_id: host_id.clone(),
+                kind: PortForwardKind::Remote,
+                name: Some("removed HTTP network assist".to_owned()),
+                origin: PortForwardOrigin::NetworkAssist,
+                proxy_protocol: Some(PortForwardProxyProtocol::Http),
+                remote_bind_host: Some("127.0.0.1".to_owned()),
+                source_port,
+                ..Default::default()
+            },
+        )
+        .expect_err("HTTP network assist should be rejected");
+
+    assert!(error.to_string().contains("HTTP 网络助手已移除"));
 }
 
 #[test]
@@ -313,7 +347,7 @@ fn create_remote_dynamic_socks5_prefers_managed_runtime() {
                 host_id: host_id.clone(),
                 kind: PortForwardKind::RemoteDynamic,
                 name: Some("managed remote SOCKS".to_owned()),
-                origin: PortForwardOrigin::User,
+                origin: PortForwardOrigin::NetworkAssist,
                 proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
                 remote_bind_host: Some("127.0.0.1".to_owned()),
                 source_port,
@@ -331,7 +365,7 @@ fn create_remote_dynamic_socks5_prefers_managed_runtime() {
         runtime.managed_channel_kind.as_deref(),
         Some(SshChannelKind::ForwardListener.as_str())
     );
-    assert_eq!(summary.origin, PortForwardOrigin::User);
+    assert_eq!(summary.origin, PortForwardOrigin::NetworkAssist);
     assert_eq!(
         summary.proxy_protocol,
         Some(PortForwardProxyProtocol::Socks5)
@@ -358,6 +392,7 @@ fn create_remote_dynamic_socks5_prefers_managed_runtime() {
     let running_snapshot = manager.snapshot().expect("running managed snapshot");
     assert_eq!(running_snapshot.active_sessions, 1);
     assert_eq!(running_snapshot.active_channels, 1);
+    assert!(running_snapshot.recent_legacy_fallbacks.is_empty());
     assert_eq!(
         running_snapshot.sessions[0]
             .channel_counts
@@ -428,6 +463,7 @@ fn create_dynamic_forward_prefers_managed_runtime_and_releases_channel_on_stop()
     let running_snapshot = manager.snapshot().expect("running managed snapshot");
     assert_eq!(running_snapshot.active_sessions, 1);
     assert_eq!(running_snapshot.active_channels, 1);
+    assert!(running_snapshot.recent_legacy_fallbacks.is_empty());
     assert_eq!(
         running_snapshot.sessions[0]
             .channel_counts

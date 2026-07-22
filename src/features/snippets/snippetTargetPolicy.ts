@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import type { PaneSessionRecord } from "../terminal/session/index";
 
 export type SnippetShell = "posix" | "powershell" | "cmd" | "unknown";
@@ -70,15 +68,15 @@ export function isSnippetTargetSnapshotCurrent(
 export function resolveSnippetExecutionPolicy({
   snapshot,
   risk,
-  hasUnsafeLiteral = false,
+  hasLegacyRaw = false,
   sensitive = false,
 }: {
   snapshot: SnippetTargetSnapshot;
   risk: SnippetRisk;
-  hasUnsafeLiteral?: boolean;
+  hasLegacyRaw?: boolean;
   sensitive?: boolean;
 }): SnippetExecutionPolicy {
-  const effectiveRisk = hasUnsafeLiteral && risk === "inspect" ? "change" : risk;
+  const effectiveRisk = hasLegacyRaw && risk === "inspect" ? "change" : risk;
   const requiresConfirmation =
     snapshot.production ||
     sensitive ||

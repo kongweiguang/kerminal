@@ -28,6 +28,8 @@ pub enum PortForwardOrigin {
     User,
     /// MCP 工具创建。
     McpTool,
+    /// 网络助手创建。
+    NetworkAssist,
     /// 主机预设创建。
     HostPreset,
 }
@@ -36,6 +38,8 @@ pub enum PortForwardOrigin {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum PortForwardProxyProtocol {
+    /// 已移除的旧 HTTP 网络助手，仅用于读取和清理历史记录。
+    Http,
     /// SOCKS5 代理。
     Socks5,
 }
@@ -100,9 +104,15 @@ pub enum PortForwardStatus {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum PortForwardRuntimeMode {
-    /// Kerminal 受管 SSH runtime。
+    /// 旧记录或未知运行时。
     #[default]
+    Unknown,
+    /// Kerminal 受管 SSH runtime。
     ManagedSshRuntime,
+    /// OpenSSH 普通子进程 fallback。
+    OpenSshProcess,
+    /// OpenSSH PTY 子进程 fallback，通常用于一次性安全输入。
+    OpenSshPty,
     /// 应用重启后从持久化摘要恢复出的非运行态记录。
     Restored,
 }
@@ -131,6 +141,9 @@ pub struct PortForwardRuntimeDiagnostics {
     /// runtime-owned tunnel task id。
     #[serde(default)]
     pub managed_tunnel_id: Option<String>,
+    /// legacy fallback 原因；不包含敏感值。
+    #[serde(default)]
+    pub fallback_reason: Option<String>,
     /// 最近一次运行失败；不包含密码、私钥或 token。
     #[serde(default)]
     pub recent_failure: Option<String>,

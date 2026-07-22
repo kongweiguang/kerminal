@@ -64,9 +64,6 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("hosts/groups.toml"));
     assert!(config_reference.contains("Host creation checklist"));
     assert!(config_reference.contains("schema_version = 2"));
-    assert!(config_reference.contains("every host uses schema v2 with an explicit `protocol`"));
-    assert!(config_reference.contains("`ssh`, `sftp`, `rdp`, `telnet`, or `serial`"));
-    assert!(config_reference.contains("Host schema v1 is rejected"));
     assert!(config_reference.contains("protocol = \"sftp\""));
     assert!(config_reference.contains("SFTP-only hosts may use proxy, jump, and transfer settings"));
     assert!(config_reference.contains(r#"cwd = "~/.kerminal""#));

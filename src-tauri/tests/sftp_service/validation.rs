@@ -10,6 +10,7 @@ use kerminal_lib::{
     },
     services::sftp_service::rules,
 };
+use russh::keys;
 use std::fs::File as StdFile;
 use std::io::Read;
 use tempfile::tempdir;
@@ -169,6 +170,36 @@ fn archive_requests_require_conflict_policy() {
 }
 
 #[test]
+fn shell_single_quote_escapes_remote_path_for_rm_rf() {
+    assert_eq!(
+        rules::shell_single_quote("/srv/app data"),
+        "'/srv/app data'"
+    );
+    assert_eq!(
+        rules::shell_single_quote("/srv/app's data; rm -rf /"),
+        "'/srv/app'\\''s data; rm -rf /'"
+    );
+}
+
+#[test]
+fn directory_shell_delete_requires_absolute_non_parent_path() {
+    rules::validate_remote_directory_shell_delete_path("/srv/app").expect("absolute path");
+
+    assert!(matches!(
+        rules::validate_remote_directory_shell_delete_path("srv/app"),
+        Err(AppError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        rules::validate_remote_directory_shell_delete_path("/"),
+        Err(AppError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        rules::validate_remote_directory_shell_delete_path("/srv/../app"),
+        Err(AppError::InvalidInput(_))
+    ));
+}
+
+#[test]
 fn remote_copy_staging_policy_uses_safe_fallback_only_when_needed() {
     let cross_host_file = SftpRemoteCopyRequest {
         source_host_id: "source-host".to_owned(),
@@ -258,5 +289,74 @@ fn classify_clipboard_local_paths_accepts_files_and_directories() {
                 kind: SftpLocalPathKind::Directory,
             },
         ]
+    );
+}
+
+#[tokio::test]
+async fn host_key_policy_rejects_unknown_key_without_learning() {
+    let dir = tempdir().expect("temp known hosts dir");
+    let known_hosts_path = dir.path().join("known_hosts");
+    let key = keys::parse_public_key_base64(
+        "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ",
+    )
+    .expect("parse public key");
+
+    assert!(!rules::check_native_host_key(
+        "localhost",
+        13265,
+        known_hosts_path.clone(),
+        false,
+        &key
+    )
+    .await
+    .expect("check key"));
+    assert!(
+        !known_hosts_path.exists(),
+        "strict SFTP host key check must not silently learn unknown hosts"
+    );
+}
+
+#[tokio::test]
+async fn host_key_policy_learns_unknown_key_only_when_explicit() {
+    let dir = tempdir().expect("temp known hosts dir");
+    let known_hosts_path = dir.path().join("known_hosts");
+    let key = keys::parse_public_key_base64(
+        "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ",
+    )
+    .expect("parse public key");
+
+    assert!(
+        rules::check_native_host_key("localhost", 13265, known_hosts_path.clone(), true, &key)
+            .await
+            .expect("learn key")
+    );
+    assert!(
+        keys::known_hosts::check_known_hosts_path("localhost", 13265, &key, &known_hosts_path)
+            .expect("check learned key")
+    );
+}
+
+#[tokio::test]
+async fn host_key_policy_rejects_revoked_key_even_when_explicit_trust_is_requested() {
+    use std::io::Write;
+
+    let dir = tempdir().expect("temp known hosts dir");
+    let known_hosts_path = dir.path().join("known_hosts");
+    let key = keys::parse_public_key_base64(
+        "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ",
+    )
+    .expect("parse public key");
+    let mut file = std::fs::File::create(&known_hosts_path).expect("create known_hosts");
+    writeln!(
+        file,
+        "@revoked *.internal {}",
+        key.to_openssh().expect("encode key")
+    )
+    .expect("write revoked marker");
+
+    assert!(
+        !rules::check_native_host_key("localhost", 13265, known_hosts_path, true, &key)
+            .await
+            .expect("revoked key must be rejected")
     );
 }

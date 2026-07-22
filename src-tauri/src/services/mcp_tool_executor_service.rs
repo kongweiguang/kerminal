@@ -352,12 +352,27 @@ fn mcp_runtime_audit(
                 })
                 .take(8)
                 .collect::<Vec<_>>();
+            let fallbacks = snapshot
+                .recent_legacy_fallbacks
+                .iter()
+                .map(|fallback| {
+                    format!(
+                        "{}|count={}|target={}|reason={}",
+                        fallback.capability,
+                        fallback.count,
+                        fallback.target.as_deref().unwrap_or("unknown"),
+                        fallback.reason
+                    )
+                })
+                .take(8)
+                .collect::<Vec<_>>();
             format!(
-                "tool={tool_id}; hostId={}; backend=managed-ssh-runtime; activeSessions={}; activeChannels={}; sessions=[{}]",
+                "tool={tool_id}; hostId={}; backend=managed-ssh-runtime; activeSessions={}; activeChannels={}; sessions=[{}]; fallbacks=[{}]",
                 host_id.unwrap_or("none"),
                 snapshot.active_sessions,
                 snapshot.active_channels,
-                sessions.join(", ")
+                sessions.join(", "),
+                fallbacks.join(", ")
             )
         }
         Err(error) => format!(

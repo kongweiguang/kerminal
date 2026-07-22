@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -72,7 +70,7 @@ describe("terminalSuggestionApi", () => {
     });
   });
 
-  it("rejects candidates that do not match the current contract", async () => {
+  it("normalizes legacy candidates to inline-only whole acceptance", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue([
       {
@@ -90,12 +88,18 @@ describe("terminalSuggestionApi", () => {
       "../../../src/lib/terminalSuggestionApi"
     );
 
-    await expect(
-      listTerminalSuggestions({
-        cursor: 7,
-        input: "echo 服务",
-      }),
-    ).rejects.toThrow("current contract");
+    const suggestions = await listTerminalSuggestions({
+      cursor: 7,
+      input: "echo 服务",
+    });
+
+    expect(suggestions[0]).toMatchObject({
+      acceptBoundaries: [],
+      activation: "insert",
+      allowedPresentations: ["inline"],
+      candidateKind: "command",
+      replacementRange: { end: 7, start: 0 },
+    });
   });
 
   it("normalizes snippet activation and merged source explanations", async () => {
@@ -103,7 +107,6 @@ describe("terminalSuggestionApi", () => {
     invokeMock.mockResolvedValue([
       {
         activation: "openSnippetPanel",
-        acceptBoundaries: [],
         allowedPresentations: ["menu"],
         candidateKind: "snippet",
         displayText: "查看服务日志",
@@ -143,10 +146,8 @@ describe("terminalSuggestionApi", () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue([
       {
-        activation: "insert",
         acceptBoundaries: [8],
         allowedPresentations: ["inline", "menu"],
-        candidateKind: "command",
         displayText: "rm -rf ./build",
         id: "history-dangerous",
         provider: "history",
@@ -169,14 +170,12 @@ describe("terminalSuggestionApi", () => {
     expect(suggestions[0]?.allowedPresentations).toEqual(["menu"]);
   });
 
-  it("rejects an invalid replacement range or acceptance boundary", async () => {
+  it("falls back to whole acceptance for invalid range or boundary", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue([
       {
-        activation: "insert",
         acceptBoundaries: [8, 999],
         allowedPresentations: ["inline", "menu"],
-        candidateKind: "command",
         displayText: "echo 服务器/日志",
         id: "history-invalid-range",
         provider: "history",
@@ -191,22 +190,23 @@ describe("terminalSuggestionApi", () => {
       "../../../src/lib/terminalSuggestionApi"
     );
 
-    await expect(
-      listTerminalSuggestions({
-        cursor: 7,
-        input: "echo 服务",
-      }),
-    ).rejects.toThrow("replacement range is invalid");
+    const suggestions = await listTerminalSuggestions({
+      cursor: 7,
+      input: "echo 服务",
+    });
+
+    expect(suggestions[0]).toMatchObject({
+      acceptBoundaries: [],
+      replacementRange: { end: 7, start: 0 },
+    });
   });
 
   it("preserves valid Unicode code-point boundaries", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue([
       {
-        activation: "insert",
         acceptBoundaries: [8, 10],
         allowedPresentations: ["inline", "menu"],
-        candidateKind: "command",
         contextKey: " ssh:host-prod:/srv ",
         displayText: "echo 服务器/日志",
         id: "history-unicode-boundaries",

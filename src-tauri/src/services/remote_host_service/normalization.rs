@@ -36,3 +36,8 @@ pub(super) fn normalize_tags(tags: Vec<String>) -> Vec<String> {
     }
     normalized
 }
+
+pub(super) fn has_tag(tags: &[String], expected: &str) -> bool {
+    tags.iter()
+        .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
+}

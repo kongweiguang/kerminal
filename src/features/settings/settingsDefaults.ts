@@ -32,6 +32,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   fontWeight: "normal",
   inlineSuggestion: {
     acceptKey: "rightArrow",
+    enabled: true,
     presentation: "inlineAndMenu",
     menuShortcut: "ctrlSpace",
     tabOpensMenu: false,
@@ -45,6 +46,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
       remotePath: true,
       spec: true,
     },
+    remoteProbeEnabled: true,
     auditRetentionDays: TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS_DEFAULT,
     feedbackRetentionDays:
       TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT,

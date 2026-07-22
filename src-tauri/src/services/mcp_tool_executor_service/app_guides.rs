@@ -65,7 +65,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
                 "sharedSessionRule": "SSH hosts may reuse one authenticated ManagedSshSession across terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools. SFTP-only hosts may use only SFTP channels; shell-derived capability families fail closed before transport.",
                 "channelRule": "Reuse does not mean a single blocking stream: shell, SFTP, exec, and forwarding use separate managed channels with counts, queue depth, timeout, cancel, cleanup, and recent-failure diagnostics.",
-                "fallbackRule": "SSH terminal, exec, SFTP, container transfer, and port-forward operations use only Managed SSH. Unsupported backend capabilities return errors and never open a second SSH connection path.",
+                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures must remain managed runtime errors.",
                 "secretBoundary": "managedSsh diagnostics are redacted and must not expose passwords, private keys, key passphrases, raw env, or vault refs."
             },
             "runtimeToolFamilies": [
@@ -263,7 +263,6 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "boundaries": [
                         "Do not expect remote_host.* CRUD/list MCP tools.",
                         "Do not read secrets/vault*.toml directly.",
-                        "Saved hosts require schema_version=2 and an explicit protocol; schema v1 and tag-based protocol inference are unsupported.",
                         "SFTP-only hosts expose file operations only; SSH command, terminal, tmux, container, server-info, and port-forward tools reject them with host_capability_not_supported.",
                         "Ask for user/host approval before production writes or destructive remote commands."
                     ]

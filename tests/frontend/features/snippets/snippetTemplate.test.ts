@@ -1,5 +1,3 @@
-// @author kongweiguang
-
 import { describe, expect, it } from "vitest";
 import {
   renderSnippetTemplate,
@@ -86,7 +84,7 @@ describe("snippetTemplate", () => {
     }
   });
 
-  it("marks sensitive and unsafe literal plans for policy escalation", () => {
+  it("marks sensitive and legacy raw plans for policy escalation", () => {
     expect(
       renderSnippetTemplate({
         shell: "posix",
@@ -94,14 +92,14 @@ describe("snippetTemplate", () => {
         values: { value: "secret" },
         variables: [variable({ kind: "raw", sensitive: true, renderStrategy: "literal" })],
       }),
-    ).toMatchObject({ containsSensitiveValue: true, unsafeLiteral: true });
+    ).toMatchObject({ containsSensitiveValue: true, legacyRaw: true });
     expect(
       renderSnippetTemplate({
         shell: "posix",
         template: "echo {{ value }}",
         values: { value: "; id" },
         variables: [variable({ kind: "text", renderStrategy: "literal" })],
-      }).unsafeLiteral,
+      }).legacyRaw,
     ).toBe(true);
   });
 

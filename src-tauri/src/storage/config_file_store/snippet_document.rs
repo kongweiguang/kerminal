@@ -39,7 +39,7 @@ pub struct SnippetDocumentList {
     pub warnings: Vec<SnippetDocumentWarning>,
 }
 
-/// 当前编辑器拥有的基础字段；未列出的扩展字段和注释保持原样。
+/// V2 editor 拥有的基础字段；未列出的扩展字段和注释保持原样。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SnippetDocumentPatch {
@@ -62,7 +62,7 @@ pub struct SnippetDocumentPatch {
 }
 
 impl ConfigFileStore {
-    /// 目录列表隔离单文件错误，避免一个损坏文件阻断全部片段。
+    /// V2 列表隔离单文件错误；旧 `list_snippets` 行为保持不变。
     pub fn list_snippet_documents(&self) -> FileStoreResult<SnippetDocumentList> {
         self.files.recover_pending_transactions()?;
         let directory = self.files.path_for(SNIPPETS_RELATIVE_DIR)?;
