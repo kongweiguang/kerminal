@@ -218,8 +218,6 @@ jobs:
             - 标签切换或临时卸载不再误释放外部 SSH 会话；只有用户真正关闭对应标签时才清理临时目标与凭据引用。
             - SFTP 传输工作台接入中央文件工作区，可从远端主机窗格打开可编辑文件，并保留既有传输与双栏行为。
             - 外部启动诊断增加仅记录参数类别的脱敏形状与稳定错误码，便于排查厂商参数差异且不记录主机、用户名、密码或完整路径。
-
-            macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
