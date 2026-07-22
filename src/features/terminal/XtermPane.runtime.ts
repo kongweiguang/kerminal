@@ -38,6 +38,7 @@ import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 import { createTerminalSurfaceEventController } from "./terminalSurfaceEventController";
+import { disposeXtermTerminal } from "./terminalDisposalCompatibility";
 import { createXtermPaneSessionRuntime } from "./XtermPane.sessionRuntime";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
@@ -559,7 +560,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     if (activityRuntimeRef.current === activityRuntime) {
       activityRuntimeRef.current = null;
     }
-    terminal.dispose();
+    disposeXtermTerminal(terminal);
     terminalRef.current = null;
     fitAddonRef.current = null;
     searchAddonRef.current = null;
