@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "Tauri 质量保障"
-  short_description: "测试、诊断并量化 Tauri 运行时和性能问题"
-  default_prompt: "使用 $tauri-quality 通过分层证据和真实运行时检查，验证或诊断这个 Tauri 应用。"

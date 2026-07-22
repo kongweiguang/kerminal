@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "Updeng 质量工程"
-  short_description: "统一诊断、TDD、回归验证与生产级评审"
-  default_prompt: "使用 $updeng-quality-engineering 诊断、测试或评审当前变更。"

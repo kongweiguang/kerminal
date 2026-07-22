@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "Updeng 前端测试规范"
-  short_description: "前端单元、组件、集成、E2E、视觉回归和测试数据组织规范"
-  default_prompt: "使用 updeng-frontend-testing-standards 为前端变更设计、补齐或评审测试，覆盖单元、组件、集成、E2E、视觉验证和测试数据组织。"
