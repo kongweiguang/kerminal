@@ -70,7 +70,9 @@ describe("RemoteHostCreateDialog SFTP host", () => {
       />,
     );
 
-    expect(screen.getByText(/仅用于文件浏览与传输/)).toBeVisible();
+    expect(
+      screen.queryByText(/仅用于文件浏览与传输/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "隧道" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "传输" })).toBeVisible();

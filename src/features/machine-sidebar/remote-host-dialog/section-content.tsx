@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { Dispatch, SetStateAction } from "react";
 import type {
   RemoteHost,
@@ -317,7 +319,6 @@ export function RemoteHostDialogSectionContent({
       onCreateGroupClick={onCreateGroupClick}
       port={port}
       production={production}
-      protocolLabel={mode === "sftp" ? "SFTP" : "SSH"}
       groupOptions={groupOptions}
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { FolderOpen } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
@@ -18,7 +20,6 @@ export function SshPropertiesPanel({
   onCreateGroupClick,
   port,
   production,
-  protocolLabel,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
@@ -43,7 +44,6 @@ export function SshPropertiesPanel({
   onCreateGroupClick?: () => void;
   port: string;
   production: boolean;
-  protocolLabel: "SSH" | "SFTP";
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
@@ -134,11 +134,6 @@ export function SshPropertiesPanel({
             />
           </div>
         </FieldRow>
-        {protocolLabel === "SFTP" ? (
-          <p className="rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">
-            该连接仅用于文件浏览与传输，不会创建 SSH 终端。
-          </p>
-        ) : null}
       </div>
     </div>
   );
