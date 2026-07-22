@@ -77,7 +77,7 @@ use self::transfer_paths::{
 };
 
 use self::transfer::{
-    ProgressReader, ProgressWriter, TransferEventEmitter, TransferLimiter, TransferProgress,
+    CancellationReader, ProgressWriter, TransferEventEmitter, TransferLimiter, TransferProgress,
     TransferTask,
 };
 

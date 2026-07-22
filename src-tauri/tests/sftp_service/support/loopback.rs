@@ -7,7 +7,7 @@ use russh_sftp::protocol::{
     Attrs, Data, File as ProtocolFile, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{self, SeekFrom},
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -343,11 +343,13 @@ struct LoopbackSftpFs {
     symlinks: Arc<HashMap<String, String>>,
     next_handle: u64,
     handles: HashMap<String, LoopbackSftpHandle>,
+    rejected_first_writes: HashSet<String>,
 }
 
 enum LoopbackSftpHandle {
     File {
         file: fs::File,
+        path: String,
     },
     Directory {
         entries: Vec<ProtocolFile>,
@@ -366,6 +368,7 @@ impl LoopbackSftpFs {
             symlinks,
             next_handle: 0,
             handles: HashMap::new(),
+            rejected_first_writes: HashSet::new(),
         }
     }
 
@@ -458,6 +461,7 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
             handle.clone(),
             LoopbackSftpHandle::File {
                 file: fs::File::from_std(file),
+                path: filename,
             },
         );
         Ok(Handle { id, handle })
@@ -467,7 +471,7 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
         let Some(open_handle) = self.handles.remove(&handle) else {
             return Err(StatusCode::NoSuchFile);
         };
-        if let LoopbackSftpHandle::File { mut file } = open_handle {
+        if let LoopbackSftpHandle::File { mut file, .. } = open_handle {
             file.flush().await.map_err(Self::io_status)?;
         }
         Ok(Self::ok(id))
@@ -480,7 +484,7 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
-        let Some(LoopbackSftpHandle::File { file }) = self.handles.get_mut(&handle) else {
+        let Some(LoopbackSftpHandle::File { file, .. }) = self.handles.get_mut(&handle) else {
             return Err(StatusCode::NoSuchFile);
         };
 
@@ -503,9 +507,16 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
-        let Some(LoopbackSftpHandle::File { file }) = self.handles.get_mut(&handle) else {
+        let Some(LoopbackSftpHandle::File { file, path }) = self.handles.get_mut(&handle) else {
             return Err(StatusCode::NoSuchFile);
         };
+
+        if path.contains("reject-write") {
+            return Err(StatusCode::Failure);
+        }
+        if path.contains("reject-first-write") && self.rejected_first_writes.insert(path.clone()) {
+            return Err(StatusCode::Failure);
+        }
 
         file.seek(SeekFrom::Start(offset))
             .await
@@ -523,7 +534,7 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
             return Err(StatusCode::NoSuchFile);
         };
         match open_handle {
-            LoopbackSftpHandle::File { file } => {
+            LoopbackSftpHandle::File { file, .. } => {
                 let metadata = file.metadata().await.map_err(Self::io_status)?;
                 Ok(Attrs {
                     id,

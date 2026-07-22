@@ -448,18 +448,18 @@ impl TransferProgress {
     }
 }
 
-pub(super) struct ProgressReader<R> {
+pub(super) struct CancellationReader<R> {
     inner: R,
     progress: TransferProgress,
 }
 
-impl<R> ProgressReader<R> {
+impl<R> CancellationReader<R> {
     pub(super) fn new(inner: R, progress: TransferProgress) -> Self {
         Self { inner, progress }
     }
 }
 
-impl<R: AsyncRead + Unpin> AsyncRead for ProgressReader<R> {
+impl<R: AsyncRead + Unpin> AsyncRead for CancellationReader<R> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -471,16 +471,7 @@ impl<R: AsyncRead + Unpin> AsyncRead for ProgressReader<R> {
                 "transfer canceled",
             )));
         }
-
-        let before = buf.filled().len();
-        let poll = Pin::new(&mut self.inner).poll_read(cx, buf);
-        if let Poll::Ready(Ok(())) = &poll {
-            let after = buf.filled().len();
-            if after > before {
-                self.progress.add_bytes((after - before) as u64);
-            }
-        }
-        poll
+        Pin::new(&mut self.inner).poll_read(cx, buf)
     }
 }
 

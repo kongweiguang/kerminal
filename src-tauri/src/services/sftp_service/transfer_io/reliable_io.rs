@@ -305,6 +305,32 @@ pub(in crate::services::sftp_service) async fn commit_remote_reliable_write_targ
     }
 }
 
+/// 写请求在服务端确认前失败时清理空 partial；已有内容的 partial 保留用于续传。
+pub(in crate::services::sftp_service) async fn cleanup_empty_remote_partial(
+    sftp: &SftpSession,
+    partial_path: &str,
+) -> bool {
+    let is_empty = sftp
+        .metadata(partial_path.to_owned())
+        .await
+        .ok()
+        .and_then(|metadata| metadata.size)
+        == Some(0);
+    if is_empty {
+        return sftp.remove_file(partial_path.to_owned()).await.is_ok();
+    }
+    false
+}
+
+/// 首次并发写未落下任何字节时，以截断方式重新打开同一个 partial 供顺序重试。
+pub(in crate::services::sftp_service) async fn restart_remote_reliable_write_target(
+    sftp: &SftpSession,
+    final_path: &str,
+    partial_path: String,
+) -> AppResult<PreparedRemoteReliableWriteTarget> {
+    open_remote_reliable_partial_target(sftp, final_path, partial_path, 0, true).await
+}
+
 pub(in crate::services::sftp_service) async fn prepare_local_reliable_write_target(
     local_path: &Path,
     conflict_policy: SftpTransferConflictPolicy,

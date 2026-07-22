@@ -25,7 +25,7 @@ use super::{
     backend::{io_sftp_error, native_sftp_error, SftpRuntimeSettings},
     is_already_exists_error, is_ambiguous_sftp_failure, is_no_such_file_error,
     transfer_paths::join_remote_path,
-    ProgressReader, ProgressWriter, TransferProgress,
+    CancellationReader, ProgressWriter, TransferProgress,
 };
 
 enum RemoteReadFallback {
@@ -114,13 +114,58 @@ pub(super) async fn upload_file(
             .map_err(io_sftp_error)?;
         progress.add_bytes(remote_target.offset);
     }
-    let mut reader = ProgressReader::new(&mut local_file, progress.clone());
+    let first_write = write_remote_file_batches(
+        &mut remote_target.file,
+        &mut local_file,
+        progress,
+        settings,
+        settings.pipeline_depth,
+    )
+    .await;
+    if let Err(first_error) = first_write {
+        let _ = remote_target.file.shutdown().await;
+        let empty_partial_removed =
+            cleanup_empty_remote_partial(sftp, &remote_target.partial_path).await;
+        if remote_target.offset == 0 && settings.pipeline_depth > 1 && empty_partial_removed {
+            local_file
+                .seek(SeekFrom::Start(0))
+                .await
+                .map_err(io_sftp_error)?;
+            remote_target = restart_remote_reliable_write_target(
+                sftp,
+                &remote_target.final_path,
+                remote_target.partial_path,
+            )
+            .await?;
+            if let Err(retry_error) = write_remote_file_batches(
+                &mut remote_target.file,
+                &mut local_file,
+                progress,
+                settings,
+                1,
+            )
+            .await
+            {
+                let _ = remote_target.file.shutdown().await;
+                cleanup_empty_remote_partial(sftp, &remote_target.partial_path).await;
+                return Err(AppError::Sftp(format!(
+                    "远端文件写入失败（并发写与顺序重试均失败）: {}; retry: {}",
+                    native_sftp_error(first_error),
+                    native_sftp_error(retry_error)
+                )));
+            }
+        } else {
+            return Err(AppError::Sftp(format!(
+                "远端文件写入失败: {}",
+                native_sftp_error(first_error)
+            )));
+        }
+    }
     remote_target
         .file
-        .write_all_pipelined(&mut reader, settings.pipeline_depth)
+        .shutdown()
         .await
-        .map_err(native_sftp_error)?;
-    remote_target.file.shutdown().await.map_err(io_sftp_error)?;
+        .map_err(|error| AppError::Sftp(format!("远端文件关闭失败: {}", io_sftp_error(error))))?;
     commit_remote_reliable_write_target(
         sftp,
         &remote_target.final_path,
@@ -128,6 +173,32 @@ pub(super) async fn upload_file(
         metadata.len(),
     )
     .await
+}
+
+async fn write_remote_file_batches(
+    remote_file: &mut SftpFile,
+    local_file: &mut fs::File,
+    progress: &TransferProgress,
+    settings: SftpRuntimeSettings,
+    pipeline_depth: usize,
+) -> Result<(), russh_sftp::client::error::Error> {
+    let confirmed_batch_bytes = u64::from(settings.packet_bytes)
+        .saturating_mul(pipeline_depth as u64)
+        .max(1);
+    loop {
+        let mut batch = (&mut *local_file).take(confirmed_batch_bytes);
+        let mut reader = CancellationReader::new(&mut batch, progress.clone());
+        let confirmed_bytes = remote_file
+            .write_all_pipelined(&mut reader, pipeline_depth)
+            .await?;
+        if confirmed_bytes == 0 {
+            return Ok(());
+        }
+        progress.add_bytes(confirmed_bytes);
+        if confirmed_bytes < confirmed_batch_bytes {
+            return Ok(());
+        }
+    }
 }
 
 pub(super) async fn download_directory(

@@ -69,6 +69,91 @@ async fn enqueue_transfer_tracks_public_progress_and_success() {
 }
 
 #[tokio::test]
+async fn failed_upload_reports_only_confirmed_bytes_and_cleans_empty_partial() {
+    let server_root = tempdir().expect("server root");
+    let client_root = tempdir().expect("client root");
+    let upload_source = client_root.path().join("upload.bin");
+    fs::write(&upload_source, b"server must reject these bytes")
+        .await
+        .expect("write upload fixture");
+    let server = start_loopback_sftp_server(server_root.path().to_path_buf()).await;
+    let (_home, state) = test_state();
+    let host_id = create_password_remote_host(&state, "rejecting host", server.addr.port());
+    trust_loopback_host(&state, &host_id).await;
+
+    let summary = state
+        .sftp()
+        .enqueue_transfer(
+            state.paths(),
+            SftpManagedTransferRequest {
+                host_id,
+                remote_path: "/reject-write.bin".to_owned(),
+                local_path: upload_source.to_string_lossy().into_owned(),
+                direction: SftpTransferDirection::Upload,
+                kind: SftpTransferKind::File,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: Some("failed-upload".to_owned()),
+            },
+        )
+        .expect("enqueue rejected upload");
+
+    let failed = wait_for_transfer_failure(&state, &summary.id).await;
+    assert_eq!(failed.bytes_transferred, 0);
+    assert!(failed
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("远端文件写入失败")));
+    assert!(!server_root
+        .path()
+        .join("reject-write.bin.kerminal-part")
+        .exists());
+}
+
+#[tokio::test]
+async fn upload_retries_sequentially_when_first_pipelined_write_leaves_empty_partial() {
+    let server_root = tempdir().expect("server root");
+    let client_root = tempdir().expect("client root");
+    let upload_source = client_root.path().join("upload.bin");
+    let payload = b"retry this upload sequentially";
+    fs::write(&upload_source, payload)
+        .await
+        .expect("write upload fixture");
+    let server = start_loopback_sftp_server(server_root.path().to_path_buf()).await;
+    let (_home, state) = test_state();
+    let host_id = create_password_remote_host(&state, "retry host", server.addr.port());
+    trust_loopback_host(&state, &host_id).await;
+
+    let summary = state
+        .sftp()
+        .enqueue_transfer(
+            state.paths(),
+            SftpManagedTransferRequest {
+                host_id,
+                remote_path: "/reject-first-write.bin".to_owned(),
+                local_path: upload_source.to_string_lossy().into_owned(),
+                direction: SftpTransferDirection::Upload,
+                kind: SftpTransferKind::File,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: Some("sequential-retry".to_owned()),
+            },
+        )
+        .expect("enqueue retry upload");
+
+    let completed = wait_for_transfer_success(&state, &summary.id).await;
+    assert_eq!(completed.bytes_transferred, payload.len() as u64);
+    assert_eq!(
+        fs::read(server_root.path().join("reject-first-write.bin"))
+            .await
+            .expect("read retried upload"),
+        payload
+    );
+    assert!(!server_root
+        .path()
+        .join("reject-first-write.bin.kerminal-part")
+        .exists());
+}
+
+#[tokio::test]
 async fn remote_copy_task_uses_source_and_target_hosts() {
     let source_root = tempdir().expect("source server root");
     let target_root = tempdir().expect("target server root");
@@ -364,6 +449,23 @@ async fn wait_for_transfer_success(state: &AppState, transfer_id: &str) -> SftpT
         sleep(Duration::from_millis(20)).await;
     }
     panic!("transfer {transfer_id} did not finish");
+}
+
+async fn wait_for_transfer_failure(state: &AppState, transfer_id: &str) -> SftpTransferSummary {
+    for _ in 0..100 {
+        let tasks = state.sftp().list_transfers().expect("list transfers");
+        if let Some(task) = tasks.iter().find(|task| task.id == transfer_id) {
+            match task.status {
+                SftpTransferStatus::Failed => return task.clone(),
+                SftpTransferStatus::Succeeded | SftpTransferStatus::Canceled => {
+                    panic!("transfer {transfer_id} finished as {:?}", task.status);
+                }
+                SftpTransferStatus::Queued | SftpTransferStatus::Running => {}
+            }
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+    panic!("transfer {transfer_id} did not fail");
 }
 
 fn transfer_summary(
