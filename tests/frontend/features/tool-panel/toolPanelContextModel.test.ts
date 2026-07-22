@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   resolveToolPanelBinding,
@@ -76,16 +78,15 @@ describe("toolPanelContextModel", () => {
     expect(binding.bindingKey).not.toContain("host-b");
   });
 
-  it("没有活动 tab 或 pane 时才使用侧栏主机", () => {
+  it("系统监控在没有活动 tab 时不绑定侧栏残留主机", () => {
     const binding = resolveToolPanelBinding("system", {
       selectedMachine: hostB,
     });
 
-    expect(binding).toMatchObject({
-      machine: hostB,
-      resourceKey: "ssh:host-b",
-      source: "selectedMachine",
-    });
+    expect(binding.source).toBe("none");
+    expect(binding.machine).toBeUndefined();
+    expect(binding.target).toBeUndefined();
+    expect(binding.resourceKey).toBe("target:unbound:none");
   });
 
   it("pane 级能力不会回退到无关侧栏主机", () => {

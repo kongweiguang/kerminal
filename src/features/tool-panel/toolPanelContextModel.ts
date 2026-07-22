@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   dockerContainerTarget,
   localTarget,
@@ -127,7 +129,14 @@ export function resolveToolPanelBinding(
     );
   }
 
-  const subject = activeTargetSubject(context);
+  // 系统监控描述当前工作区运行目标；没有 Tab 时不能继续刷新侧栏残留主机。
+  const subject =
+    toolId === "system" &&
+    !context.focusedPane &&
+    !context.activeTab &&
+    !context.activeMachine
+      ? { source: "none" as const }
+      : activeTargetSubject(context);
   const resourceKey =
     scope === "host"
       ? hostResourceKey(subject.machine, subject.target)

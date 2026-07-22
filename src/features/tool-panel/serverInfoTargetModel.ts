@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
 import type { Machine } from "../workspace/contracts/index";
 
@@ -16,6 +18,19 @@ export interface ServerInfoTargetContext {
   subtitle: string;
   target: ServerInfoTargetRef;
   title: string;
+}
+
+/** 系统面板没有可绑定目标时仍展示本机，并复用统一监控工作台。 */
+export function defaultLocalServerInfoTargetContext(): ServerInfoTargetContext {
+  const target: ServerInfoTargetRef = { kind: "local" };
+  return {
+    cacheKey: targetStableId(target),
+    hostId: "local",
+    refreshAriaLabel: "刷新本机系统信息",
+    subtitle: "本地终端",
+    target,
+    title: "本机系统",
+  };
 }
 
 /** 从当前工作区机器解析系统信息目标；不支持的目标返回空。 */

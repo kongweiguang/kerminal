@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   Activity,
   ArrowDown,
@@ -16,7 +18,6 @@ import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { ServerInfoSnapshot } from "../../lib/serverInfoApi";
 import type { Machine } from "../workspace/contracts/index";
-import { RuntimeHealthCard } from "./RuntimeHealthCard";
 import {
   filterNetworkInterfaces,
   networkInterfaceRoleLabel,
@@ -47,7 +48,10 @@ import {
   serverGpuSummaryValue,
   type NetworkTrafficSnapshot,
 } from "./serverInfoMetricsModel";
-import { serverInfoTargetContext } from "./serverInfoTargetModel";
+import {
+  defaultLocalServerInfoTargetContext,
+  serverInfoTargetContext,
+} from "./serverInfoTargetModel";
 import {
   serverInfoRefreshOptions,
   type ServerInfoSnapshotRuntime,
@@ -84,7 +88,9 @@ export function ServerInfoToolContent({
   selectedMachine,
 }: ServerInfoToolContentProps) {
   const targetContext = useMemo(
-    () => serverInfoTargetContext(selectedMachine),
+    () =>
+      serverInfoTargetContext(selectedMachine) ??
+      defaultLocalServerInfoTargetContext(),
     [selectedMachine],
   );
   const activeTargetContext = active ? targetContext : undefined;
@@ -153,10 +159,6 @@ export function ServerInfoToolContent({
 
   if (!active) {
     return null;
-  }
-
-  if (!targetContext) {
-    return <RuntimeHealthCard />;
   }
 
   const traffic =

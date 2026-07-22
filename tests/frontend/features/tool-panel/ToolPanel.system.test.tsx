@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import "../../support/tool-panel/ToolPanel.testSupport";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -13,6 +15,29 @@ import {
 } from "../../support/tool-panel/ToolPanel.testSupport";
 
 describe("ToolPanel system", () => {
+it("uses the unified local monitor when no tab is open despite a sidebar selection", async () => {
+  render(
+    <ToolPanel
+      activeTool="system"
+      onActiveToolChange={vi.fn()}
+      selectedMachine={sshMachine}
+      tools={tools}
+    />,
+  );
+
+  expect(await screen.findByText("本机系统")).toBeInTheDocument();
+  expect(screen.queryByText("本机运行体验")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("tablist", { name: "系统信息视图" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).toHaveBeenCalled();
+  expect(serverInfoApiMocks.getServerInfoSnapshot).not.toHaveBeenCalled();
+});
+
 it("shows the redesigned system monitor for local machines", async () => {
   render(
     <ToolPanel
