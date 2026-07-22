@@ -19,11 +19,11 @@
 
 Kerminal 是一个本地桌面终端、远程管理与 Agent 工作台。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code 或自己的命令行 Agent。Agent 可以绑定当前终端目标，通过 Kerminal MCP 使用已经连接的运行态能力。
 
-当前版本：**v0.3.7**
+当前版本：**v0.3.11**
 
 ## 你可以用 Kerminal 做什么
 
-- 连接本机、SSH、RDP、Telnet 和串口设备。
+- 连接本机、SSH、独立 SFTP、RDP、Telnet 和串口设备。
 - 使用多标签、多分屏终端处理不同机器和任务。
 - 启动 Codex、Claude Code 或自定义 Agent，并继续之前的会话。
 - 将当前终端、命令块、选区和目标上下文发送给 Agent。

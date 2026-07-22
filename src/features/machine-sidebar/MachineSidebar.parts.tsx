@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   ArrowLeftRight,
   Box,
@@ -16,12 +18,7 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import type {
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
-  ReactNode,
-  RefObject,
-} from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
@@ -31,9 +28,7 @@ import type {
   ConnectionOpenOptions,
   SidebarContextMenuPayload,
 } from "./MachineSidebar.shared";
-import {
-  MACHINE_ASSET_MENU_DOMAIN,
-} from "./machineSidebarMenuModel";
+import { MACHINE_ASSET_MENU_DOMAIN } from "./machineSidebarMenuModel";
 import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
 import { MachineSidebarMachineRow } from "./MachineSidebarMachineRow";
 import {
@@ -42,12 +37,7 @@ import {
   isPinnedMachineGroup,
 } from "./MachineSidebar.primitives";
 
-export {
-  MachineDragPreviewCard,
-  ContextMenuItem,
-  clampContextMenuPosition,
-  isPinnedMachineGroup,
-} from "./MachineSidebar.primitives";
+export { MachineDragPreviewCard, ContextMenuItem, clampContextMenuPosition, isPinnedMachineGroup } from "./MachineSidebar.primitives";
 
 const collapsedPopoverSurfaceClassName =
   "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed bottom-[84px] left-[72px] top-[56px] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-[var(--radius-panel)] border text-[var(--text-primary)]";

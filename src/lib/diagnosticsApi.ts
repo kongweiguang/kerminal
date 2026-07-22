@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export interface DiagnosticBundle {
@@ -113,7 +115,7 @@ interface RuntimeSystemHealth {
   gpus: RuntimeGpuHealth[];
 }
 
-export interface RuntimeGpuHealth {
+interface RuntimeGpuHealth {
   name: string;
   vendor?: string | null;
   driverVersion?: string | null;

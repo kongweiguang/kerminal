@@ -1,13 +1,12 @@
+// @author kongweiguang
+
 import { useCallback, useRef, useState } from "react";
 import type { ConnectionOpenOptions } from "../features/machine-sidebar/MachineSidebar";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import { findMachine, localMachineIdForProfile } from "../features/workspace/workspaceStore";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import { externalSshLaunchIdFromMachineId } from "../features/external-launch/externalSshLaunchModel";
-import {
-  buildUserFacingError,
-  type UserFacingMessage,
-} from "../lib/userFacingMessage";
+import { buildUserFacingError, type UserFacingMessage } from "../lib/userFacingMessage";
 import {
   duplicateMachineName,
   hasLocalProfileOverrides,
@@ -20,29 +19,14 @@ import {
   remoteHostUpdateRequestFromMachine,
   type PendingDelete,
 } from "./KerminalShell.helpers";
-import type {
-  ConnectionDialogOptions,
-  UseKerminalShellRemoteActionsParams,
-} from "./useKerminalShellRemoteActions.commands";
+import type { ConnectionDialogOptions, UseKerminalShellRemoteActionsParams } from "./useKerminalShellRemoteActions.commands";
 import {
-  closeExternalSshLaunch,
-  createProfile,
-  createRemoteHost,
-  createRemoteHostGroup,
-  deleteRemoteHost,
-  deleteRemoteHostGroup,
-  listProfiles,
-  listRemoteHostTree,
-  openSavedRdpConnection,
-  UNGROUPED_REMOTE_HOST_GROUP_ID,
-  updateProfile,
-  updateRemoteHost,
-  updateRemoteHostGroup,
-  type RemoteHost,
-  type RemoteHostCreateRequest,
-  type RemoteHostGroup,
-  type RemoteHostGroupUpdateRequest,
-  type TerminalProfile,
+  closeExternalSshLaunch, createProfile, createRemoteHost, createRemoteHostGroup,
+  deleteRemoteHost, deleteRemoteHostGroup, listProfiles, listRemoteHostTree,
+  openSavedRdpConnection, UNGROUPED_REMOTE_HOST_GROUP_ID, updateProfile,
+  updateRemoteHost, updateRemoteHostGroup, type RemoteHost,
+  type RemoteHostCreateRequest, type RemoteHostGroup,
+  type RemoteHostGroupUpdateRequest, type TerminalProfile,
 } from "./useKerminalShellRemoteActions.transport";
 
 const DEFAULT_REMOTE_GROUP_NAME = "默认分组";

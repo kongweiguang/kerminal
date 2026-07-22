@@ -120,20 +120,14 @@ vi.mock("../../../../src/features/sftp/RemoteWorkspaceEditor", () => ({
 }));
 
 vi.mock("../../../../src/lib/sftpApi", () => ({
-  cancelSftpTransfer: (...args: unknown[]) =>
-    sftpApiMocks.cancelSftpTransfer(...args),
+  cancelSftpTransfer: (...args: unknown[]) => sftpApiMocks.cancelSftpTransfer(...args),
   chmodSftpPath: (...args: unknown[]) => sftpApiMocks.chmodSftpPath(...args),
-  classifySftpLocalPaths: (...args: unknown[]) =>
-    sftpApiMocks.classifySftpLocalPaths(...args),
-  clearCompletedSftpTransfers: (...args: unknown[]) =>
-    sftpApiMocks.clearCompletedSftpTransfers(...args),
-  createSftpDirectory: (...args: unknown[]) =>
-    sftpApiMocks.createSftpDirectory(...args),
+  classifySftpLocalPaths: (...args: unknown[]) => sftpApiMocks.classifySftpLocalPaths(...args),
+  clearCompletedSftpTransfers: (...args: unknown[]) => sftpApiMocks.clearCompletedSftpTransfers(...args),
+  createSftpDirectory: (...args: unknown[]) => sftpApiMocks.createSftpDirectory(...args),
   deleteSftpPath: (...args: unknown[]) => sftpApiMocks.deleteSftpPath(...args),
-  downloadSftpDirectory: (...args: unknown[]) =>
-    sftpApiMocks.downloadSftpDirectory(...args),
-  downloadSftpFile: (...args: unknown[]) =>
-    sftpApiMocks.downloadSftpFile(...args),
+  downloadSftpDirectory: (...args: unknown[]) => sftpApiMocks.downloadSftpDirectory(...args),
+  downloadSftpFile: (...args: unknown[]) => sftpApiMocks.downloadSftpFile(...args),
   enqueueSftpArchiveDownload: (...args: unknown[]) =>
     sftpApiMocks.enqueueSftpArchiveDownload(...args),
   enqueueSftpArchiveUpload: (...args: unknown[]) =>
@@ -144,14 +138,11 @@ vi.mock("../../../../src/lib/sftpApi", () => ({
     sftpApiMocks.enqueueSftpRemoteCopy(...args),
   enqueueSftpTransfer: (...args: unknown[]) =>
     sftpApiMocks.enqueueSftpTransfer(...args),
-  listSftpDirectory: (...args: unknown[]) =>
-    sftpApiMocks.listSftpDirectory(...args),
-  listSftpTransfers: (...args: unknown[]) =>
-    sftpApiMocks.listSftpTransfers(...args),
+  listSftpDirectory: (...args: unknown[]) => sftpApiMocks.listSftpDirectory(...args),
+  listSftpTransfers: (...args: unknown[]) => sftpApiMocks.listSftpTransfers(...args),
   previewSftpFile: (...args: unknown[]) =>
     sftpApiMocks.previewSftpFile(...args),
-  readSftpLocalFileClipboard: (...args: unknown[]) =>
-    sftpApiMocks.readSftpLocalFileClipboard(...args),
+  readSftpLocalFileClipboard: (...args: unknown[]) => sftpApiMocks.readSftpLocalFileClipboard(...args),
   renameSftpPath: (...args: unknown[]) => sftpApiMocks.renameSftpPath(...args),
   statSftpPath: (...args: unknown[]) => sftpApiMocks.statSftpPath(...args),
   trustSftpHostKey: (...args: unknown[]) =>

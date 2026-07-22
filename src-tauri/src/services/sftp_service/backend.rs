@@ -4,8 +4,10 @@
 
 mod browser_transport;
 mod contract;
+mod directory_cleanup;
 mod endpoint;
 mod errors;
+mod external_logging;
 mod settings;
 mod shell_helpers;
 
@@ -21,7 +23,7 @@ use std::{
 use async_trait::async_trait;
 use russh_sftp::{
     client::{Config as NativeSftpConfig, SftpSession},
-    protocol::{FileAttributes, FileType},
+    protocol::FileAttributes,
 };
 use tokio::{
     io::AsyncReadExt,
@@ -42,6 +44,8 @@ use browser_transport::{
     is_recoverable_browser_sftp_error, list_directory_with_browser_transport,
     SftpBrowserTransportManager,
 };
+use directory_cleanup::remove_remote_directory_with_sftp;
+use external_logging::log_external_sftp_event;
 
 use self::{
     errors::native_ssh_error,
@@ -632,36 +636,6 @@ impl SftpBackend for RusshSftpBackend {
     }
 }
 
-/// SFTP-only 主机不能依赖远端 shell；后序遍历保证目录在子项删除后再移除。
-async fn remove_remote_directory_with_sftp(sftp: &SftpSession, root: &str) -> AppResult<()> {
-    let mut stack = vec![(root.to_owned(), false)];
-    while let Some((path, visited)) = stack.pop() {
-        if visited {
-            sftp.remove_dir(path).await.map_err(native_sftp_error)?;
-            continue;
-        }
-
-        let entries = sftp
-            .read_dir(path.clone())
-            .await
-            .map_err(native_sftp_error)?;
-        stack.push((path, true));
-        for entry in entries {
-            let name = entry.file_name();
-            if name == "." || name == ".." {
-                continue;
-            }
-            let child = entry.path();
-            if entry.file_type() == FileType::Dir {
-                stack.push((child, false));
-            } else {
-                sftp.remove_file(child).await.map_err(native_sftp_error)?;
-            }
-        }
-    }
-    Ok(())
-}
-
 fn external_directory_list_cache_key(endpoint: &SftpEndpoint, path: &str) -> String {
     format!("{}\0{}", endpoint.host.id, path)
 }
@@ -679,33 +653,6 @@ async fn with_sftp_timeout<T>(
             "SFTP {operation} 超时（{seconds} 秒）: {}",
             sftp_host_label(&endpoint.host)
         ))),
-    }
-}
-
-fn log_external_sftp_event(
-    event: &'static str,
-    endpoint: &SftpEndpoint,
-    path: Option<&str>,
-    error: Option<&str>,
-) {
-    if !is_external_runtime_target_id(&endpoint.host.id) {
-        return;
-    }
-    match error {
-        Some(_) => tauri_plugin_log::log::warn!(
-            target: "sftp.external",
-            "event={} target={} path_present={} failed=true",
-            event,
-            sftp_host_label(&endpoint.host),
-            path.is_some_and(|value| !value.trim().is_empty())
-        ),
-        None => tauri_plugin_log::log::info!(
-            target: "sftp.external",
-            "event={} target={} path_present={}",
-            event,
-            sftp_host_label(&endpoint.host),
-            path.is_some_and(|value| !value.trim().is_empty())
-        ),
     }
 }
 

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 #[tokio::test]
@@ -435,12 +437,13 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
     fs::create_dir_all(paths.root.join("hosts")).expect("hosts dir");
     fs::write(
         paths.root.join("hosts/agent-added.toml"),
-        r#"schema_version = 1
+        r#"schema_version = 2
 id = "agent-added"
 name = "Agent Added"
 host = "agent-added.internal"
 port = 22
 username = "deploy"
+protocol = "ssh"
 auth_type = "agent"
 tags = []
 sort_order = 99
@@ -490,12 +493,13 @@ updated_at = "1"
     );
     fs::write(
         paths.root.join("hosts/agent-added.toml"),
-        r#"schema_version = 1
+        r#"schema_version = 2
 id = "agent-added"
 name = "Agent Added"
 host = "agent-added.internal"
 port = 22
 username = "deploy"
+protocol = "ssh"
 auth_type = "agent"
 production = "yes"
 tags = []
@@ -537,7 +541,7 @@ updated_at = "1"
                     .is_some_and(|message| message.contains("production must be a boolean"))
                 && diagnostic.pointer("/path").and_then(Value::as_str)
                     == Some("hosts/agent-added.toml")
-                && diagnostic.pointer("/line").and_then(Value::as_u64) == Some(8)
+                && diagnostic.pointer("/line").and_then(Value::as_u64) == Some(9)
                 && diagnostic.pointer("/key").and_then(Value::as_str) == Some("production")
                 && diagnostic
                     .pointer("/recovery")
