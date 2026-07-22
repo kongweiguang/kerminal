@@ -12,7 +12,7 @@ use crate::{
         snippet_service::SnippetService, workflow_service::WorkflowService,
         workspace_sync_service::WorkspaceSyncService,
     },
-    storage::config_file_store::ConfigFileStore,
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 use super::StartupRecoverySnapshot;
@@ -38,6 +38,22 @@ impl ConfigurationCapabilities {
         workspace_sync.ensure_bootstrap()?;
 
         let mut startup_recovery = StartupRecoverySnapshot::default();
+        match config_files.migrate_remote_host_schema_v1() {
+            Ok(_) => {}
+            Err(FileStoreError::TomlParse(_) | FileStoreError::InvalidPath(_)) => {
+                startup_recovery.record_invalid(
+                    ConfigDomain::Hosts,
+                    "hosts/*.toml",
+                    "旧主机配置无法安全升级，原文件已保留且未部分写入。",
+                );
+            }
+            Err(FileStoreError::Io(error)) => return Err(error.into()),
+            Err(_) => {
+                return Err(AppError::InvalidInput(
+                    "主机配置升级事务失败，原文件未被覆盖。".to_owned(),
+                ))
+            }
+        }
         let settings = SettingsService::new(config_files.clone());
         let persisted_settings = match settings
             .ensure_seed_settings()

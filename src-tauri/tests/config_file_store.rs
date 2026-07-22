@@ -336,7 +336,7 @@ updated_at = "1"
     assert!(diagnostics[0]
         .recovery
         .as_deref()
-        .is_some_and(|recovery| recovery.contains("no longer supported")
+        .is_some_and(|recovery| recovery.contains("one-time startup upgrader")
             && recovery.contains("explicit protocol")));
 }
 

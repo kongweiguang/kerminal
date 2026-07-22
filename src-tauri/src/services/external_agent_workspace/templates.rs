@@ -336,7 +336,7 @@ Fields:
 Rules:
 
 - `production` is required for Agent-authored host files. Use `true` for production or safety-sensitive hosts and `false` for ordinary dev/test/local targets. Do not omit it.
-- Use schema v2 for every host and always provide the explicit protocol. Host schema v1 is rejected and is not migrated automatically.
+- Use schema v2 for every host and always provide the explicit protocol. The normal loader rejects schema v1. During an app upgrade, Kerminal may consume a valid v1 host once in the startup upgrader, create a recoverable transaction backup, and atomically rewrite it as v2; agents must never create or rewrite v1 files.
 - Do not put `credential_secret`, `password`, `inline_private_key`, private key bodies, key passphrases, API keys, or tokens here.
 - Passwords, inline keys, key passphrases, and jump-host secrets are encrypted in `secrets/vault.toml`; ordinary host files only keep `secret_ref` / `key_passphrase_ref`.
 
@@ -353,7 +353,7 @@ Host creation checklist:
 Common host failures:
 
 - File exists but app does not show it: check `id` versus filename, TOML parse errors, missing required fields, and validator diagnostics.
-- Host is rejected: confirm `schema_version = 2` and a supported explicit `protocol`. Host schema v1 and missing/unknown protocols intentionally fail closed. Kerminal does not rewrite old files automatically; export them with a version that still reads v1 or manually rewrite them after making a backup.
+- Host is rejected: confirm `schema_version = 2` and a supported explicit `protocol`. Missing/unknown protocols and unsafe or malformed legacy files intentionally fail closed. A valid schema v1 host is accepted only by the one-time startup upgrader; migration failure preserves the original batch and requires fixing the reported file before restart.
 - Host appears in wrong group: check `group_id` references an id in `hosts/groups.toml`; `__ungrouped__` must not be written.
 - Login still asks for credentials: ordinary host TOML intentionally does not store password, inline key, or key passphrase plaintext. Credential work requires explicit user instruction and the UI/vault save flow so valid `secret_ref` / `key_passphrase_ref` references exist.
 - Validator passes manually but app behaves differently: rerun MCP `kerminal.config.validate` because it uses Kerminal runtime loaders.

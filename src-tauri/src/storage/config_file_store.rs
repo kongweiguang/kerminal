@@ -11,12 +11,14 @@ use std::{
 
 mod documents;
 mod profiles;
+mod remote_host_migration;
 mod remote_host_repository;
 mod settings;
 mod snippet_document;
 mod snippets;
 mod workflows;
 
+pub use remote_host_migration::RemoteHostSchemaMigrationReport;
 pub use snippet_document::{
     SnippetDocumentList, SnippetDocumentPatch, SnippetDocumentSnapshot, SnippetDocumentWarning,
 };
