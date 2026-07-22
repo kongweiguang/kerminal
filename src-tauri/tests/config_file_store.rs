@@ -282,7 +282,8 @@ fn remote_host_toml_defaults_missing_production_to_false() {
     fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
     fs::write(
         temp.path().join("hosts/host-missing-production.toml"),
-        r#"schema_version = 1
+        r#"schema_version = 2
+protocol = "ssh"
 id = "host-missing-production"
 name = "AI added host"
 host = "host.internal"
@@ -306,106 +307,124 @@ updated_at = "1"
 }
 
 #[test]
-fn remote_host_toml_v1_infers_legacy_protocol_tags() {
-    for (tag, expected) in [
-        ("rdp", RemoteHostProtocol::Rdp),
-        ("telnet", RemoteHostProtocol::Telnet),
-        ("serial", RemoteHostProtocol::Serial),
-    ] {
-        let temp = tempdir().expect("temp dir");
-        let store = ConfigFileStore::new(temp.path());
-        fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
-        fs::write(
-            temp.path().join("hosts/legacy.toml"),
-            format!(
-                r#"schema_version = 1
+fn remote_host_toml_rejects_schema_v1_without_tag_inference() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
+    fs::write(
+        temp.path().join("hosts/legacy.toml"),
+        r#"schema_version = 1
 id = "legacy"
 name = "legacy"
 host = "legacy.internal"
 port = 22
 username = ""
 auth_type = "agent"
-tags = ["{tag}"]
+tags = ["rdp"]
 sort_order = 10
 created_at = "1"
 updated_at = "1"
 "#,
-            ),
-        )
-        .expect("write legacy host");
+    )
+    .expect("write legacy host");
 
-        let host = store
-            .remote_host_by_id("legacy")
-            .expect("read legacy host")
-            .expect("legacy host exists");
-        assert_eq!(host.protocol, expected);
+    let error = store
+        .remote_host_by_id("legacy")
+        .expect_err("schema v1 must fail closed");
+    let diagnostics = parse_diagnostics(&error);
+    assert!(diagnostics[0].message.contains("expected 2"));
+    assert!(diagnostics[0]
+        .recovery
+        .as_deref()
+        .is_some_and(|recovery| recovery.contains("no longer supported")
+            && recovery.contains("explicit protocol")));
+}
+
+#[test]
+fn remote_host_toml_v2_roundtrips_every_explicit_protocol_without_secrets() {
+    for (index, protocol) in [
+        RemoteHostProtocol::Ssh,
+        RemoteHostProtocol::Sftp,
+        RemoteHostProtocol::Rdp,
+        RemoteHostProtocol::Telnet,
+        RemoteHostProtocol::Serial,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempdir().expect("temp dir");
+        let store = ConfigFileStore::new(temp.path());
+        let host = RemoteHost {
+            id: "files-only".to_owned(),
+            group_id: None,
+            name: "files only".to_owned(),
+            host: "files.internal".to_owned(),
+            port: 22,
+            username: "upload".to_owned(),
+            protocol,
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            secret_ref: None,
+            key_passphrase_ref: None,
+            key_passphrase_secret: None,
+            credential_secret: None,
+            credential_status: RemoteHostCredentialStatus::Agent,
+            tags: vec!["files".to_owned()],
+            production: false,
+            ssh_options: SshOptions::default(),
+            sort_order: 10,
+            created_at: "1".to_owned(),
+            updated_at: "1".to_owned(),
+        };
+
+        store
+            .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
+            .expect("write host");
+        let source = fs::read_to_string(temp.path().join("hosts/files-only.toml"))
+            .expect("read host source");
+        let loaded = store
+            .remote_host_by_id("files-only")
+            .expect("read host")
+            .expect("host exists");
+
+        assert!(source.contains("schema_version = 2"), "case {index}");
+        assert!(source.contains(&format!(
+            "protocol = \"{}\"",
+            match protocol {
+                RemoteHostProtocol::Ssh => "ssh",
+                RemoteHostProtocol::Sftp => "sftp",
+                RemoteHostProtocol::Rdp => "rdp",
+                RemoteHostProtocol::Telnet => "telnet",
+                RemoteHostProtocol::Serial => "serial",
+            }
+        )));
+        assert!(!source.contains("credential_secret"));
+        assert_eq!(loaded.protocol, protocol);
     }
 }
 
 #[test]
-fn remote_host_toml_v2_roundtrips_sftp_protocol_without_secrets() {
-    let temp = tempdir().expect("temp dir");
-    let store = ConfigFileStore::new(temp.path());
-    let host = RemoteHost {
-        id: "files-only".to_owned(),
-        group_id: None,
-        name: "files only".to_owned(),
-        host: "files.internal".to_owned(),
-        port: 22,
-        username: "upload".to_owned(),
-        protocol: RemoteHostProtocol::Sftp,
-        auth_type: RemoteHostAuthType::Agent,
-        credential_ref: None,
-        secret_ref: None,
-        key_passphrase_ref: None,
-        key_passphrase_secret: None,
-        credential_secret: None,
-        credential_status: RemoteHostCredentialStatus::Agent,
-        tags: vec!["files".to_owned()],
-        production: false,
-        ssh_options: SshOptions::default(),
-        sort_order: 10,
-        created_at: "1".to_owned(),
-        updated_at: "1".to_owned(),
-    };
+fn remote_host_toml_v2_requires_valid_explicit_protocol() {
+    for protocol_line in ["", "protocol = \"ftp\"\n"] {
+        let temp = tempdir().expect("temp dir");
+        let store = ConfigFileStore::new(temp.path());
+        fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
+        fs::write(
+            temp.path().join("hosts/invalid-v2.toml"),
+            format!(
+                "schema_version = 2\n{protocol_line}id = \"invalid-v2\"\nname = \"invalid\"\nhost = \"invalid.internal\"\nport = 22\nusername = \"upload\"\nauth_type = \"agent\"\nsort_order = 10\ncreated_at = \"1\"\nupdated_at = \"1\"\n"
+            ),
+        )
+        .expect("write invalid v2 host");
 
-    store
-        .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
-        .expect("write SFTP host");
-    let source = fs::read_to_string(temp.path().join("hosts/files-only.toml"))
-        .expect("read SFTP host source");
-    let loaded = store
-        .remote_host_by_id("files-only")
-        .expect("read SFTP host")
-        .expect("SFTP host exists");
-
-    assert!(source.contains("schema_version = 2"));
-    assert!(source.contains("protocol = \"sftp\""));
-    assert!(!source.contains("credential_secret"));
-    assert_eq!(loaded.protocol, RemoteHostProtocol::Sftp);
-}
-
-#[test]
-fn remote_host_toml_v2_requires_explicit_protocol() {
-    let temp = tempdir().expect("temp dir");
-    let store = ConfigFileStore::new(temp.path());
-    fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
-    fs::write(
-        temp.path().join("hosts/invalid-v2.toml"),
-        "schema_version = 2\nid = \"invalid-v2\"\nname = \"invalid\"\nhost = \"invalid.internal\"\nport = 22\nusername = \"upload\"\nauth_type = \"agent\"\nsort_order = 10\ncreated_at = \"1\"\nupdated_at = \"1\"\n",
-    )
-    .expect("write invalid v2 host");
-
-    let error = store
-        .remote_host_by_id("invalid-v2")
-        .expect_err("missing v2 protocol must fail");
-    assert!(
-        parse_diagnostics(&error)[0]
-            .message
-            .contains("explicit protocol"),
-        "unexpected validation diagnostics: {:?}",
-        parse_diagnostics(&error)
-    );
+        let error = store
+            .remote_host_by_id("invalid-v2")
+            .expect_err("missing or invalid protocol must fail");
+        assert_eq!(
+            parse_diagnostics(&error)[0].path.as_deref(),
+            Some(Path::new("hosts/invalid-v2.toml"))
+        );
+    }
 }
 
 #[test]
@@ -415,7 +434,7 @@ fn remote_host_toml_rejects_secret_fields_in_public_host_file() {
     fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
     fs::write(
         temp.path().join("hosts/host-3.toml"),
-        "schema_version = 1\nid = \"host-3\"\ncredential_secret = \"leak\"\n",
+        "schema_version = 2\nprotocol = \"ssh\"\nid = \"host-3\"\ncredential_secret = \"leak\"\n",
     )
     .expect("write invalid host");
 
@@ -428,7 +447,7 @@ fn remote_host_toml_rejects_secret_fields_in_public_host_file() {
         diagnostics[0].path.as_deref(),
         Some(Path::new("hosts/host-3.toml"))
     );
-    assert_eq!(diagnostics[0].line, 3);
+    assert_eq!(diagnostics[0].line, 4);
     assert_eq!(diagnostics[0].column, 1);
     assert_eq!(diagnostics[0].key.as_deref(), Some("credential_secret"));
     assert!(diagnostics[0]

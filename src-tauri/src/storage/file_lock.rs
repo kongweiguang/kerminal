@@ -6,7 +6,8 @@ use std::{
     fs::{self},
     io::{self, ErrorKind},
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard, OnceLock},
+    sync::{Condvar, Mutex, OnceLock},
+    thread::{self, ThreadId},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -26,14 +27,64 @@ const LOCK_FILE_NAME: &str = ".storage.lock";
 #[derive(Debug)]
 #[must_use = "锁守卫必须存活到受保护操作结束"]
 pub struct FileStoreLock {
-    _process_guard: MutexGuard<'static, ()>,
+    _process_guard: ProcessFileStorePermit,
     path: PathBuf,
     nonce: String,
 }
 
 // 配置写入是低频事务；进程内先串行化，再用磁盘锁协调其它 Kerminal 进程。
 // 这避免 Windows 文件过滤器在同进程高并发 hard-link/ReplaceFileW 下产生假性拒绝。
-static PROCESS_FILE_STORE_LOCK: Mutex<()> = Mutex::new(());
+static PROCESS_FILE_STORE_LOCK: OnceLock<ProcessFileStoreLock> = OnceLock::new();
+
+#[derive(Debug)]
+struct ProcessFileStoreLock {
+    owner: Mutex<Option<ThreadId>>,
+    released: Condvar,
+}
+
+#[derive(Debug)]
+struct ProcessFileStorePermit;
+
+impl ProcessFileStoreLock {
+    fn acquire(&self, lock_path: &Path) -> FileStoreResult<ProcessFileStorePermit> {
+        let current_thread = thread::current().id();
+        let mut owner = self
+            .owner
+            .lock()
+            .map_err(|_| io::Error::other("process file-store lock is poisoned"))?;
+        loop {
+            match *owner {
+                None => {
+                    *owner = Some(current_thread);
+                    return Ok(ProcessFileStorePermit);
+                }
+                Some(active_thread) if active_thread == current_thread => {
+                    return Err(FileStoreError::Locked(lock_path.to_path_buf()));
+                }
+                Some(_) => {
+                    owner = self
+                        .released
+                        .wait(owner)
+                        .map_err(|_| io::Error::other("process file-store lock is poisoned"))?;
+                }
+            }
+        }
+    }
+
+    fn release(&self) {
+        let Ok(mut owner) = self.owner.lock() else {
+            return;
+        };
+        *owner = None;
+        self.released.notify_one();
+    }
+}
+
+impl Drop for ProcessFileStorePermit {
+    fn drop(&mut self) {
+        process_file_store_lock().release();
+    }
+}
 
 impl Drop for FileStoreLock {
     fn drop(&mut self) {
@@ -66,11 +117,9 @@ struct LockMetadata {
 
 /// 获取锁；只有 owner PID 已消失或已被另一个启动时间的进程复用时才接管。
 pub(crate) fn acquire(root: &Path) -> FileStoreResult<FileStoreLock> {
-    let process_guard = PROCESS_FILE_STORE_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("process file-store lock is poisoned"))?;
     fs::create_dir_all(root)?;
     let lock_path = root.join(LOCK_FILE_NAME);
+    let process_guard = process_file_store_lock().acquire(&lock_path)?;
     let metadata = current_lock_metadata()?;
 
     for _ in 0..3 {
@@ -94,6 +143,13 @@ pub(crate) fn acquire(root: &Path) -> FileStoreResult<FileStoreLock> {
         }
     }
     Err(FileStoreError::Locked(lock_path))
+}
+
+fn process_file_store_lock() -> &'static ProcessFileStoreLock {
+    PROCESS_FILE_STORE_LOCK.get_or_init(|| ProcessFileStoreLock {
+        owner: Mutex::new(None),
+        released: Condvar::new(),
+    })
 }
 
 fn create_lock_file(root: &Path, lock_path: &Path, metadata: &LockMetadata) -> io::Result<()> {

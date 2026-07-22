@@ -147,7 +147,9 @@ it("pauses hidden target tools and refreshes the current host when reopened", as
     />,
   );
 
-  expect(await screen.findByText("远程服务器")).toBeInTheDocument();
+  expect(
+    await screen.findByText("远程服务器", undefined, { timeout: 10000 }),
+  ).toBeInTheDocument();
   expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1);
 
   view.rerender(

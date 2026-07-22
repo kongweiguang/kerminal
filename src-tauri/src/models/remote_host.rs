@@ -22,19 +22,6 @@ pub enum RemoteHostProtocol {
 }
 
 impl RemoteHostProtocol {
-    /// 只读迁移旧 host 文件时从保留标签推导协议；新文件始终显式保存协议。
-    pub fn from_legacy_tags(tags: &[String]) -> Self {
-        if has_protocol_tag(tags, "serial") {
-            Self::Serial
-        } else if has_protocol_tag(tags, "telnet") {
-            Self::Telnet
-        } else if has_protocol_tag(tags, "rdp") {
-            Self::Rdp
-        } else {
-            Self::Ssh
-        }
-    }
-
     /// 是否允许 SFTP 文件能力。
     pub fn supports_sftp(self) -> bool {
         matches!(self, Self::Ssh | Self::Sftp)
@@ -44,11 +31,6 @@ impl RemoteHostProtocol {
     pub fn supports_shell(self) -> bool {
         matches!(self, Self::Ssh)
     }
-}
-
-fn has_protocol_tag(tags: &[String], expected: &str) -> bool {
-    tags.iter()
-        .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
 }
 
 /// SSH 认证方式。
@@ -419,7 +401,7 @@ pub struct RemoteHost {
     pub port: u16,
     /// SSH 用户名。
     pub username: String,
-    /// 主机协议；当前 host 文件始终显式保存，旧文件仅在读取迁移时从标签推导。
+    /// 显式主机协议；保存的 host schema 不允许从标签推断。
     pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
@@ -573,8 +555,7 @@ pub struct RemoteHostCreateRequest {
     pub port: u16,
     /// SSH 用户名。
     pub username: String,
-    /// 主机协议；旧 IPC 调用缺省为 SSH。
-    #[serde(default)]
+    /// 主机协议；调用方必须显式提供。
     pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
@@ -612,7 +593,6 @@ pub struct RemoteHostUpdateRequest {
     /// SSH 用户名。
     pub username: String,
     /// 主机协议；编辑保存时不得改变已有协议。
-    #[serde(default)]
     pub protocol: RemoteHostProtocol,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
