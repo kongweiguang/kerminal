@@ -239,8 +239,11 @@ export function ToolPanel({
       aria-expanded={drawerOpen}
       className="kerminal-material-nav flex h-full w-full min-w-0 border-l"
     >
-      {drawerOpen ? (
-        <div className="relative min-w-0 flex-1 overflow-hidden">
+      <div
+        aria-hidden={!drawerOpen}
+        className="relative min-w-0 flex-1 overflow-hidden"
+        hidden={!drawerOpen}
+      >
           {renderedTools.map((tool) => {
             const toolId = tool.id;
             const selected = toolId === contentTool;
@@ -414,8 +417,7 @@ export function ToolPanel({
               </div>
             );
           })}
-        </div>
-      ) : null}
+      </div>
       <nav
         aria-label="工具栏"
         className={cn(

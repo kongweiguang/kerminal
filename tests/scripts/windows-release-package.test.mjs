@@ -48,6 +48,23 @@ test("没有 7-Zip 时可校验包含主程序的 NSIS 脚本", (context) => {
   assert.match(result.output, /"inspectionMode": "generated-nsis-script"/);
 });
 
+test("没有 7-Zip 时可校验 Tauri 的主程序路径宏", (context) => {
+  const fixture = createNsisFixture(
+    context,
+    '!define MAINBINARYSRCPATH "C:\\\\build\\\\kerminal.exe"\nFile "${MAINBINARYSRCPATH}"\n',
+  );
+  const result = run([
+    "--bundle-dir",
+    fixture.directory,
+    "--seven-zip",
+    path.join(fixture.directory, "missing-7z"),
+    "--generated-nsis-script",
+    fixture.script,
+  ]);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /"inspectionMode": "generated-nsis-script"/);
+});
+
 test("发布门禁要求真实 archive inspection", (context) => {
   const fixture = createNsisFixture(context);
   const result = run([
@@ -63,11 +80,14 @@ test("发布门禁要求真实 archive inspection", (context) => {
   assert.match(result.output, /7-Zip could not inspect/);
 });
 
-function createNsisFixture(context) {
+function createNsisFixture(
+  context,
+  source = 'File /a "/oname=kerminal.exe" "kerminal.exe"\n',
+) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kerminal-nsis-fixture-"));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const script = path.join(directory, "installer.nsi");
-  fs.writeFileSync(script, 'File /a "/oname=kerminal.exe" "kerminal.exe"\n');
+  fs.writeFileSync(script, source);
   const installer = path.join(directory, "kerminal_0.0.0_x64-setup.exe");
   const contents = Buffer.alloc(1024 * 1024 + 1);
   contents.write("MZ", 0, "ascii");

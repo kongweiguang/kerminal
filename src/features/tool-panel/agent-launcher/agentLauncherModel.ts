@@ -1,10 +1,13 @@
 // @author kongweiguang
-import type {
-  ExternalAgentId,
-  ExternalAgentLaunchSpec,
-  ExternalAgentStatus,
-  ExternalAgentWorkspaceStatus,
+import {
+  agentSessionRecordAgentId,
+  type AgentSessionRecord,
+  type ExternalAgentId,
+  type ExternalAgentLaunchSpec,
+  type ExternalAgentStatus,
+  type ExternalAgentWorkspaceStatus,
 } from "../../../lib/agentLauncherApi";
+import { parseAgentCommandLine } from "../../../lib/agentCommandLine";
 const EXTERNAL_AGENT_IDS: ExternalAgentId[] = ["codex", "claude", "custom"];
 type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
@@ -187,6 +190,21 @@ export function agentPermissionSkipFlag(
   return undefined;
 }
 
+/** 从持久化的实际启动参数恢复权限模式，旧会话缺少该参数时安全降级为普通模式。 */
+export function agentSessionRecordPermissionMode(
+  record: AgentSessionRecord,
+): AgentLaunchPermissionMode {
+  const agentId = agentSessionRecordAgentId(record);
+  const flag = agentId ? agentPermissionSkipFlag(agentId) : undefined;
+  if (!flag) {
+    return "default";
+  }
+
+  return agentSessionLaunchContainsArg(record.session.launch, flag)
+    ? "skipPermissions"
+    : "default";
+}
+
 export function applyAgentLaunchPermissionMode(
   spec: ExternalAgentLaunchSpec,
   permissionMode: AgentLaunchPermissionMode,
@@ -330,11 +348,33 @@ function launchSpecContainsArg(
   if ((spec.args ?? []).some((arg) => arg === flag)) {
     return true;
   }
-  return Boolean(
-    agentLaunchWrappedCommand(spec.shell, spec.args ?? [])?.command.includes(
-      flag,
-    ),
+  const wrappedCommand = agentLaunchWrappedCommand(spec.shell, spec.args ?? []);
+  return wrappedCommand
+    ? commandLineContainsExactArg(wrappedCommand.command, flag)
+    : false;
+}
+
+function agentSessionLaunchContainsArg(
+  launch: AgentSessionRecord["session"]["launch"],
+  flag: string,
+): boolean {
+  return [
+    launch.commandLabel,
+    launch.command_label,
+    ...launch.args,
+  ].some(
+    (argument) =>
+      argument === flag ||
+      (argument ? commandLineContainsExactArg(argument, flag) : false),
   );
+}
+
+function commandLineContainsExactArg(command: string, flag: string): boolean {
+  try {
+    return parseAgentCommandLine(command).args.includes(flag);
+  } catch {
+    return false;
+  }
 }
 
 interface AgentLaunchWrappedCommand {

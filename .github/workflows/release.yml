@@ -213,12 +213,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 主机配置新增独立 SFTP 类型，可从机器侧栏创建、编辑和打开传输工作台，并继续使用加密 vault 引用凭据。
-            - 启动时会把旧版 host schema v1 一次性原子升级为 v2；未知格式、明文敏感字段或写入失败会安全中止且不留下半迁移状态。
-            - SFTP 上传会在服务端拒绝流水线写入时自动切换为可靠顺序写入，避免队列任务误失败或丢失后续进度。
-            - 已恢复 SSH/SFTP、端口转发、命令建议、工作区和 Agent 的运行能力，并在没有活动标签时清除过期服务器监控目标。
-            - Windows WebView2 终端释放会绕开已知的渲染器 dispose 内存溢出路径，同时保留正常会话清理。
-            - 主机配置中的临时明文密码不会被凭据解析器采用；无 vault 引用时保持安全的交互式提示边界。
+            - 右侧工具抽屉收起后，已经打开的 Agent 与其它工具保持挂载，避免终端会话被意外卸载。
+            - 已保存的 Codex/Claude 会话在继续时会保留已选权限模式；缺少精确权限标识的旧会话使用普通权限模式。
+            - Custom Agent 的原始启动命令不写入 session metadata，避免可能含敏感参数的命令被持久化。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

@@ -89,7 +89,14 @@ function verifyGeneratedNsisScript(installer) {
     fail("NSIS installer is older than the generated installer script");
   }
   const source = fs.readFileSync(script, "utf8");
-  if (!/File\s+\/a\s+[^\r\n]*kerminal\.exe/i.test(source)) {
+  const fileCommands = source.match(/^\s*File\s+[^\r\n]+$/gim) ?? [];
+  const directMainBinary = fileCommands.some((command) =>
+    /"(?:[^"\r\n]*[\\/])?kerminal\.exe"/i.test(command),
+  );
+  const tauriMainBinary =
+    /^\s*!define\s+MAINBINARYSRCPATH\s+"(?:[^"\r\n]*[\\/])?kerminal\.exe"\s*$/im.test(source) &&
+    fileCommands.some((command) => /"\$\{MAINBINARYSRCPATH\}"/i.test(command));
+  if (!directMainBinary && !tauriMainBinary) {
     fail("generated NSIS script does not package kerminal.exe");
   }
   return "generated-nsis-script";

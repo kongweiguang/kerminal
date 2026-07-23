@@ -13,6 +13,7 @@ import {
   getExternalAgentWorkspaceStatus,
   listAgentSessions,
   prepareExternalAgentWorkspace,
+  updateAgentSession,
   type AgentSessionRecord,
   type AgentSessionTargetRequest,
   type ExternalAgentId,
@@ -39,6 +40,8 @@ import {
   agentLaunchDisplayCommand,
   applyManagedAgentLaunchTrust,
   applyAgentLaunchPermissionMode,
+  agentSessionRecordPermissionMode,
+  agentSupportsPermissionSkip,
   buildAgentLauncherViewModel,
   type AgentLaunchPermissionMode,
 } from "./agent-launcher/agentLauncherModel";
@@ -46,7 +49,6 @@ import { initialAgentActions } from "./agent-launcher/agentLauncherInitialAction
 import {
   agentSessionScopeId,
   findRunningSessionForTabAgent,
-  restorableSessionsForTab,
   tabRemovedCleanupPlan,
   visibleAgentSessionForTab,
   type AgentSidebarSessionState,
@@ -65,8 +67,11 @@ import {
   type AgentLauncherActionState,
   type AgentLauncherLoadState,
   type AgentRestoreChoice,
-  type AgentSessionSelection,
 } from "./agent-launcher/AgentLauncherView";
+import {
+  findPersistedAgentSession,
+  type AgentSessionSelection,
+} from "./agent-launcher/agentSessionRestoreModel";
 import { createAgentPromptTransport } from "./agent-launcher/agentPromptTransport";
 import { useAgentSendPreview } from "./agent-launcher/useAgentSendPreview";
 import { useAgentSessionDelete } from "./agent-launcher/useAgentSessionDelete";
@@ -398,28 +403,6 @@ export function AgentLauncherToolContent({
     targetPane: requestedPane,
   });
 
-  const findPersistedAgentSession = (
-    tabId: string,
-    agentId: ExternalAgentId,
-    records: AgentSessionRecord[],
-  ) => {
-    for (const record of restorableSessionsForTab(records, tabId)) {
-      if (agentSessionRecordAgentId(record) !== agentId) {
-        continue;
-      }
-      try {
-        return {
-          agentSessionId: agentSessionRecordId(record),
-          tabId,
-          target: agentSessionRecordTarget(record),
-        } satisfies AgentSessionSelection;
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  };
-
   const resolvePersistedAgentSession = async (
     tabId: string,
     agentId: ExternalAgentId,
@@ -441,7 +424,7 @@ export function AgentLauncherToolContent({
     }
   };
 
-  const launchPreparedSpec = (
+  const launchPreparedSpec = async (
     spec: ExternalAgentLaunchSpec,
     options: {
       customCommand?: string;
@@ -459,11 +442,23 @@ export function AgentLauncherToolContent({
     if (!agentSessionId) {
       throw new Error("Agent session launch spec is missing agentSessionId.");
     }
+    const commandLabel =
+      agentLaunchDisplayCommand(launchSpec) || launchSpec.title;
+    if (agentSupportsPermissionSkip(launchSpec.agentId)) {
+      await updateAgentSession(agentSessionId, {
+        launch: {
+          args: launchSpec.args ?? [],
+          commandLabel,
+          cwd: launchSpec.cwd,
+          shell: launchSpec.shell,
+        },
+      });
+    }
     const nextSession: AgentTerminalSession = {
       agentSessionId,
       agentId: launchSpec.agentId,
       args: launchSpec.args ?? [],
-      commandLabel: agentLaunchDisplayCommand(launchSpec) || launchSpec.title,
+      commandLabel,
       cwd: launchSpec.cwd,
       env: launchSpec.env,
       permissionMode,
@@ -534,7 +529,7 @@ export function AgentLauncherToolContent({
         ? { resumeProviderSession: options.resumeProviderSession }
         : {}),
     });
-    launchPreparedSpec(launchSpec, {
+    await launchPreparedSpec(launchSpec, {
       customCommand: options.customCommand,
       permissionMode: options.permissionMode,
       tabId: agentSession.tabId,
@@ -603,7 +598,7 @@ export function AgentLauncherToolContent({
       if (persistedSession) {
         setRestoreChoice({
           agentId,
-          permissionMode,
+          permissionMode: persistedSession.permissionMode ?? permissionMode,
           session: persistedSession,
         });
         return;
@@ -643,7 +638,7 @@ export function AgentLauncherToolContent({
         agentSessionId: agentSession.agentSessionId,
         customCommand: trimmedCommand,
       });
-      launchPreparedSpec(launchSpec, {
+      await launchPreparedSpec(launchSpec, {
         customCommand: trimmedCommand,
         permissionMode: "default",
         tabId: agentSession.tabId,
@@ -703,7 +698,10 @@ export function AgentLauncherToolContent({
           tabId: activeAgentScopeId,
           target: agentSessionRecordTarget(record),
         },
-        { resumeProviderSession: true },
+        {
+          permissionMode: agentSessionRecordPermissionMode(record),
+          resumeProviderSession: true,
+        },
       );
       await workflowController.refresh();
     });

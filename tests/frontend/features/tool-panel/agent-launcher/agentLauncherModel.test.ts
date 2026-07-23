@@ -1,6 +1,7 @@
 // @author kongweiguang
 import { describe, expect, it } from "vitest";
 import type {
+  AgentSessionRecord,
   ExternalAgentLaunchSpec,
   ExternalAgentStatus,
   ExternalAgentWorkspaceStatus,
@@ -8,6 +9,7 @@ import type {
 import {
   agentLaunchDisplayCommand,
   agentPermissionSkipFlag,
+  agentSessionRecordPermissionMode,
   agentSupportsPermissionSkip,
   applyAgentLaunchPermissionMode,
   applyManagedAgentLaunchTrust,
@@ -265,6 +267,55 @@ describe("agentLauncherModel", () => {
       "--permission-mode",
       "default",
     ]);
+  });
+
+  it("restores skip permissions only from an exact persisted provider flag", () => {
+    const persistedCodex: AgentSessionRecord = {
+      session: {
+        agentId: "codex",
+        agentSessionId: "ags-codex",
+        launch: {
+          args: [
+            "-NoLogo",
+            "-Command",
+            "codex --dangerously-bypass-approvals-and-sandbox resume --last",
+          ],
+          commandLabel:
+            "codex --dangerously-bypass-approvals-and-sandbox resume --last",
+          cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
+          shell: "pwsh.exe",
+        },
+        title: "Codex",
+      },
+    };
+
+    expect(agentSessionRecordPermissionMode(persistedCodex)).toBe(
+      "skipPermissions",
+    );
+    expect(
+      agentSessionRecordPermissionMode({
+        session: {
+          ...persistedCodex.session,
+          launch: {
+            ...persistedCodex.session.launch,
+            args: [
+              "-Command",
+              "codex --dangerously-bypass-approvals-and-sandboxed resume --last",
+            ],
+            commandLabel:
+              "codex --dangerously-bypass-approvals-and-sandboxed resume --last",
+          },
+        },
+      }),
+    ).toBe("default");
+    expect(
+      agentSessionRecordPermissionMode({
+        session: {
+          ...persistedCodex.session,
+          agentId: "custom",
+        },
+      }),
+    ).toBe("default");
   });
 
   it("bypasses hook trust only for Kerminal-managed Codex launches", () => {

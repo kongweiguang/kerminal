@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { parseAgentCommandLine } from "./agentCommandLine";
 
@@ -112,6 +113,22 @@ export interface AgentSessionCreateRequest {
 
 export interface AgentSessionUpdateRequest {
   title?: string;
+  launch?: AgentSessionLaunch;
+}
+
+interface AgentSessionLaunch {
+  commandLabel: string;
+  shell: string;
+  args: string[];
+  cwd: string;
+}
+
+interface AgentSessionRecordLaunch {
+  commandLabel?: string;
+  command_label?: string;
+  shell: string;
+  args: string[];
+  cwd: string;
 }
 
 export interface AgentSessionRecord {
@@ -130,13 +147,7 @@ export interface AgentSessionRecord {
     updatedAt?: string;
     updated_at?: string;
     status?: AgentSessionRecordStatus;
-    launch: {
-      commandLabel?: string;
-      command_label?: string;
-      shell: string;
-      args: string[];
-      cwd: string;
-    };
+    launch: AgentSessionRecordLaunch;
     target?: AgentSessionTargetRecord | null;
   };
 }
@@ -190,8 +201,24 @@ export function updateAgentSession(
 
   return invoke<AgentSessionRecord>("agent_session_update", {
     agentSessionId,
-    request,
+    request: agentSessionUpdatePayload(request),
   });
+}
+
+/** Rust 的既有 AgentSessionLaunch 存储字段使用 snake_case；仅在 IPC 边界转换，保留前端模型的 camelCase。 */
+function agentSessionUpdatePayload(request: AgentSessionUpdateRequest) {
+  if (!request.launch) {
+    return request;
+  }
+
+  const { commandLabel, ...launch } = request.launch;
+  return {
+    ...request,
+    launch: {
+      command_label: commandLabel,
+      ...launch,
+    },
+  };
 }
 
 export function archiveAgentSession(

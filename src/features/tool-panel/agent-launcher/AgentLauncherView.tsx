@@ -23,6 +23,7 @@ import type {
   AgentActionViewModel,
   AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
+import type { AgentSessionSelection } from "./agentSessionRestoreModel";
 import { formatTargetChipLabel } from "./agentSessionTargetModel";
 import {
   AgentIconButton,
@@ -34,12 +35,6 @@ import { AgentConversationList } from "./AgentConversationList";
 export type AgentLauncherLoadState =
   "idle" | "loading" | "refreshing" | "error";
 export type AgentLauncherActionState = ExternalAgentId | null;
-
-export interface AgentSessionSelection {
-  agentSessionId: string;
-  tabId: string;
-  target?: AgentSessionTargetRequest;
-}
 
 export interface AgentRestoreChoice {
   agentId: ExternalAgentId;

@@ -446,6 +446,96 @@ describe("AgentLauncherToolContent", () => {
     expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
       "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust · C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
+    expect(apiMocks.updateAgentSession).toHaveBeenCalledWith("ags-codex", {
+      launch: {
+        args: [
+          "-NoLogo",
+          "-NoProfile",
+          "-NoExit",
+          "-Command",
+          "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
+        ],
+        commandLabel:
+          "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
+        cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
+        shell: "pwsh.exe",
+      },
+    });
+  });
+
+  it("does not persist a custom Agent's raw launch command", async () => {
+    const user = userEvent.setup();
+    renderAgentLauncher();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Open Custom Agent" }),
+    );
+    await user.type(
+      await screen.findByRole("textbox", { name: "Custom agent command" }),
+      "custom-agent --api-key test-secret",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Open custom agent command" }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "custom",
+        agentSessionId: "ags-custom",
+        customCommand: "custom-agent --api-key test-secret",
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toBeInTheDocument();
+    expect(apiMocks.updateAgentSession).not.toHaveBeenCalled();
+  });
+
+  it("continues a persisted yolo conversation with its saved permission mode", async () => {
+    const user = userEvent.setup();
+    apiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentId: "codex",
+            agentSessionId: "ags-yolo-codex",
+            launch: {
+              args: [
+                "-NoLogo",
+                "-NoProfile",
+                "-NoExit",
+                "-Command",
+                "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust resume --last",
+              ],
+              commandLabel:
+                "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust resume --last",
+              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-yolo-codex",
+              shell: "pwsh.exe",
+            },
+            status: "active",
+            target: { tabId: "tab-main" },
+            title: "Codex",
+          },
+        },
+      ],
+    });
+
+    renderAgentLauncher();
+
+    await user.click(
+      await screen.findByRole("button", { name: "继续对话" }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "codex",
+        agentSessionId: "ags-yolo-codex",
+        resumeProviderSession: true,
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
+      "data-args",
+      "-NoLogo -NoProfile -NoExit -Command codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
+    );
   });
 
   it("opens Claude with skipped permissions from the launcher context menu", async () => {

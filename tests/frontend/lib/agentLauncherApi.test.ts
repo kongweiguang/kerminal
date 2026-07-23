@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -71,6 +72,48 @@ describe("agentLauncherApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("agent_session_update", {
       agentSessionId: "ags-title",
       request: { title: "发布检查" },
+    });
+  });
+
+  it("persists the effective Agent launch parameters through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      session: {
+        agentSessionId: "ags-yolo",
+        launch: {
+          args: ["--dangerously-bypass-approvals-and-sandbox", "resume"],
+          commandLabel:
+            "codex --dangerously-bypass-approvals-and-sandbox resume",
+          cwd: "C:/sessions/ags-yolo",
+          shell: "codex",
+        },
+        status: "active",
+        title: "Codex",
+      },
+    });
+    const { updateAgentSession } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+    const launch = {
+      args: ["--dangerously-bypass-approvals-and-sandbox", "resume"],
+      commandLabel:
+        "codex --dangerously-bypass-approvals-and-sandbox resume",
+      cwd: "C:/sessions/ags-yolo",
+      shell: "codex",
+    };
+
+    await updateAgentSession("ags-yolo", { launch });
+
+    expect(invokeMock).toHaveBeenCalledWith("agent_session_update", {
+      agentSessionId: "ags-yolo",
+      request: {
+        launch: {
+          args: launch.args,
+          command_label: launch.commandLabel,
+          cwd: launch.cwd,
+          shell: launch.shell,
+        },
+      },
     });
   });
 
