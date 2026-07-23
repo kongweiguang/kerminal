@@ -249,6 +249,105 @@ describe("useSftpTransferSync", () => {
 
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a Tauri update when an older initial poll resolves later", async () => {
+    const staleInitialPoll = deferred<SftpTransferSummary[]>();
+    sftpApiMock.listSftpTransfers.mockImplementationOnce(
+      () => staleInitialPoll.promise,
+    );
+    dragDropModelMock.isRunningInTauriWebview.mockReturnValue(true);
+    let eventHandler:
+      | ((transfer: SftpTransferSummary) => void)
+      | undefined;
+    eventApiMock.listen.mockImplementation(async (_eventName, handler) => {
+      eventHandler = handler;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() =>
+      useSftpTransferSync({
+        active: true,
+        currentPath: "/srv/app",
+        fileTarget: sshFileTarget({ hostId: "host-a" }),
+        loadDirectory: vi.fn(),
+        viewScope: "sftp-workbench:tab-a",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(sftpApiMock.listSftpTransfers).toHaveBeenCalledTimes(1);
+      expect(eventApiMock.listen).toHaveBeenCalledWith(
+        "sftp-transfer-updated",
+        expect.any(Function),
+      );
+    });
+
+    act(() => {
+      eventHandler?.(
+        transferSummary({
+          hostId: "host-a",
+          id: "event-newer-than-poll",
+          status: "failed",
+          updatedAt: 2,
+          viewScope: "sftp-workbench:tab-a",
+        }),
+      );
+    });
+
+    await act(async () => {
+      staleInitialPoll.resolve([]);
+      await staleInitialPoll.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.visibleTransfers.map((transfer) => transfer.id)).toEqual([
+        "event-newer-than-poll",
+      ]);
+    });
+  });
+
+  it("defers fallback polling while the Tauri transfer channel is healthy", async () => {
+    vi.useFakeTimers();
+    sftpApiMock.listSftpTransfers.mockResolvedValue([]);
+    dragDropModelMock.isRunningInTauriWebview.mockReturnValue(true);
+    let eventHandler:
+      | ((transfer: SftpTransferSummary) => void)
+      | undefined;
+    eventApiMock.listen.mockImplementation(async (_eventName, handler) => {
+      eventHandler = handler;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() =>
+      useSftpTransferSync({
+        active: true,
+        currentPath: "/srv/app",
+        fileTarget: sshFileTarget({ hostId: "host-a" }),
+        loadDirectory: vi.fn(),
+        viewScope: "sftp-workbench:tab-a",
+      }),
+    );
+
+    await flushEffects();
+    expect(eventHandler).toBeDefined();
+
+    act(() => {
+      eventHandler?.(
+        transferSummary({
+          hostId: "host-a",
+          id: "event-delays-polling",
+          updatedAt: 2,
+          viewScope: "sftp-workbench:tab-a",
+        }),
+      );
+      vi.advanceTimersByTime(900);
+    });
+
+    expect(sftpApiMock.listSftpTransfers).toHaveBeenCalledTimes(1);
+    expect(result.current.visibleTransfers.map((transfer) => transfer.id)).toEqual([
+      "event-delays-polling",
+    ]);
+  });
 });
 
 async function flushEffects() {
@@ -299,4 +398,12 @@ function transferSummary(
     updatedAt: 1,
     ...overrides,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }

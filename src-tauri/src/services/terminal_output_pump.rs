@@ -142,6 +142,11 @@ impl PtyOutputPump {
     }
 
     pub fn finish_closed(&mut self, sink: &mut impl PtyOutputSink) -> bool {
+        self.prepare_closed(sink) && self.emit_closed(sink)
+    }
+
+    /// 在发出 Closed 前完成尾部 flush 和状态更新，使适配层能先发布终态指标。
+    pub(crate) fn prepare_closed(&mut self, sink: &mut impl PtyOutputSink) -> bool {
         if self.finished {
             return false;
         }
@@ -150,6 +155,11 @@ impl PtyOutputPump {
         }
         self.finished = true;
         self.stats.closed_events = self.stats.closed_events.saturating_add(1);
+        true
+    }
+
+    /// 把已经完成的 Closed 状态交给下游消费者。
+    pub(crate) fn emit_closed(&self, sink: &mut impl PtyOutputSink) -> bool {
         sink.on_terminal_output(TerminalOutputEvent::closed(&self.session_id))
     }
 
@@ -158,6 +168,12 @@ impl PtyOutputPump {
         message: impl Into<String>,
         sink: &mut impl PtyOutputSink,
     ) -> bool {
+        let message = message.into();
+        self.prepare_error(sink) && self.emit_error(message, sink)
+    }
+
+    /// 在发出 Error 前完成尾部 flush 和状态更新，使适配层能先发布终态指标。
+    pub(crate) fn prepare_error(&mut self, sink: &mut impl PtyOutputSink) -> bool {
         if self.finished {
             return false;
         }
@@ -166,6 +182,15 @@ impl PtyOutputPump {
         }
         self.finished = true;
         self.stats.error_events = self.stats.error_events.saturating_add(1);
+        true
+    }
+
+    /// 把已经完成的 Error 状态交给下游消费者。
+    pub(crate) fn emit_error(
+        &self,
+        message: impl Into<String>,
+        sink: &mut impl PtyOutputSink,
+    ) -> bool {
         sink.on_terminal_output(TerminalOutputEvent::error(&self.session_id, message.into()))
     }
 

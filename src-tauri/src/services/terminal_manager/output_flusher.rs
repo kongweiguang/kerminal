@@ -1,4 +1,6 @@
 //! 终端输出 pump 的聚合、flush 时序、统计与 delivery sink。
+//!
+//! @author kongweiguang
 
 use super::{
     io_runtime::PtyOutputPumpMessage,
@@ -93,7 +95,7 @@ pub(super) fn spawn_output_flusher_thread(
                     let now = Instant::now();
                     let first_pending_started_at = first_pending_at.unwrap_or(now);
                     let flush_count_before = pump.stats().flush_count;
-                    let _ = pump.finish_closed(&mut sink);
+                    let prepared = pump.prepare_closed(&mut sink);
                     let flush_metadata = flush_metadata_since(
                         flush_count_before,
                         &pump,
@@ -102,13 +104,16 @@ pub(super) fn spawn_output_flusher_thread(
                     )
                     .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Closed));
                     publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
+                    if prepared {
+                        let _ = pump.emit_closed(&mut sink);
+                    }
                     break;
                 }
                 PumpReceiveResult::Message(PtyOutputPumpMessage::Error(message)) => {
                     let now = Instant::now();
                     let first_pending_started_at = first_pending_at.unwrap_or(now);
                     let flush_count_before = pump.stats().flush_count;
-                    let _ = pump.finish_error(message, &mut sink);
+                    let prepared = pump.prepare_error(&mut sink);
                     let flush_metadata = flush_metadata_since(
                         flush_count_before,
                         &pump,
@@ -117,6 +122,9 @@ pub(super) fn spawn_output_flusher_thread(
                     )
                     .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Error));
                     publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
+                    if prepared {
+                        let _ = pump.emit_error(message, &mut sink);
+                    }
                     break;
                 }
                 PumpReceiveResult::Timeout => {

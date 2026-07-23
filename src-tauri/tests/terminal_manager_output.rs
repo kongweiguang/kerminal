@@ -1,4 +1,6 @@
 //! TerminalManager PTY output and snapshot integration tests.
+//!
+//! @author kongweiguang
 
 mod support;
 
@@ -483,17 +485,33 @@ fn pty_session_emits_final_tail_before_closed_for_short_lived_command() {
 
 #[test]
 fn pty_session_exposes_non_sensitive_output_pump_stats() {
-    let manager = TerminalManager::new();
+    let manager = Arc::new(TerminalManager::new());
     let (sender, receiver) = mpsc::channel();
+    let (session_id_sender, session_id_receiver) = mpsc::sync_channel::<String>(1);
+    let (stats_sender, stats_receiver) = mpsc::sync_channel(1);
+    let manager_for_output = Arc::clone(&manager);
 
     let summary = manager
         .create_session(short_lived_tail_request(), move |event| {
-            sender.send(event).is_ok()
+            if event.kind == TerminalOutputKind::Closed {
+                let session_id = session_id_receiver
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("test must provide the session id before observing Closed");
+                let stats = manager_for_output
+                    .pty_output_pump_stats(&session_id)
+                    .expect("Closed must observe a registered session");
+                stats_sender.send(stats).is_ok() && sender.send(event).is_ok()
+            } else {
+                sender.send(event).is_ok()
+            }
         })
         .unwrap();
 
+    session_id_sender.send(summary.id.clone()).unwrap();
     let events = collect_until_closed_events(&manager, &summary.id, &receiver);
-    let stats = manager.pty_output_pump_stats(&summary.id).unwrap();
+    let stats = stats_receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("Closed callback must receive final output pump stats");
     let serialized = serde_json::to_string(&stats).unwrap();
 
     manager.close(&summary.id).unwrap();

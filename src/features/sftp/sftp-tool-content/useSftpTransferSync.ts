@@ -1,3 +1,8 @@
+/**
+ * SFTP 传输快照与实时事件同步。
+ *
+ * @author kongweiguang
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   listSftpTransfers,
@@ -11,8 +16,12 @@ import {
   filterSftpTransfersForHost,
   mergeSftpTransferUpdateForHost,
   resolveSftpTransferCompletionEffects,
+  sftpTransferMatchesViewScope,
 } from "./sftpTransferSyncModel";
 import { SFTP_TRANSFER_UPDATED_EVENT, type SftpFileTarget } from "./types";
+
+const TRANSFER_POLL_INTERVAL_MS = 900;
+const EVENT_HEALTHY_POLL_DELAY_MS = 10_000;
 
 interface UseSftpTransferSyncOptions {
   active: boolean;
@@ -31,6 +40,9 @@ export function useSftpTransferSync({
 }: UseSftpTransferSyncOptions) {
   const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
   const completedTransferIdsRef = useRef(new Set<string>());
+  // 事件到达后，启动前的轮询快照不再有权覆盖该事件。
+  const transferRevisionRef = useRef(0);
+  const lastTransferEventAtRef = useRef<number | null>(null);
   const syncHostId = fileTarget?.kind === "ssh" ? fileTarget.hostId : undefined;
   const visibleHostId =
     fileTarget?.kind === "ssh"
@@ -52,14 +64,19 @@ export function useSftpTransferSync({
     if (!syncHostId) {
       return;
     }
+    const revisionAtRequestStart = transferRevisionRef.current;
     const nextTransfers = await listSftpTransfers(
       viewScope === undefined ? undefined : { viewScope },
     );
-    setTransfers(replaceTransferQueue(nextTransfers));
+    if (revisionAtRequestStart === transferRevisionRef.current) {
+      setTransfers(replaceTransferQueue(nextTransfers));
+    }
   }, [active, syncHostId, viewScope]);
 
   useEffect(() => {
     completedTransferIdsRef.current.clear();
+    transferRevisionRef.current += 1;
+    lastTransferEventAtRef.current = null;
     setTransfers([]);
   }, [viewScope, visibleHostId]);
 
@@ -74,22 +91,38 @@ export function useSftpTransferSync({
 
     let disposed = false;
     const loadTransfers = async () => {
+      const revisionAtRequestStart = transferRevisionRef.current;
       try {
         const nextTransfers = await listSftpTransfers(
           viewScope === undefined ? undefined : { viewScope },
         );
-        if (!disposed) {
+        if (
+          !disposed &&
+          revisionAtRequestStart === transferRevisionRef.current
+        ) {
           setTransfers(replaceTransferQueue(nextTransfers));
         }
       } catch {
-        if (!disposed) {
+        if (
+          !disposed &&
+          revisionAtRequestStart === transferRevisionRef.current
+        ) {
           setTransfers([]);
         }
       }
     };
 
     void loadTransfers();
-    const intervalId = window.setInterval(loadTransfers, 900);
+    const intervalId = window.setInterval(() => {
+      const lastEventAt = lastTransferEventAtRef.current;
+      if (
+        lastEventAt !== null &&
+        Date.now() - lastEventAt < EVENT_HEALTHY_POLL_DELAY_MS
+      ) {
+        return;
+      }
+      void loadTransfers();
+    }, TRANSFER_POLL_INTERVAL_MS);
     return () => {
       disposed = true;
       window.clearInterval(intervalId);
@@ -108,6 +141,14 @@ export function useSftpTransferSync({
         if (disposed) {
           return;
         }
+        if (
+          transfer.hostId !== syncHostId ||
+          !sftpTransferMatchesViewScope(transfer, viewScope)
+        ) {
+          return;
+        }
+        transferRevisionRef.current += 1;
+        lastTransferEventAtRef.current = Date.now();
         setTransfers((current) =>
           mergeSftpTransferUpdateForHost({
             hostId: syncHostId,
