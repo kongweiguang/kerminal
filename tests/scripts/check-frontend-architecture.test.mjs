@@ -117,6 +117,29 @@ test("reference baseline 阻止在当前分支登记新债务", (context) => {
   assert.match(result.output, /new-baseline-debt/);
 });
 
+test("tag push 不把不可达的旧 tag 对象当作参考提交", (context) => {
+  const fixture = createFixture(context);
+  writeSource(fixture, "src/app/shell.ts", "export const shell = true;");
+  writeBaseline(fixture, []);
+  const eventPath = path.join(fixture, "tag-push-event.json");
+  fs.writeFileSync(
+    eventPath,
+    JSON.stringify({
+      before: "e3c20577fddf3d102ff59f8f6f5a7742294b85e3",
+    }),
+  );
+
+  const result = runVerifier(fixture, [], {
+    GITHUB_ACTIONS: "true",
+    GITHUB_EVENT_PATH: eventPath,
+    GITHUB_REF_TYPE: "tag",
+    GITHUB_WORKSPACE: fixture,
+  });
+
+  assert.equal(result.status, 0, result.output);
+  assert.doesNotMatch(result.output, /reference commit is unavailable/);
+});
+
 function createFixture(context) {
   const fixture = fs.mkdtempSync(
     path.join(os.tmpdir(), "kerminal-frontend-architecture-fixture-"),
@@ -185,7 +208,7 @@ function writeBaseline(root, entries) {
   fs.writeFileSync(filePath, `${JSON.stringify(baseline(entries), null, 2)}\n`);
 }
 
-function runVerifier(root, args = []) {
+function runVerifier(root, args = [], environment = {}) {
   const result = spawnSync(
     process.execPath,
     [
@@ -196,7 +219,7 @@ function runVerifier(root, args = []) {
       baselineRelativePath,
       ...args,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: { ...process.env, ...environment } },
   );
   return {
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,

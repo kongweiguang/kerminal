@@ -71,6 +71,30 @@ test("ESLint reference baseline 阻止登记新规则债务", (context) => {
   assert.match(result.output, /new-baseline-debt/);
 });
 
+test("tag push 不把不可达的旧 tag 对象当作参考提交", (context) => {
+  const fixture = createFixture(context);
+  writeConfig(fixture);
+  writeFile(fixture, "src/value.ts", "const value = 1;\nvoid value;");
+  writeBaseline(fixture, []);
+  const eventPath = path.join(fixture, "tag-push-event.json");
+  fs.writeFileSync(
+    eventPath,
+    JSON.stringify({
+      before: "e3c20577fddf3d102ff59f8f6f5a7742294b85e3",
+    }),
+  );
+
+  const result = runVerifier(fixture, [], {
+    GITHUB_ACTIONS: "true",
+    GITHUB_EVENT_PATH: eventPath,
+    GITHUB_REF_TYPE: "tag",
+    GITHUB_WORKSPACE: fixture,
+  });
+
+  assert.equal(result.status, 0, result.output);
+  assert.doesNotMatch(result.output, /reference commit is unavailable/);
+});
+
 test("ESLint 解析错误不可进入 baseline", (context) => {
   const fixture = createFixture(context);
   writeConfig(fixture);
@@ -114,7 +138,7 @@ function writeFile(root, relativePath, content) {
   fs.writeFileSync(filePath, `${content}\n`);
 }
 
-function runVerifier(root, args = []) {
+function runVerifier(root, args = [], environment = {}) {
   const result = spawnSync(
     process.execPath,
     [
@@ -127,7 +151,7 @@ function runVerifier(root, args = []) {
       configPath,
       ...args,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: { ...process.env, ...environment } },
   );
   return {
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,

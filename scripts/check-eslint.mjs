@@ -261,6 +261,13 @@ function readGitHubReferenceFile(repoRoot, relativeFile) {
     return null;
   }
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+  // tag force-push 的 before 是旧 tag 对象，不是可读取的提交基线。
+  if (
+    event.ref?.startsWith("refs/tags/") ||
+    process.env.GITHUB_REF_TYPE === "tag"
+  ) {
+    return null;
+  }
   const sha = event.pull_request?.base?.sha ?? event.before;
   if (!/^[0-9a-f]{40}$/i.test(sha ?? "") || /^0+$/.test(sha)) return null;
   try {
