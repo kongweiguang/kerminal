@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { describe, expect, it } from "vitest";
@@ -8,6 +10,65 @@ import {
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
 
 describe("XtermPane remote suggestions", () => {
+  it("hides the ghost suggestion while viewing scrollback and restores it at the bottom", async () => {
+    mocks.api.listTerminalSuggestions.mockResolvedValue([
+      {
+        description: "历史命令，匹配当前目录",
+        displayText: "git status --short",
+        id: "history-git-scroll",
+        provider: "history",
+        replacementRange: { end: 3, start: 0 },
+        replacementText: "git status --short",
+        score: 0.9,
+        sensitivity: "normal",
+        sourceId: "history-git-scroll",
+        suffix: " status --short",
+      },
+    ]);
+
+    render(
+      <XtermPane
+        cwd="C:/dev/rust/kerminal"
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    terminal.buffer.active.cursorX = 3;
+    act(() => {
+      terminal.onDataCallback?.("g");
+      terminal.onDataCallback?.("i");
+      terminal.onDataCallback?.("t");
+    });
+
+    expect(
+      (await screen.findByLabelText("终端命令灰色提示")).textContent,
+    ).toBe(" status --short");
+
+    act(() => {
+      terminal.buffer.active.baseY = 12;
+      terminal.buffer.active.viewportY = 5;
+      terminal.onScrollCallback?.(5);
+    });
+    expect(screen.queryByLabelText("终端命令灰色提示")).not.toBeInTheDocument();
+
+    act(() => {
+      terminal.buffer.active.viewportY = 12;
+      terminal.onScrollCallback?.(12);
+    });
+    expect(screen.getByLabelText("终端命令灰色提示").textContent).toBe(
+      " status --short",
+    );
+  });
+
   it("drops in-flight ghost suggestion responses after entering alternate buffer", async () => {
     let resolveFirstSuggestion: ((value: unknown) => void) | undefined;
     mocks.api.listTerminalSuggestions

@@ -189,7 +189,11 @@ export function resolveGhostSuggestionLayout(
   TerminalGhostSuggestion,
   "left" | "lineHeight" | "maxWidth" | "top"
 > | null {
-  if (terminal.buffer.active.type === "alternate") {
+  const activeBuffer = terminal.buffer.active;
+  if (
+    activeBuffer.type === "alternate" ||
+    activeBuffer.viewportY !== activeBuffer.baseY
+  ) {
     return null;
   }
 

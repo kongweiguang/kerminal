@@ -288,21 +288,7 @@ export function createXtermPaneGhostSuggestions({
   };
 
   const refreshGhostSuggestionLayout = () => {
-    const suggestion = ghostSuggestionRef.current;
-    if (!suggestion) {
-      return;
-    }
-    const layout = resolveGhostSuggestionLayout(
-      container,
-      terminal,
-      terminalAppearanceRef.current,
-      inputModelRef.current,
-    );
-    if (!layout) {
-      clearGhostSuggestion();
-      return;
-    }
-    updateGhostSuggestion({ ...suggestion, ...layout });
+    syncGhostFromController();
   };
 
   const scheduleGhostSuggestion = () => {
