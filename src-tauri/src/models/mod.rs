@@ -18,6 +18,7 @@ pub mod remote_host;
 pub mod server_info;
 pub mod settings;
 pub mod sftp;
+pub mod sftp_bookmark;
 pub mod snippet;
 pub mod ssh_command;
 pub mod target;
