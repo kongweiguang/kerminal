@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -159,10 +161,12 @@ describe("RemoteHostCreateDialog", () => {
     );
 
     const passwordInput = screen.getByLabelText("密码");
-    expect(passwordInput).toHaveAttribute("type", "text");
+    expect(passwordInput).toHaveAttribute("type", "password");
     await waitFor(() =>
       expect(passwordInput).toHaveValue("visible-rdp-secret"),
     );
+    await user.click(screen.getByRole("button", { name: "显示密码" }));
+    expect(passwordInput).toHaveAttribute("type", "text");
 
     await user.clear(passwordInput);
     await user.type(passwordInput, "next-rdp-secret");

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useState } from "react";
 import { Network, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
@@ -25,6 +27,7 @@ import {
   FieldRow,
   inputClassName,
   ListReorderActions,
+  PasswordInput,
 } from "./shared-ui";
 import { SearchableHostSelect } from "./searchable-host-select";
 
@@ -188,15 +191,10 @@ export function SshJumpPanel({
                 使用 ssh-agent，不需要额外配置
               </div>
             ) : draft.authType === "password" ? (
-              <input
-                aria-label="跳板机密码"
-                className={inputClassName}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  updateDraft({ credentialSecret: value });
-                }}
+              <PasswordInput
+                ariaLabel="跳板机密码"
+                onChange={(value) => updateDraft({ credentialSecret: value })}
                 placeholder="SSH 密码"
-                type="password"
                 value={draft.credentialSecret ?? ""}
               />
             ) : (

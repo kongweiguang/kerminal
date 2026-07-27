@@ -16,6 +16,14 @@ describe("settingsModel", () => {
     expect(normalizeAppSettings().interfaceDensity).toBe("compact");
     expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
     expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
+    expect(defaultAppSettings.sftp).toMatchObject({
+      packetBytes: 256 * 1024,
+      pipelineDepth: 8,
+    });
+    expect(
+      defaultAppSettings.sftp.packetBytes *
+        defaultAppSettings.sftp.pipelineDepth,
+    ).toBe(2 * 1024 * 1024);
 
     for (const rendererType of ["auto", "cpu", "gpu"] as const) {
       const settings = normalizeAppSettings({

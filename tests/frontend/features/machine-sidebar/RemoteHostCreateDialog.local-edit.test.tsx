@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -338,7 +340,10 @@ describe("RemoteHostCreateDialog", () => {
       />,
     );
 
-    expect(screen.getByLabelText("SSH 密码")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("SSH 密码")).toHaveAttribute(
+      "type",
+      "password",
+    );
     expect(screen.getByLabelText("SSH 密码")).toHaveValue("visible-password");
 
     unmount();

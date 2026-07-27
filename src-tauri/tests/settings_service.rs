@@ -9,10 +9,11 @@ use kerminal_lib::{
         InterfaceLanguage, TerminalColorScheme, TerminalCommandSuggestionPresentation,
         TerminalCommandSuggestionRemoteRefresh, TerminalCursorStyle, TerminalFontWeight,
         TerminalInlineSuggestionAcceptKey, TerminalInlineSuggestionProductionHostPolicy,
-        TerminalRendererType, TerminalRightClickBehavior, ThemeMode, MAX_SFTP_GLOBAL_TRANSFERS,
-        MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH,
-        MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS,
-        MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
+        TerminalRendererType, TerminalRightClickBehavior, ThemeMode, DEFAULT_SFTP_PACKET_BYTES,
+        DEFAULT_SFTP_PIPELINE_DEPTH, MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS,
+        MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS,
+        MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES,
+        MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -31,6 +32,12 @@ fn settings_service_returns_defaults_before_user_changes() {
         .expect("load default settings");
 
     assert_eq!(settings.interface_density, InterfaceDensity::Compact);
+    assert_eq!(settings.sftp.pipeline_depth, DEFAULT_SFTP_PIPELINE_DEPTH);
+    assert_eq!(settings.sftp.packet_bytes, DEFAULT_SFTP_PACKET_BYTES);
+    assert_eq!(
+        settings.sftp.pipeline_depth as u32 * settings.sftp.packet_bytes,
+        2 * 1024 * 1024
+    );
     assert_eq!(settings, AppSettings::default());
 }
 

@@ -17,7 +17,10 @@ pub const MIN_SFTP_HOST_TRANSFERS: usize = 1;
 /// SFTP 单主机传输并发最大值。
 pub const MAX_SFTP_HOST_TRANSFERS: usize = 8;
 /// SFTP pipelined 读写默认深度。
-pub const DEFAULT_SFTP_PIPELINE_DEPTH: usize = 64;
+///
+/// 与默认 256 KiB 单包组合后，单文件最多维持约 2 MiB 在途数据，兼顾高延迟链路吞吐与
+/// 服务端兼容性，并与底层 SFTP 客户端的默认并发写窗口保持一致。
+pub const DEFAULT_SFTP_PIPELINE_DEPTH: usize = 8;
 /// SFTP pipelined 读写最小深度。
 pub const MIN_SFTP_PIPELINE_DEPTH: usize = 1;
 /// SFTP pipelined 读写最大深度。

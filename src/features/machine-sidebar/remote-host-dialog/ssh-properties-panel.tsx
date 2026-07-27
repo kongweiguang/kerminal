@@ -7,7 +7,12 @@ import { Switch } from "../../../components/ui/switch";
 import { selectLocalFile } from "../../../lib/fileDialogApi";
 import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
-import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
+import {
+  FieldRow,
+  GroupSelectRow,
+  inputClassName,
+  PasswordInput,
+} from "./shared-ui";
 
 export function SshPropertiesPanel({
   authType,
@@ -196,15 +201,10 @@ function SshAuthFields({
         <>
           {authType === "password" ? (
             <div className="grid gap-2">
-              <input
-                aria-label="SSH 密码"
-                autoComplete="off"
-                className={inputClassName}
-                onChange={(event) =>
-                  setCredentialSecret(event.currentTarget.value)
-                }
+              <PasswordInput
+                ariaLabel="SSH 密码"
+                onChange={setCredentialSecret}
                 placeholder="输入 SSH 密码"
-                type="text"
                 value={credentialSecret}
               />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">

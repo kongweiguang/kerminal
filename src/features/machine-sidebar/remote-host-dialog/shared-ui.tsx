@@ -1,5 +1,15 @@
-import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, FolderPlus, Settings, Trash2 } from "lucide-react";
+// @author kongweiguang
+
+import { useState, type ReactNode } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  EyeOff,
+  FolderPlus,
+  Settings,
+  Trash2,
+} from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select, type SelectOption } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -81,6 +91,51 @@ export function GroupSelectRow({
 
 export const inputClassName =
   "kerminal-field-surface h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-zinc-600";
+
+export function PasswordInput({
+  ariaLabel,
+  autoComplete = "off",
+  onChange,
+  placeholder,
+  value,
+}: {
+  ariaLabel: string;
+  autoComplete?: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  const labelSpacing = /^[A-Za-z]/.test(ariaLabel) ? " " : "";
+  const toggleLabel = `${visible ? "隐藏" : "显示"}${labelSpacing}${ariaLabel}`;
+
+  return (
+    <div className="relative">
+      <input
+        aria-label={ariaLabel}
+        autoComplete={autoComplete}
+        className={`${inputClassName} pr-10`}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        placeholder={placeholder}
+        type={visible ? "text" : "password"}
+        value={value}
+      />
+      <button
+        aria-label={toggleLabel}
+        className="kerminal-focus-ring absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-[var(--radius-control)] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+        onClick={() => setVisible((current) => !current)}
+        title={toggleLabel}
+        type="button"
+      >
+        {visible ? (
+          <EyeOff aria-hidden="true" className="h-4 w-4" />
+        ) : (
+          <Eye aria-hidden="true" className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  );
+}
 
 export function ToggleRow({
   checked,

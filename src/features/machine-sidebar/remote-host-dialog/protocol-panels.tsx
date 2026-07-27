@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import {
@@ -6,7 +8,12 @@ import {
   serialParityOptions,
   serialStopBitOptions,
 } from "./model";
-import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
+import {
+  FieldRow,
+  GroupSelectRow,
+  inputClassName,
+  PasswordInput,
+} from "./shared-ui";
 
 export function TelnetPropertiesPanel({
   groupId,
@@ -304,13 +311,10 @@ export function RdpPropertiesPanel({
       </FieldRow>
       <FieldRow label="密码">
         <div className="grid gap-2">
-          <input
-            aria-label="密码"
-            autoComplete="off"
-            className={inputClassName}
-            onChange={(event) => setRdpPassword(event.currentTarget.value)}
+          <PasswordInput
+            ariaLabel="密码"
+            onChange={setRdpPassword}
             placeholder="可选"
-            type="text"
             value={rdpPassword}
           />
           <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">

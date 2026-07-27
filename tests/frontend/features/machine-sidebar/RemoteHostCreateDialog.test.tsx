@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -327,7 +329,11 @@ describe("RemoteHostCreateDialog", () => {
     await chooseSelectOption(user, "认证方式", "密码");
     expect(screen.queryByLabelText("SSH 密码凭据引用")).not.toBeInTheDocument();
     const passwordInput = screen.getByLabelText("SSH 密码");
+    expect(passwordInput).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "显示 SSH 密码" }));
     expect(passwordInput).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "隐藏 SSH 密码" }));
+    expect(passwordInput).toHaveAttribute("type", "password");
     await user.type(passwordInput, "s3cr3t");
     await user.click(screen.getByRole("button", { name: "确认" }));
 
@@ -501,6 +507,16 @@ describe("RemoteHostCreateDialog", () => {
     expect(
       screen.getByRole("combobox", { name: "跳板机认证方式" }),
     ).toHaveAttribute("data-value", "agent");
+
+    await chooseSelectOption(user, "跳板机认证方式", "密码");
+    const jumpPasswordInput = screen.getByLabelText("跳板机密码");
+    expect(jumpPasswordInput).toHaveAttribute("type", "password");
+    await user.type(jumpPasswordInput, "jump-secret");
+    await user.click(
+      screen.getByRole("button", { name: "显示跳板机密码" }),
+    );
+    expect(jumpPasswordInput).toHaveAttribute("type", "text");
+    await chooseSelectOption(user, "跳板机认证方式", "SSH Agent");
 
     await user.click(screen.getByRole("button", { name: "添加跳板机" }));
     await user.click(screen.getByRole("button", { name: "确认" }));
