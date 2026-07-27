@@ -19,6 +19,7 @@ pub mod file_store;
 pub mod local_file_operations;
 pub mod port_forwards;
 pub mod runtime_store;
+pub mod sftp_bookmarks;
 pub mod snippet_preferences;
 pub mod storage_manifest;
 

@@ -21,6 +21,7 @@ pub mod serial;
 pub mod server_info;
 pub mod settings;
 pub mod sftp;
+pub mod sftp_bookmarks;
 pub mod snippet;
 pub mod ssh;
 pub mod ssh_auth;

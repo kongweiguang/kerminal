@@ -22,6 +22,7 @@ import {
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/cn";
+import { SftpBookmarkControl } from "../sftp-bookmark/SftpBookmarkControl";
 import { ToolbarButton } from "./ToolbarButton";
 import type { SftpBrowserMode } from "./sftpBrowserModeModel";
 import type {
@@ -129,6 +130,12 @@ export function SftpBrowserHeader({
             }}
             spellCheck={false}
             value={navigation.pathDraft}
+          />
+          <SftpBookmarkControl
+            currentPath={navigation.currentPath}
+            disabled={navigation.loading}
+            fileTarget={navigation.fileTarget}
+            loadDirectory={navigation.loadDirectory}
           />
           <Button
             aria-label="跳转远程路径"

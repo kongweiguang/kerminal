@@ -130,6 +130,8 @@ pub fn register_kerminal_commands(
         crate::commands::sftp::sftp_classify_local_paths,
         crate::commands::sftp::sftp_read_local_file_clipboard,
         crate::commands::sftp::sftp_trust_host_key,
+        crate::commands::sftp_bookmarks::sftp_bookmark_list,
+        crate::commands::sftp_bookmarks::sftp_bookmark_set,
         crate::commands::snippet::snippet_list,
         crate::commands::snippet::snippet_catalog_list,
         crate::commands::snippet::snippet_favorite_set,
