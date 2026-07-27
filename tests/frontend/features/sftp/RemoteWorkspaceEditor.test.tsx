@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -324,7 +326,7 @@ describe("RemoteWorkspaceEditor", () => {
     );
   });
 
-  it("registers common editor shortcuts with Monaco", async () => {
+  it("registers editor shortcuts only while Monaco text has focus", async () => {
     const user = userEvent.setup();
 
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
@@ -336,24 +338,29 @@ describe("RemoteWorkspaceEditor", () => {
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
       monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyS,
       expect.any(Function),
+      "editorTextFocus",
     );
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
       monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyC,
       expect.any(Function),
+      "editorTextFocus",
     );
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
       monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyV,
       expect.any(Function),
+      "editorTextFocus",
     );
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
       monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyZ,
       expect.any(Function),
+      "editorTextFocus",
     );
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
       monacoEditorMocks.keyMod.CtrlCmd |
         monacoEditorMocks.keyMod.Shift |
         monacoEditorMocks.keyCode.KeyZ,
       expect.any(Function),
+      "editorTextFocus",
     );
   });
 

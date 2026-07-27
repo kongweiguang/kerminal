@@ -1,9 +1,8 @@
 # @author kongweiguang
-# @author kongweiguang
 
 [package]
 name = "kerminal"
-version = "0.3.12"
+version = "0.3.13"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

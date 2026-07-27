@@ -140,7 +140,7 @@ export function createKerminalWorkspaceActionRegistry(): WorkspaceActionRegistry
     { id: "tool.ports", title: "打开端口转发" },
     { id: "tool.tmux", title: "打开 tmux" },
     { id: "tool.snippets", title: "打开脚本片段" },
-    { id: "tool.logs", title: "打开日志" },
+    { id: "tool.logs", title: "打开命令历史" },
     { id: "settings.open", title: "打开设置" },
     {
       id: "terminal.splitHorizontal",

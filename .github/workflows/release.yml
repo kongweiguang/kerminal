@@ -213,9 +213,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 右侧工具抽屉收起后，已经打开的 Agent 与其它工具保持挂载，避免终端会话被意外卸载。
-            - 已保存的 Codex/Claude 会话在继续时会保留已选权限模式；缺少精确权限标识的旧会话使用普通权限模式。
-            - Custom Agent 的原始启动命令不写入 session metadata，避免可能含敏感参数的命令被持久化。
+            - 右栏日志工具收敛为当前终端的命令历史，保留搜索、来源筛选、分页和清理，并优化窄宽度布局。
+            - 文档编辑器查找框恢复 Ctrl/Cmd+V 原生粘贴，正文编辑快捷键保持不变。
+            - 新分屏沿用源终端名称；显式选择目标机器时沿用目标机器名称。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

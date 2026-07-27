@@ -7,6 +7,8 @@ import {
 } from "../../lib/desktopClipboardApi";
 import type { RemoteWorkspaceEditorCommandId } from "./remoteWorkspaceEditorCommandModel";
 
+const EDITOR_TEXT_FOCUS_CONTEXT = "editorTextFocus";
+
 export function registerRemoteWorkspaceEditorKeybindings({
   editor,
   monaco,
@@ -20,7 +22,12 @@ export function registerRemoteWorkspaceEditorKeybindings({
     keybinding: number,
     command: RemoteWorkspaceEditorCommandId,
   ) => {
-    editor.addCommand(keybinding, () => runCommand(command));
+    // 查找框获得焦点时仍位于 Monaco 编辑器内；只在正文光标聚焦时接管快捷键。
+    editor.addCommand(
+      keybinding,
+      () => runCommand(command),
+      EDITOR_TEXT_FOCUS_CONTEXT,
+    );
   };
 
   register(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, "save");

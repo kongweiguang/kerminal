@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   MachineGroup,
   TerminalPane,
@@ -49,8 +51,8 @@ export const tools: ToolSummary[] = [
   },
   {
     id: "logs",
-    title: "日志",
-    description: "会话和操作记录",
+    title: "命令历史",
+    description: "当前终端的最近命令",
   },
   {
     id: "settings",

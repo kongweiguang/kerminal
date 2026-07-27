@@ -239,9 +239,9 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.logs",
     binding: "Alt+7",
-    description: "打开日志和审计记录。",
+    description: "打开当前终端的命令历史。",
     editable: true,
-    label: "打开日志",
+    label: "打开命令历史",
     macBinding: "Cmd+7",
     scope: "global",
     windowsBinding: "Alt+7",

@@ -125,7 +125,7 @@ interface RuntimeGpuHealth {
   temperatureCelsius?: number | null;
 }
 
-export interface RuntimeStorageHealth {
+interface RuntimeStorageHealth {
   root: string;
   commandDatabaseFile: string;
   appLogFile: string;

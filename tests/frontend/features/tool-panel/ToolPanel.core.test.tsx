@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import "../../support/tool-panel/ToolPanel.testSupport";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,7 +43,7 @@ it("renders only the rail when no tool drawer is active", () => {
     "打开 tmux",
     "打开 端口",
     "打开 系统",
-    "打开 日志",
+    "打开 命令历史",
   ]);
   expect(
     screen.queryByRole("heading", { name: "Agent Launcher" }),
@@ -172,9 +174,7 @@ it("requests a tool switch from the rail", async () => {
   expect(onActiveToolChange).toHaveBeenCalledWith("sftp");
 });
 
-it("shows the log export action on the logs title row", async () => {
-  const user = userEvent.setup();
-
+it("presents the logs tool as command history without diagnostics actions", async () => {
   render(
     <ToolPanel
       activeTool="logs"
@@ -184,7 +184,7 @@ it("shows the log export action on the logs title row", async () => {
     />,
   );
 
-  const logsTitle = screen.getByRole("heading", { name: "日志" });
+  const logsTitle = screen.getByRole("heading", { name: "命令历史" });
   const header = logsTitle.closest("header");
   expect(header).toBeInTheDocument();
   expect(screen.queryByText("当前工具")).not.toBeInTheDocument();
@@ -193,26 +193,11 @@ it("shows the log export action on the logs title row", async () => {
       tools.find((tool) => tool.id === "logs")?.description ?? "",
     ),
   ).not.toBeInTheDocument();
-  const createBundleButton = within(header as HTMLElement).getByRole(
-    "button",
-    { name: "导出日志" },
-  );
-  expect(createBundleButton).toBeInTheDocument();
-  await user.hover(createBundleButton);
   expect(
-    await screen.findByRole("tooltip", { name: "导出日志" }),
-  ).toBeInTheDocument();
-
-  await user.click(createBundleButton);
-
-  expect(
-    await screen.findByRole("status", { name: "日志导出结果" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText(
-      "C:/Users/me/.kerminal/diagnostics/diagnostics-1710000000.json",
-    ),
-  ).toBeInTheDocument();
+    within(header as HTMLElement).queryByRole("button"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "导出日志" })).not.toBeInTheDocument();
+  expect(screen.queryByText("应用日志")).not.toBeInTheDocument();
 });
 
 it("keeps settings out of the rail without rendering settings content inside the right tool panel", async () => {

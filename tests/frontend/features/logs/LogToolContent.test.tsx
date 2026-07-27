@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,9 +12,6 @@ const commandHistoryApiMocks = vi.hoisted(() => ({
   deleteCommandHistory: vi.fn(),
   listCommandHistory: vi.fn(),
 }));
-const diagnosticsApiMocks = vi.hoisted(() => ({
-  getRuntimeHealthSnapshot: vi.fn(),
-}));
 
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
   clearCommandHistory: (...args: unknown[]) =>
@@ -21,15 +20,6 @@ vi.mock("../../../../src/lib/commandHistoryApi", () => ({
     commandHistoryApiMocks.deleteCommandHistory(...args),
   listCommandHistory: (...args: unknown[]) =>
     commandHistoryApiMocks.listCommandHistory(...args),
-}));
-
-vi.mock("../../../../src/lib/diagnosticsApi", () => ({
-  getRuntimeHealthSnapshot: (...args: unknown[]) =>
-    diagnosticsApiMocks.getRuntimeHealthSnapshot(...args),
-}));
-
-vi.mock("../../../../src/features/tool-panel/DiagnosticsBundleCard", () => ({
-  DiagnosticsBundleCard: () => <div>日志导出测试替身</div>,
 }));
 
 const sshPane: TerminalPane = {
@@ -94,25 +84,6 @@ function historyEntry(
   };
 }
 
-function runtimeSnapshot(
-  appLogFile = "C:/Users/me/.kerminal/logs/kerminal.log",
-) {
-  return {
-    storage: {
-      appLogFile,
-      appLogFileSizeBytes: 2048,
-      appLogMaxFileSizeBytes: 1_000_000,
-      appLogRotationKeepFiles: 5,
-      commandDatabaseFile: "C:/Users/me/.kerminal/data/command.sqlite",
-      commandDatabaseFileSizeBytes: 1024,
-      diagnostics: "C:/Users/me/.kerminal/diagnostics",
-      logs: "C:/Users/me/.kerminal/logs",
-      root: "C:/Users/me/.kerminal",
-      rootSizeBytes: 8192,
-    },
-  };
-}
-
 describe("LogToolContent", () => {
   beforeEach(() => {
     commandHistoryApiMocks.clearCommandHistory.mockReset();
@@ -120,10 +91,6 @@ describe("LogToolContent", () => {
     commandHistoryApiMocks.deleteCommandHistory.mockReset();
     commandHistoryApiMocks.listCommandHistory.mockReset();
     commandHistoryApiMocks.listCommandHistory.mockResolvedValue([]);
-    diagnosticsApiMocks.getRuntimeHealthSnapshot.mockReset();
-    diagnosticsApiMocks.getRuntimeHealthSnapshot.mockResolvedValue(
-      runtimeSnapshot(),
-    );
   });
 
   it("loads command history for the focused SSH pane", async () => {
@@ -152,9 +119,6 @@ describe("LogToolContent", () => {
       screen.getByRole("button", { name: "清空命令历史" }),
     ).toBeDisabled();
     expect(commandHistoryApiMocks.listCommandHistory).not.toHaveBeenCalled();
-    expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
-      1,
-    );
   });
 
   it.each([
@@ -196,15 +160,17 @@ describe("LogToolContent", () => {
     });
   });
 
-  it("shows the Tauri app log file and rotation policy", async () => {
+  it("shows a compact command-only history list", async () => {
+    commandHistoryApiMocks.listCommandHistory.mockResolvedValue([
+      historyEntry("echo compact", sshPane),
+    ]);
     render(<LogToolContent focusedPane={sshPane} />);
 
-    expect(await screen.findByText("应用日志")).toBeInTheDocument();
-    expect(screen.getByText("当前日志")).toBeInTheDocument();
-    expect(await screen.findByText(/kerminal\.log$/)).toBeInTheDocument();
-    expect(screen.getByText("当前 2.0 KB")).toBeInTheDocument();
-    expect(screen.getByText("单文件上限 976.6 KB")).toBeInTheDocument();
-    expect(screen.getByText("保留 5 个文件")).toBeInTheDocument();
+    expect(await screen.findByText("最近命令")).toBeInTheDocument();
+    expect(screen.getByText("echo compact")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("搜索命令")).toBeInTheDocument();
+    expect(screen.queryByText("应用日志")).not.toBeInTheDocument();
+    expect(screen.queryByText("类型")).not.toBeInTheDocument();
   });
 
   it("does not read while inactive and reloads the current pane when reopened", async () => {
@@ -214,7 +180,6 @@ describe("LogToolContent", () => {
 
     await act(async () => undefined);
     expect(commandHistoryApiMocks.listCommandHistory).not.toHaveBeenCalled();
-    expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).not.toHaveBeenCalled();
 
     rerender(<LogToolContent active focusedPane={stageSshPane} />);
 
@@ -225,9 +190,6 @@ describe("LogToolContent", () => {
           remoteHostId: "ubuntu-stage",
         }),
       ),
-    );
-    expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
-      1,
     );
   });
 
@@ -266,46 +228,5 @@ describe("LogToolContent", () => {
     });
     expect(screen.getByText("echo stage")).toBeInTheDocument();
     expect(screen.queryByText("echo dev")).not.toBeInTheDocument();
-    expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
-      1,
-    );
-  });
-
-  it("ignores an old global storage response after inactive and reopen", async () => {
-    const oldStorage = deferred<ReturnType<typeof runtimeSnapshot>>();
-    const currentStorage = deferred<ReturnType<typeof runtimeSnapshot>>();
-    diagnosticsApiMocks.getRuntimeHealthSnapshot
-      .mockReturnValueOnce(oldStorage.promise)
-      .mockReturnValueOnce(currentStorage.promise);
-
-    const { rerender } = render(
-      <LogToolContent active focusedPane={sshPane} />,
-    );
-    await waitFor(() =>
-      expect(
-        diagnosticsApiMocks.getRuntimeHealthSnapshot,
-      ).toHaveBeenCalledTimes(1),
-    );
-
-    rerender(<LogToolContent active={false} focusedPane={stageSshPane} />);
-    rerender(<LogToolContent active focusedPane={stageSshPane} />);
-    await waitFor(() =>
-      expect(
-        diagnosticsApiMocks.getRuntimeHealthSnapshot,
-      ).toHaveBeenCalledTimes(2),
-    );
-
-    await act(async () => {
-      currentStorage.resolve(runtimeSnapshot("C:/logs/current.log"));
-      await currentStorage.promise;
-    });
-    expect(await screen.findByText("C:/logs/current.log")).toBeInTheDocument();
-
-    await act(async () => {
-      oldStorage.resolve(runtimeSnapshot("C:/logs/old.log"));
-      await oldStorage.promise;
-    });
-    expect(screen.getByText("C:/logs/current.log")).toBeInTheDocument();
-    expect(screen.queryByText("C:/logs/old.log")).not.toBeInTheDocument();
   });
 });

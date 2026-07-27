@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   act,
   fireEvent,
@@ -136,7 +138,9 @@ export function registerChromeAndRestoreTests() {
     ) as HTMLElement;
     expect(content).toHaveStyle({ marginRight: "44px" });
 
-    await user.click(screen.getByRole("button", { name: "打开 日志" }));
+    await user.click(
+      screen.getByRole("button", { name: "打开 命令历史" }),
+    );
 
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
@@ -157,7 +161,9 @@ export function registerChromeAndRestoreTests() {
     const user = userEvent.setup();
     const { container } = render(<KerminalShell />);
 
-    await user.click(screen.getByRole("button", { name: "打开 日志" }));
+    await user.click(
+      screen.getByRole("button", { name: "打开 命令历史" }),
+    );
 
     const rightSeparator = screen.getByRole("separator", {
       name: "调整工具面板宽度",

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   closeTerminalPaneState,
@@ -75,7 +77,7 @@ describe("workspaceTerminalState split pane", () => {
       remoteHostId: "host-lab",
       remoteHostProduction: true,
       target: { hostId: "host-lab", kind: "ssh" },
-      title: "右侧分屏",
+      title: "lab server",
     });
     expect(patch.terminalTabs?.[0]).toMatchObject({
       id: "tab-ssh-1",
@@ -178,7 +180,7 @@ describe("workspaceTerminalState split pane", () => {
     expect(splitPane?.currentCwd).toBeUndefined();
   });
 
-  it("uses vertical split titles and keeps split prefixes compatible", () => {
+  it("keeps pane titles and split prefixes compatible for vertical splits", () => {
     const previewState = terminalState({
       activeTabId: "tab-preview-1",
       focusedPaneId: "pane-preview-1",
@@ -190,6 +192,7 @@ describe("workspaceTerminalState split pane", () => {
           remoteHostId: undefined,
           remoteHostProduction: undefined,
           target: undefined,
+          title: "Preview",
         }),
       ],
       terminalTabs: [
@@ -235,7 +238,7 @@ describe("workspaceTerminalState split pane", () => {
       splitId: "split-2",
     });
 
-    expect(patch.terminalPanes?.[1]?.title).toBe("下方分屏");
+    expect(patch.terminalPanes?.[1]?.title).toBe("Preview");
     expect(patch.terminalTabs?.[0]).toMatchObject({
       layout: {
         direction: "vertical",

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   collectPaneIds,
   findFirstPaneId,
@@ -216,9 +218,7 @@ export function splitFocusedPaneState(
     id: command.paneId,
     lines: [],
     outputHistory: undefined,
-    title:
-      command.targetPane?.title ??
-      (command.direction === "horizontal" ? "右侧分屏" : "下方分屏"),
+    title: paneTemplate.title,
   };
   const terminalTabs = state.terminalTabs.map((tab) =>
     tab.id === activeTab.id && isTerminalSessionTab(tab)

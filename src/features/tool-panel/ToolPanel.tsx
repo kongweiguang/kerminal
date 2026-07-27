@@ -17,11 +17,6 @@ import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import {
-  DiagnosticsBundleButton,
-  DiagnosticsBundleNotice,
-  useDiagnosticsBundleController,
-} from "./DiagnosticsBundleCard";
-import {
   defaultTerminalAppearance,
   type AppSettings,
   type ResolvedTheme,
@@ -184,7 +179,6 @@ export function ToolPanel({
         .filter((tool): tool is ToolSummary => Boolean(tool)),
     [renderedToolIds, tools],
   );
-  const diagnosticsBundle = useDiagnosticsBundleController();
   const agentSendRequest = useAgentSendRequestSnapshot().request;
   const active = contentTool
     ? (tools.find((tool) => tool.id === contentTool) ?? railTools[0])
@@ -271,13 +265,10 @@ export function ToolPanel({
                 key={toolId}
               >
                 {fullHeightTool || contentOwnsHeader ? null : (
-                  <header className="mb-3 flex items-center justify-between gap-3">
+                  <header className="mb-3">
                     <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
                       {tool.title}
                     </h2>
-                    {toolId === "logs" ? (
-                      <DiagnosticsBundleButton controller={diagnosticsBundle} />
-                    ) : null}
                   </header>
                 )}
 
@@ -404,11 +395,6 @@ export function ToolPanel({
                     {toolId === "logs" ? (
                       <LogToolContent
                         active={selected}
-                        diagnosticsBundleNotice={
-                          <DiagnosticsBundleNotice
-                            controller={diagnosticsBundle}
-                          />
-                        }
                         focusedPane={binding.focusedPane}
                       />
                     ) : null}
