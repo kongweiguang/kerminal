@@ -347,6 +347,9 @@ pub struct TerminalAppearance {
     /// 选中文本后是否自动复制到剪贴板。
     #[serde(default)]
     pub selection_copy: bool,
+    /// 是否显示终端左侧命令块色条。
+    #[serde(default = "default_true")]
+    pub show_command_block_rail: bool,
     /// 是否在标签标题前显示序号。
     #[serde(default)]
     pub show_tab_numbers: bool,
@@ -378,6 +381,7 @@ impl Default for TerminalAppearance {
             cursor_blink: true,
             right_click_behavior: TerminalRightClickBehavior::Menu,
             selection_copy: false,
+            show_command_block_rail: true,
             show_tab_numbers: false,
             confirm_close_tab: true,
             inline_suggestion: TerminalInlineSuggestionSettings::default(),

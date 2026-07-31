@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useSyncExternalStore } from "react";
 import {
   Check,
@@ -242,8 +244,8 @@ export function TerminalSettingsSection({
             <MousePointerClick className="h-4 w-4 text-zinc-400" />
             终端交互
           </div>
-          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.72fr)]">
-            <div className="grid gap-2 md:grid-cols-2">
+          <div className="mt-4">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               <PolicyToggle
                 checked={normalizedSettings.terminal.selectionCopy}
                 icon={MousePointerClick}
@@ -257,6 +259,20 @@ export function TerminalSettingsSection({
                 onChange={(showTabNumbers) => updateTerminal({ showTabNumbers })}
               />
               <PolicyToggle
+                checked={normalizedSettings.terminal.cursorBlink}
+                icon={Type}
+                label="光标闪烁"
+                onChange={(cursorBlink) => updateTerminal({ cursorBlink })}
+              />
+              <PolicyToggle
+                checked={normalizedSettings.terminal.showCommandBlockRail}
+                icon={Terminal}
+                label="显示命令色条"
+                onChange={(showCommandBlockRail) =>
+                  updateTerminal({ showCommandBlockRail })
+                }
+              />
+              <PolicyToggle
                 checked={normalizedSettings.terminal.confirmCloseTab}
                 icon={RotateCcw}
                 label="关闭标签前确认"
@@ -265,14 +281,27 @@ export function TerminalSettingsSection({
                 }
               />
               <PolicyToggle
-                checked={normalizedSettings.terminal.macOptionIsMeta}
-                icon={Terminal}
-                label="将 macOS Option 键作为 Meta 键"
-                onChange={(macOptionIsMeta) =>
-                  updateTerminal({ macOptionIsMeta })
-                }
+                checked={normalizedSettings.terminal.autoReconnect}
+                icon={RotateCcw}
+                label="自动重连"
+                onChange={(autoReconnect) => updateTerminal({ autoReconnect })}
               />
-              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 md:col-span-2">
+            </div>
+            <div className="mt-3 grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)_minmax(0,1fr)]">
+              <div>
+                <div className="mb-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  键盘
+                </div>
+                <PolicyToggle
+                  checked={normalizedSettings.terminal.macOptionIsMeta}
+                  icon={Terminal}
+                  label="将 macOS Option 键作为 Meta 键"
+                  onChange={(macOptionIsMeta) =>
+                    updateTerminal({ macOptionIsMeta })
+                  }
+                />
+              </div>
+              <label className="block">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   右键行为
                 </span>
@@ -289,20 +318,6 @@ export function TerminalSettingsSection({
                   value={normalizedSettings.terminal.rightClickBehavior}
                 />
               </label>
-            </div>
-            <div className="space-y-3">
-              <PolicyToggle
-                checked={normalizedSettings.terminal.cursorBlink}
-                icon={Type}
-                label="光标闪烁"
-                onChange={(cursorBlink) => updateTerminal({ cursorBlink })}
-              />
-              <PolicyToggle
-                checked={normalizedSettings.terminal.autoReconnect}
-                icon={RotateCcw}
-                label="自动重连"
-                onChange={(autoReconnect) => updateTerminal({ autoReconnect })}
-              />
               <NumberSetting
                 label="滚屏缓冲"
                 max={50000}

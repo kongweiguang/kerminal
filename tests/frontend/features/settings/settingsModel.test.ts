@@ -16,6 +16,8 @@ describe("settingsModel", () => {
     expect(normalizeAppSettings().interfaceDensity).toBe("compact");
     expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
     expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
+    expect(defaultAppSettings.terminal.showCommandBlockRail).toBe(true);
+    expect(normalizeAppSettings().terminal.showCommandBlockRail).toBe(true);
     expect(defaultAppSettings.sftp).toMatchObject({
       packetBytes: 256 * 1024,
       pipelineDepth: 8,
@@ -93,6 +95,7 @@ describe("settingsModel", () => {
         rightClickBehavior: "context",
         scrollback: 100,
         selectionCopy: true,
+        showCommandBlockRail: false,
         showTabNumbers: true,
       },
       sftp: {
@@ -162,6 +165,7 @@ describe("settingsModel", () => {
       rightClickBehavior: defaultAppSettings.terminal.rightClickBehavior,
       scrollback: 1000,
       selectionCopy: true,
+      showCommandBlockRail: false,
       showTabNumbers: true,
     });
     expect(settings.sftp).toMatchObject({

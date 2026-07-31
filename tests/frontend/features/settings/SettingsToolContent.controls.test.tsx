@@ -173,6 +173,13 @@ describe("SettingsToolContent controls", () => {
       }),
     );
 
+    await user.click(screen.getByLabelText("显示命令色条"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({ showCommandBlockRail: false }),
+      }),
+    );
+
     await user.click(screen.getByLabelText("关闭标签前确认"));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({

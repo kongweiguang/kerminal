@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { TerminalAppearance } from "../settings/contracts/index";
@@ -80,9 +82,12 @@ export function XtermPaneView({
   terminalRef,
   title,
 }: XtermPaneViewProps) {
+  const showCommandBlockRail =
+    shellAssistEnabled && terminalAppearance.showCommandBlockRail;
+
   return (
     <div className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]" onContextMenu={onContextMenu}>
-      {shellAssistEnabled ? (
+      {showCommandBlockRail ? (
         <TerminalCommandBlockRail
           blocks={commandBlockViews}
           canSendToAgent={agentSendActionsEnabled}
@@ -90,7 +95,7 @@ export function XtermPaneView({
         />
       ) : null}
       <div
-        className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${shellAssistEnabled ? "pl-6" : "pl-3"}`}
+        className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${showCommandBlockRail ? "pl-6" : "pl-3"}`}
         onPointerDown={() => terminalRef.current?.focus()}
       >
         <div aria-label={`${title} xterm 终端`} className="h-full min-h-0 w-full overflow-hidden" ref={containerRef} />

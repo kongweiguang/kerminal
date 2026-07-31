@@ -58,6 +58,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   rightClickBehavior: "menu",
   scrollback: 5000,
   selectionCopy: false,
+  showCommandBlockRail: true,
   showTabNumbers: false,
 };
 

@@ -213,10 +213,7 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - SFTP 文件浏览器支持保存、选择、重命名、排序和删除路径书签，并按主机隔离远端书签。
-            - 终端滚动查看历史内容时隐藏灰色命令提示，回到底部后恢复，避免提示与历史输出错位。
-            - SSH、RDP 和跳板机密码默认遮罩，支持按需切换显示或隐藏，凭据保存契约保持不变。
-            - SFTP 默认流水线深度调整为 8，与 256 KiB 单包组合为约 2 MiB 在途窗口，兼顾吞吐和服务端兼容性。
+            - 终端设置新增“显示命令色条”开关；关闭后隐藏左侧命令块色条并回收终端空白，旧配置保持默认开启。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

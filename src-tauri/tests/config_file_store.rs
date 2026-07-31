@@ -55,6 +55,23 @@ fn settings_toml_defaults_missing_terminal_renderer_type_to_cpu() {
 }
 
 #[test]
+fn settings_toml_defaults_missing_command_block_rail_switch_to_enabled() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    let settings = AppSettings::default();
+
+    store.write_settings(&settings).expect("write settings");
+    let source = fs::read_to_string(temp.path().join("settings.toml")).expect("settings source");
+    let source_without_switch = source.replace("showCommandBlockRail = true\n", "");
+    fs::write(temp.path().join("settings.toml"), source_without_switch)
+        .expect("write legacy settings");
+
+    let loaded = store.read_settings().expect("read legacy settings");
+
+    assert!(loaded.terminal.show_command_block_rail);
+}
+
+#[test]
 fn settings_toml_keeps_explicit_auto_renderer_mode() {
     let temp = tempdir().expect("temp dir");
     let store = ConfigFileStore::new(temp.path());

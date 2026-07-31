@@ -72,6 +72,7 @@ fn settings_service_persists_settings_in_toml() {
         settings.terminal.renderer_type = TerminalRendererType::Gpu;
         settings.terminal.right_click_behavior = TerminalRightClickBehavior::Paste;
         settings.terminal.selection_copy = true;
+        settings.terminal.show_command_block_rail = false;
         settings.terminal.show_tab_numbers = true;
         settings.terminal.confirm_close_tab = false;
         settings.terminal.inline_suggestion.enabled = false;
@@ -191,6 +192,7 @@ fn settings_service_persists_settings_in_toml() {
         TerminalRightClickBehavior::Paste
     );
     assert!(settings.terminal.selection_copy);
+    assert!(!settings.terminal.show_command_block_rail);
     assert!(settings.terminal.show_tab_numbers);
     assert!(!settings.terminal.confirm_close_tab);
     assert!(!settings.terminal.inline_suggestion.enabled);
@@ -247,6 +249,7 @@ fn settings_service_persists_settings_in_toml() {
     assert!(settings_source.contains("schema_version = 1"));
     assert!(settings_source.contains("themeMode = \"light\""));
     assert!(settings_source.contains("rendererType = \"gpu\""));
+    assert!(settings_source.contains("showCommandBlockRail = false"));
     assert!(settings_source.contains("[desktopNotifications]"));
     assert!(settings_source.contains("enabled = true"));
     assert!(settings_source.contains("[externalLaunch]"));

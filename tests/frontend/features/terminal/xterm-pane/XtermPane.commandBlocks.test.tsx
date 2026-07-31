@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -76,6 +80,60 @@ describe("XtermPane sessions and command blocks", () => {
     );
     expect(screen.getByLabelText("Codex xterm 终端").parentElement).not.toHaveClass(
       "pl-6",
+    );
+  });
+
+  it("hides the command rail and reclaims its spacing when disabled", async () => {
+    const { rerender } = render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitForTerminalSessionReady();
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(terminal, { 0: "PS C:\\Users\\24052> pwd" }, 0);
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "C:\\Users\\24052\r\nPS C:\\Users\\24052>",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\Users\\24052> pwd",
+        1: "C:\\Users\\24052",
+        2: "PS C:\\Users\\24052>",
+      },
+      2,
+    );
+    act(() => terminal.onWriteParsedCallback?.());
+
+    await screen.findByLabelText("命令块色条");
+    rerender(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          showCommandBlockRail: false,
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+
+    expect(screen.queryByLabelText("命令块色条")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("本地 PowerShell xterm 终端").parentElement).toHaveClass(
+      "pl-3",
     );
   });
 

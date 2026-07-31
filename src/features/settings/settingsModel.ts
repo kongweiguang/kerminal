@@ -138,6 +138,7 @@ export interface TerminalAppearance {
   rendererType: TerminalRendererType;
   rightClickBehavior: TerminalRightClickBehavior;
   selectionCopy: boolean;
+  showCommandBlockRail: boolean;
   showTabNumbers: boolean;
   confirmCloseTab: boolean;
   cursorBlink: boolean;
@@ -348,6 +349,10 @@ export function normalizeAppSettings(
       ),
       selectionCopy:
         terminal.selectionCopy ?? defaultTerminalAppearance.selectionCopy,
+      showCommandBlockRail: readBoolean(
+        terminal.showCommandBlockRail,
+        defaultTerminalAppearance.showCommandBlockRail,
+      ),
       showTabNumbers:
         terminal.showTabNumbers ?? defaultTerminalAppearance.showTabNumbers,
     },
