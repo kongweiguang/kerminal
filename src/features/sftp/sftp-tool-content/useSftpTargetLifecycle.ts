@@ -59,32 +59,27 @@ export function createSftpTargetBindingSnapshot(
   };
 }
 
-/** 目标或 active 状态变化时更换会话实例，确保内部冲突预检也同步释放。 */
+/** 仅在目标变化时更换会话实例；右栏暂时隐藏时保留当前目录。 */
 function sftpTargetSessionKey({
-  active,
   fallbackTargetKey,
   target,
 }: {
-  active: boolean;
   fallbackTargetKey?: string;
   target: SftpFileTarget | null;
 }) {
-  const targetKey = target
+  return target
     ? sftpFileTargetBindingKey(target)
     : (fallbackTargetKey ?? "none");
-  return `${active ? "active" : "inactive"}:${targetKey}`;
 }
 
 /**
  * 把跨目标应保留的显示偏好和剪贴板放在会话外层，目标相关状态则交给 keyed 子树。
  */
 export function useSftpTargetSessionBoundary({
-  active,
   controlledClipboard,
   onClipboardChange,
   selectedMachine,
 }: {
-  active: boolean;
   controlledClipboard?: SftpClipboard | null;
   onClipboardChange?: (clipboard: SftpClipboard | null) => void;
   selectedMachine?: Machine;
@@ -117,7 +112,6 @@ export function useSftpTargetSessionBoundary({
     fileTarget,
     followTerminalDirectory,
     sessionKey: sftpTargetSessionKey({
-      active,
       fallbackTargetKey,
       target: fileTarget,
     }),
@@ -155,7 +149,7 @@ export function useSftpTargetLifecycle({
   active: boolean;
   target: SftpFileTarget | null;
 }) {
-  const bindingKey = `${active ? "active" : "inactive"}:${sftpFileTargetBindingKey(target)}`;
+  const bindingKey = sftpFileTargetBindingKey(target);
   const stateRef = useRef<SftpTargetLifecycleState | null>(null);
   const targetRef = useRef(target);
   targetRef.current = target;

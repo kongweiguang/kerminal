@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { StrictMode } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -40,7 +44,8 @@ describe("SftpToolContent target binding", () => {
     });
   });
 
-  it("stops reads while inactive and reloads only the latest target", async () => {
+  it("keeps the current directory while inactive and loads only a changed target", async () => {
+    const user = userEvent.setup();
     sftpApiMocks.listSftpDirectory.mockImplementation(
       async ({ hostId, path }: { hostId: string; path: string }) =>
         listing(hostId, path),
@@ -50,10 +55,27 @@ describe("SftpToolContent target binding", () => {
     );
 
     expect(await screen.findByText("prod-api.txt")).toBeInTheDocument();
+    const pathInput = screen.getByLabelText("当前远程路径");
+    await user.clear(pathInput);
+    await user.type(pathInput, "/var/log{Enter}");
+    expect(await screen.findByText("prod-api.txt")).toBeInTheDocument();
+    expect(pathInput).toHaveValue("/var/log");
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
+      hostId: "prod-api",
+      path: "/var/log",
+    });
 
     rerender(<SftpToolContent active={false} selectedMachine={sshMachine} />);
-    expect(screen.queryByText("prod-api.txt")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("当前远程路径")).toHaveValue("/var/log");
+    expect(screen.getByText("prod-api.txt")).toBeInTheDocument();
     sftpApiMocks.listSftpDirectory.mockClear();
+
+    rerender(<SftpToolContent active selectedMachine={sshMachine} />);
+    expect(screen.getByLabelText("当前远程路径")).toHaveValue("/var/log");
+    expect(screen.getByText("prod-api.txt")).toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).not.toHaveBeenCalled();
+
+    rerender(<SftpToolContent active={false} selectedMachine={sshMachine} />);
 
     rerender(
       <SftpToolContent active={false} selectedMachine={stageSshMachine} />,
@@ -67,6 +89,57 @@ describe("SftpToolContent target binding", () => {
     expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledWith({
       hostId: "stage-api",
       path: "/",
+    });
+  });
+
+  it("restores an independent current directory for each still-open tab", async () => {
+    const user = userEvent.setup();
+    sftpApiMocks.listSftpDirectory.mockImplementation(
+      async ({ hostId, path }: { hostId: string; path: string }) =>
+        listing(hostId, path),
+    );
+    const availableSessionScopeIds = ["tab-a", "tab-b"];
+    const { rerender } = render(
+      <SftpToolContent
+        active
+        availableSessionScopeIds={availableSessionScopeIds}
+        selectedMachine={sshMachine}
+        sessionScopeId="tab-a"
+      />,
+    );
+
+    await screen.findByText("prod-api.txt");
+    const tabAPath = screen.getByLabelText("当前远程路径");
+    await user.clear(tabAPath);
+    await user.type(tabAPath, "/var/log{Enter}");
+    await waitFor(() => expect(tabAPath).toHaveValue("/var/log"));
+
+    rerender(
+      <SftpToolContent
+        active
+        availableSessionScopeIds={availableSessionScopeIds}
+        selectedMachine={sshMachine}
+        sessionScopeId="tab-b"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前远程路径")).toHaveValue("/"),
+    );
+
+    rerender(
+      <SftpToolContent
+        active
+        availableSessionScopeIds={availableSessionScopeIds}
+        selectedMachine={sshMachine}
+        sessionScopeId="tab-a"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前远程路径")).toHaveValue("/var/log"),
+    );
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
+      hostId: "prod-api",
+      path: "/var/log",
     });
   });
 

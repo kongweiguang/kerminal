@@ -2,7 +2,14 @@
  * @author kongweiguang
  */
 
-import type { Dispatch, SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type { Machine, WorkspaceFileDirtyState, WorkspaceFileRevealRequest, WorkspaceFileTab } from "../../workspace/contracts/index";
 import type { OpenWorkspaceFileTabOptions } from "../../workspace/state/index";
 import type { InterfaceDensity } from "../../settings/contracts/index";
@@ -18,10 +25,12 @@ export type SftpToolContentProps = {
   followedLocalPath?: string;
   followedRemotePath?: string;
   interfaceDensity?: InterfaceDensity;
+  availableSessionScopeIds?: string[];
   onCurrentPathChange?: (path: string) => void;
   onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onSftpClipboardChange?: (clipboard: SftpClipboard | null) => void;
   selectedMachine?: Machine;
+  sessionScopeId?: string;
   showLocalTransferActions?: boolean;
   showTerminalDirectoryControls?: boolean;
   showTransferStatusBar?: boolean;
@@ -39,6 +48,7 @@ export type SftpTargetBoundContentProps = SftpToolContentProps & {
   browserMode: SftpBrowserMode;
   fileTarget: SftpFileTarget | null;
   followTerminalDirectory: boolean;
+  initialRemotePath?: string;
   setBrowserMode: Dispatch<SetStateAction<SftpBrowserMode>>;
   setFollowTerminalDirectory: Dispatch<SetStateAction<boolean>>;
   setShowHiddenFiles: Dispatch<SetStateAction<boolean>>;
@@ -47,15 +57,70 @@ export type SftpTargetBoundContentProps = SftpToolContentProps & {
   sftpClipboard: SftpClipboard | null;
 };
 
-/** 保留跨目标视图偏好，并按 active 与资源身份隔离远端会话状态。 */
+const DEFAULT_SFTP_SESSION_SCOPE_ID = "__kerminal_sftp_default_scope__";
+
+/** 保留右栏切换期间的视图状态，并按资源身份隔离远端会话状态。 */
 export function SftpToolContent(props: SftpToolContentProps) {
   const active = props.active ?? true;
+  const onCurrentPathChange = props.onCurrentPathChange;
+  const sessionScopeId =
+    props.sessionScopeId?.trim() || DEFAULT_SFTP_SESSION_SCOPE_ID;
   const session = useSftpTargetSessionBoundary({
-    active,
     controlledClipboard: props.sftpClipboard,
     onClipboardChange: props.onSftpClipboardChange,
     selectedMachine: props.selectedMachine,
   });
+  const [remotePathByScope, setRemotePathByScope] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const mountedSessionKey = `${sessionScopeId}\u0000${session.sessionKey}`;
+  const initialRemotePathRef = useRef<{
+    key: string;
+    path?: string;
+  }>({ key: "" });
+  if (initialRemotePathRef.current.key !== mountedSessionKey) {
+    initialRemotePathRef.current = {
+      key: mountedSessionKey,
+      path: remotePathByScope[sessionScopeId]?.[session.sessionKey],
+    };
+  }
+  const initialRemotePath = initialRemotePathRef.current.path;
+  const handleCurrentPathChange = useCallback(
+    (path: string) => {
+      setRemotePathByScope((current) => {
+        const currentScope = current[sessionScopeId];
+        if (currentScope?.[session.sessionKey] === path) {
+          return current;
+        }
+        return {
+          ...current,
+          [sessionScopeId]: {
+            ...currentScope,
+            [session.sessionKey]: path,
+          },
+        };
+      });
+      onCurrentPathChange?.(path);
+    },
+    [onCurrentPathChange, session.sessionKey, sessionScopeId],
+  );
+
+  useEffect(() => {
+    if (!props.availableSessionScopeIds) {
+      return;
+    }
+    const availableScopeIds = new Set(props.availableSessionScopeIds);
+    setRemotePathByScope((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([scopeId]) =>
+          availableScopeIds.has(scopeId),
+        ),
+      );
+      return Object.keys(next).length === Object.keys(current).length
+        ? current
+        : next;
+    });
+  }, [props.availableSessionScopeIds]);
 
   return (
     <SftpTargetBoundContent
@@ -64,7 +129,9 @@ export function SftpToolContent(props: SftpToolContentProps) {
       browserMode={session.browserMode}
       fileTarget={session.fileTarget}
       followTerminalDirectory={session.followTerminalDirectory}
-      key={session.sessionKey}
+      initialRemotePath={initialRemotePath}
+      key={mountedSessionKey}
+      onCurrentPathChange={handleCurrentPathChange}
       setBrowserMode={session.setBrowserMode}
       setFollowTerminalDirectory={session.setFollowTerminalDirectory}
       setShowHiddenFiles={session.setShowHiddenFiles}

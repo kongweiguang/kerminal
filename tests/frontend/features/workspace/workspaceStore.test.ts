@@ -36,6 +36,30 @@ describe("workspaceStore", () => {
     expect(useWorkspaceStore.getState().activeTool).toBe("sftp");
   });
 
+  it("keeps right-panel selection bound to each tab until that tab closes", () => {
+    useWorkspaceStore.getState().addTerminalTab({ title: "tab A" });
+    const tabA = useWorkspaceStore.getState().activeTabId;
+    useWorkspaceStore.getState().setActiveTool("agentLauncher");
+
+    useWorkspaceStore.getState().addTerminalTab({ title: "tab B" });
+    const tabB = useWorkspaceStore.getState().activeTabId;
+    expect(useWorkspaceStore.getState().activeTool).toBeNull();
+    useWorkspaceStore.getState().setActiveTool("sftp");
+
+    useWorkspaceStore.getState().selectTab(tabA);
+    expect(useWorkspaceStore.getState().activeTool).toBe("agentLauncher");
+
+    useWorkspaceStore.getState().selectTab(tabB);
+    expect(useWorkspaceStore.getState().activeTool).toBe("sftp");
+    useWorkspaceStore.getState().closeTerminalTab(tabB);
+
+    expect(useWorkspaceStore.getState().activeTabId).toBe(tabA);
+    expect(useWorkspaceStore.getState().activeTool).toBe("agentLauncher");
+    expect(useWorkspaceStore.getState().activeToolByTabId).toEqual({
+      [tabA]: "agentLauncher",
+    });
+  });
+
   it("tracks sidebar search and broadcast drafts", () => {
     useWorkspaceStore.getState().setMachineSearch("prod");
     useWorkspaceStore.getState().setBroadcastDraft("uptime");

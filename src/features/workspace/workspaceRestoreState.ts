@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { WorkspaceSessionSnapshot } from "./workspaceSession";
 import type { MachineGroup } from "./types";
 import {
@@ -38,6 +40,8 @@ export function restoreWorkspaceSessionState(
   );
   return {
     activeTabId: session.activeTabId,
+    activeTool: null,
+    activeToolByTabId: {},
     focusedPaneId: session.focusedPaneId,
     machineGroups,
     removedSidebarMachineIds,

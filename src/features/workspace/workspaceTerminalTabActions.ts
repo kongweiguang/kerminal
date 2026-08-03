@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { StateCreator } from "zustand";
 import { closeTerminalTabState } from "./workspaceTerminalState";
 import type {
@@ -7,6 +9,8 @@ import type {
   TerminalTabGroupPreferences,
   WorkspaceFileDirtyState,
 } from "./types";
+import type { WorkspaceToolPanelState } from "./workspaceToolPanelState";
+import { withClosedToolPanelTab } from "./workspaceToolPanelState";
 
 export interface WorkspaceTerminalTabActions {
   closeTerminalTab: (tabId: string) => void;
@@ -17,7 +21,7 @@ export interface WorkspaceTerminalTabActions {
   ) => void;
 }
 
-interface WorkspaceTerminalTabStore {
+interface WorkspaceTerminalTabStore extends WorkspaceToolPanelState {
   activeTabId: string;
   focusedPaneId: string;
   terminalPanes: TerminalPane[];
@@ -35,13 +39,17 @@ export const createWorkspaceTerminalTabActions: StateCreator<
 > = (set) => ({
   closeTerminalTab: (tabId) =>
     set((state) => {
+      if (!state.terminalTabs.some((tab) => tab.id === tabId)) {
+        return {};
+      }
       const patch = closeTerminalTabState(state, tabId);
+      const toolPanelPatch = withClosedToolPanelTab(state, patch, tabId);
       if (!(tabId in state.workspaceFileDirtyState)) {
-        return patch;
+        return toolPanelPatch;
       }
       const { [tabId]: _removed, ...workspaceFileDirtyState } =
         state.workspaceFileDirtyState;
-      return { ...patch, workspaceFileDirtyState };
+      return { ...toolPanelPatch, workspaceFileDirtyState };
     }),
   renameTerminalTab: (tabId, title) =>
     set((state) => {

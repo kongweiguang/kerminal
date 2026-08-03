@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import type {
@@ -6,9 +8,11 @@ import type {
   WorkspaceFileAccess,
   WorkspaceFileSource,
 } from "./types";
+import type { ActiveToolByTabId } from "./workspaceToolPanelState";
 
 interface WorkspaceShellInteractionState {
   activeTool: ToolId | null;
+  activeToolByTabId: ActiveToolByTabId;
   broadcastDraft: string;
   machineSearch: string;
 }

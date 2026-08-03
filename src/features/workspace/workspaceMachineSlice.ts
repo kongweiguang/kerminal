@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { StateCreator } from "zustand";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
@@ -29,6 +31,7 @@ import {
   focusExistingMachineTabState,
 } from "./workspaceTerminalOpenState";
 import { selectTerminalTabState } from "./workspaceTerminalState";
+import { withToolPanelTabTransition } from "./workspaceToolPanelState";
 
 export interface WorkspaceMachineSlice {
   setProfiles(profiles: TerminalProfile[]): void;
@@ -73,11 +76,13 @@ export function createWorkspaceMachineSlice(
         if (!hostMachine || hostMachine.kind !== "ssh") return {};
         const machine = containerToMachine(container, hostMachine, options);
         const focusState = focusExistingMachineTabState(state, machine.id);
-        if (focusState) return focusState;
-        return createContainerTerminalOpenState(state, machine, {
+        if (focusState) {
+          return withToolPanelTabTransition(state, focusState);
+        }
+        return withToolPanelTabTransition(state, createContainerTerminalOpenState(state, machine, {
           paneId: counters.nextPaneId("pane-container"),
           tabId: counters.nextTabId("tab-container"),
-        });
+        }));
       }),
     addLocalProfileMachine: (profile, groupId) =>
       set((state) => addLocalProfileMachineState(state, profile, groupId)),
@@ -96,13 +101,13 @@ export function createWorkspaceMachineSlice(
       set((state) => {
         const tabPatch = selectTerminalTabState(state, activeTabId);
         if (!("activeTabId" in tabPatch)) return tabPatch;
-        return {
+        return withToolPanelTabTransition(state, {
           ...tabPatch,
           selectedMachineId: selectedMachineIdFromWorkspaceTab(
             state.terminalTabs.find((tab) => tab.id === activeTabId),
             state.machineGroups,
           ),
-        };
+        });
       }),
   });
 }

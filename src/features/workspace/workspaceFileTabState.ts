@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { isWorkspaceFileTab, type TerminalTab, type WorkspaceFileDirtyState } from "./types";
 import {
   directoryForWorkspaceFilePath,

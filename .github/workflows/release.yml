@@ -213,7 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 终端设置新增“显示命令色条”开关；关闭后隐藏左侧命令块色条并回收终端空白，旧配置保持默认开启。
+            - 右栏工具状态现在跟随各自的终端 Tab 保存与恢复；新 Tab 默认收起，关闭 Tab 只清理自身状态。
+            - 同一主机的多个终端 Tab 现在分别保留 SFTP 浏览路径，切换主机或容器不会意外关闭正在使用的 Agent。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

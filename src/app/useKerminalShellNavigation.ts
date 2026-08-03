@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
 import type { MachineGroup } from "../features/workspace/types";
@@ -96,8 +98,8 @@ export function useKerminalShellNavigation({
 
   const enterHostContainer = useCallback(
     (container: DockerContainerSummary) => {
-      setActiveTool(null);
       openDockerContainerTerminal(container);
+      setActiveTool(null);
     },
     [openDockerContainerTerminal, setActiveTool],
   );

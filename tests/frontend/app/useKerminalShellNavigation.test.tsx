@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useKerminalShellNavigation } from "../../../src/app/useKerminalShellNavigation";
@@ -85,6 +87,21 @@ describe("useKerminalShellNavigation", () => {
     expect(options.setActiveTool).toHaveBeenCalledWith(null);
     expect(options.setHostContainersHostId).toHaveBeenCalledWith(null);
     expect(options.setHostContainersInitialContainerId).toHaveBeenCalledWith(undefined);
+  });
+
+  it("switches to a container tab before collapsing that new tab's right panel", () => {
+    const options = createOptions();
+    const { result } = renderHook(() => useKerminalShellNavigation(options));
+
+    act(() => result.current.enterHostContainer(apiContainer));
+
+    expect(options.openDockerContainerTerminal).toHaveBeenCalledWith(apiContainer);
+    expect(options.setActiveTool).toHaveBeenCalledWith(null);
+    expect(
+      vi.mocked(options.openDockerContainerTerminal).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(options.setActiveTool).mock.invocationCallOrder[0],
+    );
   });
 });
 

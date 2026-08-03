@@ -27,6 +27,8 @@ import {
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
 import type { Machine, SftpTransferWorkspaceTab, ToolId } from "./types";
+import type { ActiveToolByTabId } from "./workspaceToolPanelState";
+import { withToolPanelTabTransition } from "./workspaceToolPanelState";
 
 export interface WorkspaceTerminalOpenActions {
   openContainerTerminal: (machineId: string) => void;
@@ -64,6 +66,7 @@ export interface WorkspaceTerminalOpenCounterPort {
 
 interface WorkspaceTerminalOpenStore extends TerminalOpenStateSlice {
   activeTool: ToolId | null;
+  activeToolByTabId: ActiveToolByTabId;
   profiles: TerminalProfile[];
 }
 
@@ -88,7 +91,7 @@ export function createWorkspaceTerminalOpenActions(
               (candidate) => candidate.id === machine.profileId,
             )
           : undefined;
-        return createLocalTerminalOpenState(state, {
+        return withToolPanelTabTransition(state, createLocalTerminalOpenState(state, {
           args: machine.args,
           cwd: machine.cwd,
           env: machine.env,
@@ -99,7 +102,7 @@ export function createWorkspaceTerminalOpenActions(
           shell: machine.shell,
           tabId: counters.nextTabId("tab-local"),
           title: machine.name,
-        });
+        }));
       }),
     openSshTerminal: (hostId) =>
       set((state) => {
@@ -107,10 +110,10 @@ export function createWorkspaceTerminalOpenActions(
         if (!machine || machine.kind !== "ssh") {
           return {};
         }
-        return createSshTerminalOpenState(state, machine, {
+        return withToolPanelTabTransition(state, createSshTerminalOpenState(state, machine, {
           paneId: counters.nextPaneId("pane-ssh"),
           tabId: counters.nextTabId("tab-ssh"),
-        });
+        }));
       }),
     openSshCommandTerminal: (hostId, options) =>
       set((state) => {
@@ -118,13 +121,13 @@ export function createWorkspaceTerminalOpenActions(
         if (!machine || machine.kind !== "ssh") {
           return {};
         }
-        return createSshTerminalOpenState(state, machine, {
+        return withToolPanelTabTransition(state, createSshTerminalOpenState(state, machine, {
           cwd: options.cwd,
           paneId: counters.nextPaneId("pane-ssh"),
           remoteCommand: options.remoteCommand,
           tabId: counters.nextTabId("tab-ssh"),
           title: options.title,
-        });
+        }));
       }),
     openExternalSshLaunch: (launch) =>
       set((state) => {
@@ -164,17 +167,16 @@ export function createWorkspaceTerminalOpenActions(
             { rightHostId: machineId },
             counters,
           );
-          return {
+          return withToolPanelTabTransition(state, {
             ...terminalState,
             ...transferState,
-            activeTool: null,
             machineGroups,
-          };
+          }, null);
         }
-        return {
+        return withToolPanelTabTransition(state, {
           ...terminalState,
           machineGroups,
-        };
+        });
       }),
     openExternalSftpLaunch: (launch) =>
       set((state) => {
@@ -186,11 +188,11 @@ export function createWorkspaceTerminalOpenActions(
             tab.kind === "sftpTransfer" && tab.externalLaunchId === launch.id,
         );
         if (existingTab) {
-          return {
+          return withToolPanelTabTransition(state, {
             activeTabId: existingTab.id,
             focusedPaneId: "",
             selectedMachineId: existingTab.machineId,
-          };
+          });
         }
         const machineId = externalSshLaunchMachineId(launch);
         const machine: Machine = {
@@ -224,13 +226,13 @@ export function createWorkspaceTerminalOpenActions(
           rightHostId: machineId,
           title: `${machine.name} 传输`,
         };
-        return {
+        return withToolPanelTabTransition(state, {
           activeTabId: tabId,
           focusedPaneId: "",
           machineGroups,
           selectedMachineId: machineId,
           terminalTabs: [...state.terminalTabs, tab],
-        };
+        });
       }),
     openTmuxAttachTerminal: (launch, placement = "pane") =>
       set((state) => {
@@ -248,7 +250,7 @@ export function createWorkspaceTerminalOpenActions(
           split: result.consumedSplit,
           tab: result.consumedTab,
         });
-        return result.patch;
+        return withToolPanelTabTransition(state, result.patch);
       }),
     openTelnetTerminal: (hostId) =>
       set((state) => {
@@ -256,10 +258,10 @@ export function createWorkspaceTerminalOpenActions(
         if (!machine || machine.kind !== "telnet") {
           return {};
         }
-        return createTelnetTerminalOpenState(state, machine, {
+        return withToolPanelTabTransition(state, createTelnetTerminalOpenState(state, machine, {
           paneId: counters.nextPaneId("pane-telnet"),
           tabId: counters.nextTabId("tab-telnet"),
-        });
+        }));
       }),
     openSerialTerminal: (hostId) =>
       set((state) => {
@@ -267,10 +269,10 @@ export function createWorkspaceTerminalOpenActions(
         if (!machine || machine.kind !== "serial") {
           return {};
         }
-        return createSerialTerminalOpenState(state, machine, {
+        return withToolPanelTabTransition(state, createSerialTerminalOpenState(state, machine, {
           paneId: counters.nextPaneId("pane-serial"),
           tabId: counters.nextTabId("tab-serial"),
-        });
+        }));
       }),
     openContainerTerminal: (machineId) =>
       set((state) => {
@@ -280,12 +282,12 @@ export function createWorkspaceTerminalOpenActions(
         }
         const existingTabState = focusExistingMachineTabState(state, machine.id);
         if (existingTabState) {
-          return existingTabState;
+          return withToolPanelTabTransition(state, existingTabState);
         }
-        return createContainerTerminalOpenState(state, machine, {
+        return withToolPanelTabTransition(state, createContainerTerminalOpenState(state, machine, {
           paneId: counters.nextPaneId("pane-container"),
           tabId: counters.nextTabId("tab-container"),
-        });
+        }));
       }),
   });
 }

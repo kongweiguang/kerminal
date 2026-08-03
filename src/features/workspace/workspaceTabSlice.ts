@@ -31,6 +31,7 @@ import {
   type SftpTransferWorkspaceTab,
   type WorkspaceFileTab,
 } from "./types";
+import { withToolPanelTabTransition } from "./workspaceToolPanelState";
 
 export interface WorkspaceTabSlice {
   addTerminalTab(options?: AddTerminalTabOptions): void;
@@ -79,23 +80,37 @@ export function createWorkspaceTabSlice(
           tmuxBinding: options?.tmuxBinding,
           title,
         });
-        return {
+        return withToolPanelTabTransition(state, {
           ...nextState,
           removedSidebarMachineIds: removeRemovedSidebarMachineId(
             state.removedSidebarMachineIds,
             machineId,
           ),
-        };
+        });
       }),
     openSftpTransferTab: (options) =>
-      set((state) => openSftpTransferTabState(state, options, counters)),
+      set((state) =>
+        withToolPanelTabTransition(
+          state,
+          openSftpTransferTabState(state, options, counters),
+        ),
+      ),
     openWorkspaceFileTab: (options) =>
-      set((state) => openWorkspaceFileTabState(state, options, counters)),
+      set((state) =>
+        withToolPanelTabTransition(
+          state,
+          openWorkspaceFileTabState(state, options, counters),
+        ),
+      ),
     setWorkspaceFileTabDirty: (tabId, dirty) =>
       set((state) => setWorkspaceFileTabDirtyState(state, tabId, dirty)),
     revealWorkspaceFileInSftp: (tabId) =>
       set((state) =>
-        revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
+        withToolPanelTabTransition(
+          state,
+          revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
+          "sftp",
+        ),
       ),
   });
 }

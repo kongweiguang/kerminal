@@ -324,6 +324,9 @@ export function ToolPanel({
                     {toolId === "sftp" ? (
                       <SftpToolContent
                         active={selected}
+                        availableSessionScopeIds={terminalTabs?.map(
+                          (tab) => tab.id,
+                        )}
                         followedLocalPath={
                           binding.focusedPane?.mode === "local" &&
                           binding.focusedPane.machineId === binding.machine?.id
@@ -345,6 +348,7 @@ export function ToolPanel({
                         interfaceDensity={interfaceDensity}
                         onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
                         selectedMachine={binding.machine}
+                        sessionScopeId={binding.activeTab?.id}
                         sftpRevealRequest={sftpRevealRequest}
                         transferViewScope={sftpSidebarTransferViewScope({
                           hostId: binding.machine?.id,

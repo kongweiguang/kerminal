@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { create } from "zustand";
 import { describe, expect, it } from "vitest";
 import { createWorkspaceShellInteractionSlice } from "../../../../src/features/workspace/workspaceShellInteractionSlice";
@@ -9,6 +11,7 @@ describe("workspaceShellInteractionSlice", () => {
 
     expect(store.getState()).toMatchObject({
       activeTool: null,
+      activeToolByTabId: {},
       broadcastDraft: "",
       machineSearch: "",
     });
@@ -19,6 +22,7 @@ describe("workspaceShellInteractionSlice", () => {
 
     expect(store.getState()).toMatchObject({
       activeTool: "sftp",
+      activeToolByTabId: { "tab-test": "sftp" },
       broadcastDraft: "uptime",
       machineSearch: "prod",
     });
@@ -35,7 +39,9 @@ describe("workspaceShellInteractionSlice", () => {
 });
 
 function createShellInteractionStore() {
-  return create<WorkspaceShellInteractionSlice>()(
-    createWorkspaceShellInteractionSlice,
-  );
+  type TestState = WorkspaceShellInteractionSlice & { activeTabId: string };
+  return create<TestState>()((set, get, store) => ({
+    activeTabId: "tab-test",
+    ...createWorkspaceShellInteractionSlice(set, get, store),
+  }));
 }

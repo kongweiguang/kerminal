@@ -38,6 +38,7 @@ import {
   useSftpTargetLifecycle,
   type SftpTargetBoundDirectoryLoader,
 } from "../sftp-tool-content/useSftpTargetLifecycle";
+import { useSftpResumableDirectory } from "../sftp-tool-content/useSftpResumableDirectory";
 import {
   normalizeFollowedRemotePath,
   resolveFollowedRemotePathChange,
@@ -83,6 +84,7 @@ export function SftpTargetBoundContent({
   followedLocalPath,
   followedRemotePath,
   followTerminalDirectory,
+  initialRemotePath,
   interfaceDensity = "comfortable",
   onCurrentPathChange,
   onOpenWorkspaceFileTab,
@@ -147,7 +149,7 @@ export function SftpTargetBoundContent({
   }, [selectedMachine]);
   const fileRowHeight = resolveSftpFileRowHeight(interfaceDensity);
   const supportsSftpAdvancedActions = fileTarget?.kind === "ssh";
-  const targetInitialPath = fileTarget?.initialPath;
+  const targetInitialPath = initialRemotePath ?? fileTarget?.initialPath;
   const { openEditorEntry, openWorkspaceDirectory, resetWorkspaceDialog } =
     useSftpWorkspaceDialogActions({
       fileTarget,
@@ -252,10 +254,6 @@ export function SftpTargetBoundContent({
     },
     [dispatchRemoteBrowserAction],
   );
-  useEffect(() => {
-    onCurrentPathChange?.(currentPath);
-  }, [currentPath, onCurrentPathChange]);
-
   useTransientSftpErrorStatus(operationStatus, setOperationStatus);
   useSftpUploadMenuDismiss(
     uploadMenuOpen,
@@ -400,6 +398,10 @@ export function SftpTargetBoundContent({
     targetBindingKey,
     targetInitialPath,
   ]);
+
+  useSftpResumableDirectory({
+    active, currentPath: listing?.path, initialPath: targetInitialPath, loadDirectory, onCurrentPathChange, stateRef: remoteBrowserStateRef,
+  });
 
   useEffect(() => {
     if (!active || !workspaceTarget || !sftpRevealRequest) {
