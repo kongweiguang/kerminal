@@ -4,7 +4,12 @@ import { isToolId, type ToolId } from "./types";
 
 const UNBOUND_TOOL_PANEL_TAB_ID = "__kerminal_tool_panel_unbound__";
 
-export type ActiveToolByTabId = Record<string, ToolId>;
+/**
+ * Tab 的右栏状态：缺少 key 表示尚未初始化，null 表示用户明确收起。
+ * 两者不能合并，否则新 Tab 会在切换时意外把 Agent 右栏关掉，或把用户
+ * 明确收起的右栏重新打开。
+ */
+export type ActiveToolByTabId = Record<string, ToolId | null>;
 
 export interface WorkspaceToolPanelState {
   activeTabId: string;
@@ -30,7 +35,7 @@ export function activeToolForTab(
   return toolId && isToolId(toolId) ? toolId : null;
 }
 
-/** 更新当前 Tab 的右栏选择；收起只删除当前 Tab 的记录。 */
+/** 更新当前 Tab 的右栏选择；收起记录为当前 Tab 的明确关闭意图。 */
 export function setActiveToolForCurrentTabState(
   state: WorkspaceToolPanelState,
   activeTool: ToolId | null,
@@ -40,7 +45,7 @@ export function setActiveToolForCurrentTabState(
   if (activeTool) {
     activeToolByTabId[scopeId] = activeTool;
   } else {
-    delete activeToolByTabId[scopeId];
+    activeToolByTabId[scopeId] = null;
   }
   return { activeTool, activeToolByTabId };
 }
@@ -61,6 +66,21 @@ export function withToolPanelTabTransition<
     );
     return { ...patch, ...nextState };
   }
+  const nextScopeId = toolPanelTabScopeId(nextTabId);
+  const hasExplicitState = Object.prototype.hasOwnProperty.call(
+    state.activeToolByTabId,
+    nextScopeId,
+  );
+  if (!hasExplicitState && state.activeTool) {
+    return {
+      ...patch,
+      activeTool: state.activeTool,
+      activeToolByTabId: {
+        ...state.activeToolByTabId,
+        [nextScopeId]: state.activeTool,
+      },
+    };
+  }
   return {
     ...patch,
     activeTool: activeToolForTab(state.activeToolByTabId, nextTabId),
@@ -79,9 +99,20 @@ export function withClosedToolPanelTab<
   const activeToolByTabId = { ...state.activeToolByTabId };
   delete activeToolByTabId[toolPanelTabScopeId(closedTabId)];
   const nextTabId = patch.activeTabId ?? state.activeTabId;
+  const nextScopeId = toolPanelTabScopeId(nextTabId);
+  const hasExplicitState = Object.prototype.hasOwnProperty.call(
+    activeToolByTabId,
+    nextScopeId,
+  );
+  if (!hasExplicitState && state.activeTool) {
+    activeToolByTabId[nextScopeId] = state.activeTool;
+  }
+  const nextActiveTool = hasExplicitState
+    ? activeToolForTab(activeToolByTabId, nextTabId)
+    : state.activeTool;
   return {
     ...patch,
-    activeTool: activeToolForTab(activeToolByTabId, nextTabId),
+    activeTool: nextActiveTool,
     activeToolByTabId,
   };
 }

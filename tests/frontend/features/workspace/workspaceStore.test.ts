@@ -43,6 +43,15 @@ describe("workspaceStore", () => {
 
     useWorkspaceStore.getState().addTerminalTab({ title: "tab B" });
     const tabB = useWorkspaceStore.getState().activeTabId;
+    expect(useWorkspaceStore.getState().activeTool).toBe("agentLauncher");
+    expect(useWorkspaceStore.getState().activeToolByTabId).toMatchObject({
+      [tabA]: "agentLauncher",
+      [tabB]: "agentLauncher",
+    });
+    useWorkspaceStore.getState().setActiveTool(null);
+    useWorkspaceStore.getState().selectTab(tabA);
+    expect(useWorkspaceStore.getState().activeTool).toBe("agentLauncher");
+    useWorkspaceStore.getState().selectTab(tabB);
     expect(useWorkspaceStore.getState().activeTool).toBeNull();
     useWorkspaceStore.getState().setActiveTool("sftp");
 

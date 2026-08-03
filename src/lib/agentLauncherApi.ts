@@ -337,11 +337,20 @@ function previewExternalAgentLaunchSpec({
   agentId,
   agentSessionId,
   customCommand,
+  resumeProviderSession,
 }: PrepareExternalAgentWorkspaceRequest): ExternalAgentLaunchSpec {
   const status = previewExternalAgentWorkspaceStatus();
   const agent = status.agents[agentId];
   const custom = agentId === "custom";
-  const parsed = custom ? parseAgentCommandLine(customCommand ?? "") : null;
+  const resumeCommand =
+    resumeProviderSession && agentId === "codex"
+      ? "codex resume --last"
+      : resumeProviderSession && agentId === "claude"
+        ? "claude --continue"
+        : null;
+  const parsed = custom
+    ? parseAgentCommandLine(customCommand ?? "")
+    : parseAgentCommandLine(resumeCommand ?? agent.cliCommand);
   const sessionRoot = agentSessionId
     ? `${status.workspaceDir}/agents/sessions/${agentSessionId}`
     : status.workspaceDir;

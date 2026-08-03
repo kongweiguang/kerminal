@@ -53,6 +53,26 @@ describe("agentLauncherApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("mirrors Claude's provider resume command in browser preview", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { prepareExternalAgentWorkspace } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+
+    await expect(
+      prepareExternalAgentWorkspace({
+        agentId: "claude",
+        agentSessionId: "ags-preview-claude",
+        resumeProviderSession: true,
+      }),
+    ).resolves.toMatchObject({
+      args: ["--continue"],
+      cwd: "~/.kerminal/agents/sessions/ags-preview-claude",
+      shell: "claude",
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("updates an agent session title through Tauri", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
