@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { ComponentProps } from "react";
 import { vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
@@ -59,7 +61,6 @@ export const terminalMachineGroups: MachineGroup[] = [
         kind: "ssh",
         name: "生产 SSH",
         port: 22,
-        production: true,
         status: "online",
         tags: [],
         username: "deploy",

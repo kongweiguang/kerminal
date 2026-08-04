@@ -124,7 +124,6 @@ export function RemoteHostCreateDialog({
   const [mode, setMode] = useState<ConnectionMode>(defaultMode);
   const [name, setName] = useState("");
   const [port, setPort] = useState("22");
-  const [production, setProduction] = useState(false);
   const [rdpFullscreen, setRdpFullscreen] = useState(true);
   const [rdpHeight, setRdpHeight] = useState("900");
   const [rdpNote, setRdpNote] = useState("");
@@ -252,7 +251,6 @@ export function RemoteHostCreateDialog({
                 : 22),
       ),
     );
-    setProduction(editingHost?.production ?? false);
     setRdpFullscreen(true);
     setRdpHeight("900");
     setRdpNote("");
@@ -430,7 +428,7 @@ export function RemoteHostCreateDialog({
       keyPassphraseDirty, keyPassphraseSecret,
       localArgs, localCwd, localEnv, localShell, localTitle, mode, name,
       onClose, onCreateHost, onCreateLocal, onCreated, onUpdateHost,
-      onUpdateLocal, port, production, rdpPassword, rdpUsername,
+      onUpdateLocal, port, rdpPassword, rdpUsername,
       selectedProtocolLabel, serialBaud, serialDataBits, serialFlow,
       serialParity, serialPort, serialStopBits, setError,
       setOperationError, setSavingAction, sshOptions, tags, username,
@@ -455,7 +453,6 @@ export function RemoteHostCreateDialog({
       mode,
       name,
       port,
-      production,
       rdpFullscreen,
       rdpHeight,
       rdpNote,
@@ -573,7 +570,6 @@ export function RemoteHostCreateDialog({
         onCreateGroup ? () => setInlineGroupDialogOpen(true) : undefined
       }
       port={port}
-      production={production}
       rdpFullscreen={rdpFullscreen}
       rdpHeight={rdpHeight}
       rdpNote={rdpNote}
@@ -603,7 +599,6 @@ export function RemoteHostCreateDialog({
       setLocalTitle={setLocalTitle}
       setName={setName}
       setPort={setPort}
-      setProduction={setProduction}
       setRdpFullscreen={setRdpFullscreen}
       setRdpHeight={setRdpHeight}
       setRdpNote={setRdpNote}

@@ -166,7 +166,6 @@ fn persist_target_host_secret(
                 credential_ref,
                 credential_secret,
                 tags: host.tags,
-                production: host.production,
                 ssh_options: host.ssh_options,
                 sort_order: host.sort_order,
             },

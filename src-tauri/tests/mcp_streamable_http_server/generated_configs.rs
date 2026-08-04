@@ -103,7 +103,6 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         "password".to_owned(),
         Value::String("test-password".to_owned()),
     );
-    host_credential_arguments.insert("production".to_owned(), Value::Bool(false));
     let saved_host = client
         .peer()
         .call_tool(
@@ -451,104 +450,42 @@ created_at = "1"
 updated_at = "1"
 "#,
     )
-    .expect("write host missing production");
-    let warning_config_validation = client
+    .expect("write host without deprecated classification");
+    let host_config_validation = client
         .peer()
         .call_tool(CallToolRequestParams::new("kerminal.config.validate"))
         .await
-        .expect("call config validator for host warning");
-    assert_eq!(warning_config_validation.is_error, Some(false));
-    let warning_payload = warning_config_validation
+        .expect("call config validator for host without classification");
+    assert_eq!(host_config_validation.is_error, Some(false));
+    let host_config_payload = host_config_validation
         .structured_content
         .as_ref()
         .expect("structured config validation content");
     assert_eq!(
-        warning_payload
+        host_config_payload
             .pointer("/data/valid")
             .and_then(Value::as_bool),
         Some(true)
     );
     assert_eq!(
-        warning_payload
+        host_config_payload
             .pointer("/data/warningCount")
             .and_then(Value::as_u64),
-        Some(1)
+        Some(0)
     );
-    let diagnostics = warning_payload
+    let diagnostics = host_config_payload
         .pointer("/data/diagnostics")
         .and_then(Value::as_array)
         .expect("diagnostics");
     assert!(
-        diagnostics.iter().any(|diagnostic| {
-            diagnostic
-                .pointer("/severity")
-                .and_then(Value::as_str)
-                .is_some_and(|severity| severity == "warning")
-                && diagnostic
+        diagnostics.iter().all(|diagnostic| {
+            diagnostic.pointer("/key").and_then(Value::as_str) != Some("production")
+                && !diagnostic
                     .pointer("/message")
                     .and_then(Value::as_str)
-                    .is_some_and(|message| message.contains("production must be explicitly set"))
+                    .is_some_and(|message| message.contains("production"))
         }),
-        "expected missing production diagnostic, got {diagnostics:?}"
-    );
-    fs::write(
-        paths.root.join("hosts/agent-added.toml"),
-        r#"schema_version = 2
-id = "agent-added"
-name = "Agent Added"
-host = "agent-added.internal"
-port = 22
-username = "deploy"
-protocol = "ssh"
-auth_type = "agent"
-production = "yes"
-tags = []
-sort_order = 99
-created_at = "1"
-updated_at = "1"
-"#,
-    )
-    .expect("write host invalid production");
-    let invalid_config_validation = client
-        .peer()
-        .call_tool(CallToolRequestParams::new("kerminal.config.validate"))
-        .await
-        .expect("call config validator for invalid host");
-    assert_eq!(invalid_config_validation.is_error, Some(false));
-    let invalid_payload = invalid_config_validation
-        .structured_content
-        .as_ref()
-        .expect("structured invalid config validation content");
-    assert_eq!(
-        invalid_payload
-            .pointer("/data/valid")
-            .and_then(Value::as_bool),
-        Some(false)
-    );
-    let diagnostics = invalid_payload
-        .pointer("/data/diagnostics")
-        .and_then(Value::as_array)
-        .expect("invalid diagnostics");
-    assert!(
-        diagnostics.iter().any(|diagnostic| {
-            diagnostic
-                .pointer("/severity")
-                .and_then(Value::as_str)
-                .is_some_and(|severity| severity == "error")
-                && diagnostic
-                    .pointer("/message")
-                    .and_then(Value::as_str)
-                    .is_some_and(|message| message.contains("production must be a boolean"))
-                && diagnostic.pointer("/path").and_then(Value::as_str)
-                    == Some("hosts/agent-added.toml")
-                && diagnostic.pointer("/line").and_then(Value::as_u64) == Some(9)
-                && diagnostic.pointer("/key").and_then(Value::as_str) == Some("production")
-                && diagnostic
-                    .pointer("/recovery")
-                    .and_then(Value::as_str)
-                    .is_some_and(|recovery| recovery.contains("production = true"))
-        }),
-        "expected invalid production diagnostic, got {diagnostics:?}"
+        "deprecated host classification must not produce diagnostics: {diagnostics:?}"
     );
 
     let agent_session = state

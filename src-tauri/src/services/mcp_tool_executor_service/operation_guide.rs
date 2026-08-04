@@ -100,7 +100,7 @@ pub(super) fn execute_kerminal_operation_guide(
             "safetyBoundaries": {
                 "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit.",
                 "terminalWrite": "Before terminal.write, resolve and inspect the target; session-bound writes require agentSessionId, bindingGeneration, and data.",
-                "remoteWrite": "For remote file deletes, tmux kills, port-forward closes, credential writes, and production hosts, rely on host approval and user intent before calling write/destructive tools.",
+                "remoteWrite": "For remote file deletes, tmux kills, port-forward closes, and credential writes, rely on host approval and user intent before calling write/destructive tools.",
                 "managedSsh": "For SSH-bound tool families, inspect kerminal.runtime_snapshot.managedSsh to verify whether terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools are sharing a managed session; the snapshot is redacted and never returns credential material.",
                 "externalLaunch": "External SSH launch compatibility is configured in settings.toml externalLaunch; runtime diagnostics expose only policy, counts, launch ids, and redacted rejection metadata.",
                 "secrets": "Never copy passwords, tokens, private keys, vault keys, or decrypted secret material into chat, docs, logs, ordinary config files, or diagnostics."
@@ -122,7 +122,7 @@ pub(super) fn execute_kerminal_operation_guide(
                 "The task requires config CRUD tools that are intentionally absent; switch to direct file edits plus validation.",
                 "The task asks for secret extraction, vault file editing, or plaintext credential disclosure.",
                 "managedSsh diagnostics show a managed SSH failure that requires user action, host-key trust, missing credentials, or backend implementation rather than a second hidden SSH login.",
-                "A destructive remote action, production write, or external side effect lacks clear user intent or host approval."
+                "A destructive remote action or external side effect lacks clear user intent or host approval."
             ]
         })),
         entities: available_referenced_tool_ids

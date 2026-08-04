@@ -1,4 +1,6 @@
 //! SSH runtime 集成测试夹具和 fake backend。
+//!
+//! @author kongweiguang
 
 use super::*;
 
@@ -46,7 +48,6 @@ pub(super) fn sample_runtime_host() -> RemoteHost {
         credential_secret: Some("super-secret-password".to_owned()),
         credential_status: Default::default(),
         tags: Vec::new(),
-        production: false,
         ssh_options: Default::default(),
         sort_order: 0,
         created_at: "0".to_owned(),
@@ -106,7 +107,6 @@ pub(super) fn loopback_runtime_host(port: u16) -> RemoteHost {
         credential_secret: Some(LOOPBACK_PASSWORD.to_owned()),
         credential_status: Default::default(),
         tags: Vec::new(),
-        production: false,
         ssh_options: Default::default(),
         sort_order: 0,
         created_at: "0".to_owned(),

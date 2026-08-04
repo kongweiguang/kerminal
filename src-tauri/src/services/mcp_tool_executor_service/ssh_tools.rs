@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 #[allow(clippy::result_large_err)]
@@ -169,7 +171,6 @@ fn ambiguous_target_result(matches: &[RemoteHost]) -> ToolExecutionResult {
                         "host": host.host,
                         "port": host.port,
                         "username": host.username,
-                        "production": host.production,
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -186,7 +187,6 @@ fn ambiguous_target_result(matches: &[RemoteHost]) -> ToolExecutionResult {
                     "host": host.host,
                     "port": host.port,
                     "username": host.username,
-                    "production": host.production,
                 })
             })
             .collect(),
@@ -206,7 +206,6 @@ fn ssh_target_candidate(group_id: &str, group_name: &str, host: &RemoteHost) -> 
         "host": host.host,
         "port": host.port,
         "username": host.username,
-        "production": host.production,
     })
 }
 
@@ -220,7 +219,6 @@ fn ssh_target_entity(group_id: &str, group_name: &str, host: &RemoteHost) -> Val
         "host": host.host,
         "port": host.port,
         "username": host.username,
-        "production": host.production,
     })
 }
 
@@ -422,7 +420,6 @@ fn ssh_host_details(host: &RemoteHost) -> Value {
         "host": host.host,
         "port": host.port,
         "username": host.username,
-        "production": host.production,
     })
 }
 
@@ -435,7 +432,6 @@ fn ssh_host_entity(host: &RemoteHost) -> Value {
         "host": host.host,
         "port": host.port,
         "username": host.username,
-        "production": host.production,
     })
 }
 

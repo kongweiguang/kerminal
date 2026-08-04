@@ -276,7 +276,6 @@ pub struct ExternalLaunchMaterializedTargetDto {
     pub port: u16,
     pub username: String,
     pub auth_type: RemoteHostAuthType,
-    pub production: bool,
     pub safety: ExternalTargetSafety,
 }
 
@@ -358,7 +357,6 @@ fn materialized_target_to_dto(
         host: target.host.host,
         launch_id: target.launch_id,
         port: target.host.port,
-        production: target.host.production,
         safety: target.safety,
         target_id: target.host_id,
         username: target.host.username,

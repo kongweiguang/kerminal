@@ -48,7 +48,6 @@ export interface RemoteHostConfirmInput extends ConfirmCallbacks {
   mode: ConnectionMode;
   name: string;
   port: string;
-  production: boolean;
   rdpPassword: string;
   rdpUsername: string;
   selectedProtocolLabel: string;
@@ -88,7 +87,7 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
     request = buildRdpHostRequest({
       existingAuthType: editingHost && isRdpRemoteHost(editingHost) ? editingHost.authType : undefined,
       groupId: input.groupId, host: input.host, name: input.name,
-      password: input.rdpPassword, port: input.port, production: input.production,
+      password: input.rdpPassword, port: input.port,
       tags: input.tags, username: input.rdpUsername,
     });
     validationError = validateRdpHostRequest(request);
@@ -100,7 +99,7 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
   } else if (mode === "telnet") {
     request = buildTelnetHostRequest({
       groupId: input.groupId, host: input.host, name: input.name, port: input.port,
-      production: input.production, tags: input.tags,
+      tags: input.tags,
     });
     validationError = validateTelnetHostRequest(request);
     failure = {
@@ -110,7 +109,7 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
     };
   } else if (mode === "serial") {
     request = buildSerialHostRequest({
-      groupId: input.groupId, name: input.name, production: input.production,
+      groupId: input.groupId, name: input.name,
       serialBaud: input.serialBaud, serialDataBits: input.serialDataBits,
       serialFlow: input.serialFlow, serialParity: input.serialParity,
       serialPort: input.serialPort, serialStopBits: input.serialStopBits, tags: input.tags,
@@ -133,7 +132,7 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
         !input.editingHost || input.keyPassphraseDirty
           ? input.keyPassphraseSecret
           : undefined,
-      production: input.production, sshOptions: input.sshOptions,
+      sshOptions: input.sshOptions,
       tags: input.tags, username: input.username,
       protocol: mode,
     });

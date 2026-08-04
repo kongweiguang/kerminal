@@ -500,8 +500,9 @@ pub(super) struct RemoteHostTomlDocument {
     key_passphrase_ref: Option<String>,
     #[serde(default)]
     tags: Vec<String>,
-    #[serde(default)]
-    production: bool,
+    /// 只读兼容旧 host v2 文件；运行时忽略并在后续写回时删除该字段。
+    #[serde(default, rename = "production", skip_serializing)]
+    _legacy_production: Option<bool>,
     #[serde(default)]
     ssh_options: SshOptions,
     sort_order: i64,
@@ -530,7 +531,7 @@ impl RemoteHostTomlDocument {
             secret_ref: host.secret_ref,
             key_passphrase_ref: host.key_passphrase_ref,
             tags: host.tags,
-            production: host.production,
+            _legacy_production: None,
             ssh_options,
             sort_order: host.sort_order,
             created_at: host.created_at,
@@ -575,7 +576,6 @@ impl RemoteHostTomlDocument {
             credential_secret: None,
             credential_status,
             tags: self.tags,
-            production: self.production,
             ssh_options,
             sort_order: self.sort_order,
             created_at: self.created_at,

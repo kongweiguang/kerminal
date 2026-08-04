@@ -59,7 +59,6 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
     const prewarm = createTerminalRemoteSuggestionPrewarm({
       paneId: "pane-a",
       remoteHostId: "prod",
-      remoteHostProduction: false,
       scheduler,
       target: { hostId: "prod", kind: "ssh" },
       terminalAppearanceRef: createAppearanceRef(),
@@ -112,7 +111,6 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
       paneId: "pane-a",
       recordAuditEvent,
       remoteHostId: "prod",
-      remoteHostProduction: false,
       scheduler,
       target: {
         containerId: "container-a",
@@ -144,7 +142,6 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
       paneId: "pane-a",
       recordAuditEvent,
       remoteHostId: "prod",
-      remoteHostProduction: false,
       scheduler,
       target: { hostId: "prod", kind: "ssh" },
       terminalAppearanceRef: createAppearanceRef(),
@@ -166,7 +163,7 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
     );
   });
 
-  it("records skipped audit events when production hosts block remote probes", () => {
+  it("records skipped audit events when remote probes are disabled", () => {
     const scheduler = createScheduler();
     const recordAuditEvent = vi.fn<RecordAuditEvent>().mockResolvedValue({
       recorded: true,
@@ -175,11 +172,10 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
       paneId: "pane-a",
       recordAuditEvent,
       remoteHostId: "prod",
-      remoteHostProduction: true,
       scheduler,
       target: { hostId: "prod", kind: "ssh" },
       terminalAppearanceRef: createAppearanceRef({
-        productionHostPolicy: "restricted",
+        remoteProbeEnabled: false,
       }),
     });
 
@@ -189,14 +185,10 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
     expect(recordAuditEvent).toHaveBeenCalledWith({
       decision: "skipped",
       eventKind: "remoteProbeSchedule",
-      metadata: {
-        productionHost: "true",
-        productionHostPolicy: "restricted",
-      },
       paneId: "pane-a",
       path: "/srv/app",
       provider: "remotePath",
-      reason: "production-host-restricted",
+      reason: "remote-probe-disabled",
       remoteHostId: "prod",
       target: "ssh",
     });

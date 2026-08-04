@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { collectPaneIds } from "../../../../src/features/workspace/workspaceLayout";
 import { useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
@@ -221,9 +223,6 @@ describe("workspaceStore terminal tabs", () => {
       expect(splitPane.machineId).toBe(sourcePane.machineId);
       expect(splitPane.mode).toBe(sourcePane.mode);
       expect(splitPane.remoteHostId).toBe(sourcePane.remoteHostId);
-      expect(splitPane.remoteHostProduction).toBe(
-        sourcePane.remoteHostProduction,
-      );
       expect(splitPane.containerId).toBe(sourcePane.containerId);
       expect(splitPane.target).toEqual(sourcePane.target);
     });
@@ -237,12 +236,10 @@ describe("workspaceStore terminal tabs", () => {
     expectedTarget: unknown;
     expectedRemoteHostId?: string;
     expectedContainerId?: string;
-    expectedProduction?: boolean;
   }> = [
     {
       expectedMode: "ssh",
       expectedPaneIdPrefix: "pane-ssh-",
-      expectedProduction: true,
       expectedRemoteHostId: "host-lab",
       expectedTarget: { hostId: "host-lab", kind: "ssh" },
       name: "SSH",
@@ -254,7 +251,6 @@ describe("workspaceStore terminal tabs", () => {
     {
       expectedMode: "telnet",
       expectedPaneIdPrefix: "pane-telnet-",
-      expectedProduction: false,
       expectedTarget: { hostId: "telnet-lab", kind: "telnet" },
       name: "Telnet",
       prepareTargetMachine: () => {
@@ -267,7 +263,6 @@ describe("workspaceStore terminal tabs", () => {
     {
       expectedMode: "serial",
       expectedPaneIdPrefix: "pane-serial-",
-      expectedProduction: false,
       expectedTarget: { hostId: "serial-console", kind: "serial" },
       name: "Serial",
       prepareTargetMachine: () => {
@@ -281,7 +276,6 @@ describe("workspaceStore terminal tabs", () => {
       expectedContainerId: "c0ffee1234567890",
       expectedMode: "container",
       expectedPaneIdPrefix: "pane-container-",
-      expectedProduction: true,
       expectedRemoteHostId: "host-lab",
       expectedTarget: {
         containerId: "c0ffee1234567890",
@@ -329,7 +323,6 @@ describe("workspaceStore terminal tabs", () => {
       expect(splitPane.machineId).toBe(targetMachineId);
       expect(splitPane.mode).toBe(testCase.expectedMode);
       expect(splitPane.remoteHostId).toBe(testCase.expectedRemoteHostId);
-      expect(splitPane.remoteHostProduction).toBe(testCase.expectedProduction);
       expect(splitPane.containerId).toBe(testCase.expectedContainerId);
       expect(splitPane.target).toEqual(testCase.expectedTarget);
     });

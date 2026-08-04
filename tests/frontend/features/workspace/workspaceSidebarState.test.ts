@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   updateRemoteHostTreeState,
@@ -11,7 +13,6 @@ import {
 } from "../../support/workspace/workspaceStore.testSupport";
 import type {
   MachineGroup,
-  TerminalPane,
   TerminalTab,
 } from "../../../../src/features/workspace/types";
 
@@ -61,7 +62,7 @@ describe("workspaceSidebarState", () => {
     expect(patch.selectedMachineId).toBe(machineId);
   });
 
-  it("preserves local sidebar machines and refreshes pane production flags", () => {
+  it("preserves local sidebar machines while refreshing remote hosts", () => {
     const machineGroups: MachineGroup[] = [
       {
         id: "__ungrouped__",
@@ -86,26 +87,11 @@ describe("workspaceSidebarState", () => {
         title: "host",
       },
     ];
-    const terminalPanes: TerminalPane[] = [
-      {
-        id: "pane-host",
-        lines: [],
-        machineId: "host-lab",
-        mode: "ssh",
-        prompt: "$",
-        remoteHostId: "host-lab",
-        remoteHostProduction: false,
-        status: "online",
-        title: "host",
-      },
-    ];
-
     const patch = updateRemoteHostTreeState(
       {
         activeTabId: "tab-host",
         machineGroups,
         selectedMachineId: "host-lab",
-        terminalPanes,
         terminalTabs,
       },
       remoteHostTree,
@@ -117,6 +103,5 @@ describe("workspaceSidebarState", () => {
     ]);
     expect(patch.machineGroups[0].machines[0].id).toBe("local-manual");
     expect(patch.selectedMachineId).toBe("host-lab");
-    expect(patch.terminalPanes[0].remoteHostProduction).toBe(true);
   });
 });

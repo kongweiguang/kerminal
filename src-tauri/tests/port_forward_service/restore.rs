@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::fixtures::*;
 
 #[test]
@@ -18,7 +20,6 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create remote host");

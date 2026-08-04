@@ -24,7 +24,6 @@ function terminalPane(overrides: Partial<TerminalPane> = {}): TerminalPane {
     mode: "ssh",
     prompt: "root@lab:~$",
     remoteHostId: "host-lab",
-    remoteHostProduction: true,
     status: "online",
     target: { hostId: "host-lab", kind: "ssh" },
     title: "lab server",
@@ -75,7 +74,6 @@ describe("workspaceTerminalState split pane", () => {
       machineId: "host-lab",
       mode: "ssh",
       remoteHostId: "host-lab",
-      remoteHostProduction: true,
       target: { hostId: "host-lab", kind: "ssh" },
       title: "lab server",
     });
@@ -190,7 +188,6 @@ describe("workspaceTerminalState split pane", () => {
           machineId: "preview-machine",
           mode: "preview",
           remoteHostId: undefined,
-          remoteHostProduction: undefined,
           target: undefined,
           title: "Preview",
         }),

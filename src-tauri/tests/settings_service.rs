@@ -8,12 +8,12 @@ use kerminal_lib::{
         AppSettings, BackgroundImageFit, ExternalLaunchToolSetting, InterfaceDensity,
         InterfaceLanguage, TerminalColorScheme, TerminalCommandSuggestionPresentation,
         TerminalCommandSuggestionRemoteRefresh, TerminalCursorStyle, TerminalFontWeight,
-        TerminalInlineSuggestionAcceptKey, TerminalInlineSuggestionProductionHostPolicy,
-        TerminalRendererType, TerminalRightClickBehavior, ThemeMode, DEFAULT_SFTP_PACKET_BYTES,
-        DEFAULT_SFTP_PIPELINE_DEPTH, MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS,
-        MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS,
-        MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES,
-        MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
+        TerminalInlineSuggestionAcceptKey, TerminalRendererType, TerminalRightClickBehavior,
+        ThemeMode, DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH,
+        MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES,
+        MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS,
+        MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
+        MIN_SFTP_TIMEOUT_SECONDS,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -85,8 +85,6 @@ fn settings_service_persists_settings_in_toml() {
         settings.terminal.inline_suggestion.remote_probe_enabled = false;
         settings.terminal.inline_suggestion.remote_refresh =
             TerminalCommandSuggestionRemoteRefresh::Off;
-        settings.terminal.inline_suggestion.production_host_policy =
-            TerminalInlineSuggestionProductionHostPolicy::Normal;
         settings.terminal.inline_suggestion.audit_retention_days = 14;
         settings.terminal.inline_suggestion.feedback_retention_days = 730;
         settings.terminal.inline_suggestion.providers.remote_path = false;
@@ -211,10 +209,6 @@ fn settings_service_persists_settings_in_toml() {
     );
     assert!(settings.terminal.inline_suggestion.tab_opens_menu);
     assert!(!settings.terminal.inline_suggestion.partial_accept);
-    assert_eq!(
-        settings.terminal.inline_suggestion.production_host_policy,
-        TerminalInlineSuggestionProductionHostPolicy::Normal
-    );
     assert_eq!(settings.terminal.inline_suggestion.audit_retention_days, 14);
     assert_eq!(
         settings.terminal.inline_suggestion.feedback_retention_days,

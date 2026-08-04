@@ -93,8 +93,7 @@ export interface ExternalLaunchMaterializedTarget {
   port: number;
   username: string;
   authType: "password" | "key" | "agent";
-  production: boolean;
-  safety: "restricted-unknown" | "known-non-production" | "production";
+  safety: "restricted-unknown" | "known";
 }
 
 export type ExternalLaunchMaterializeOutcome =
@@ -222,7 +221,6 @@ export async function materializeExternalSshLaunch(
       host: "preview.invalid",
       launchId: request.launchId,
       port: 22,
-      production: true,
       safety: "restricted-unknown",
       targetId: `external:${request.launchId}`,
       username: request.username ?? "preview",

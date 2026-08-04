@@ -426,8 +426,6 @@ pub struct RemoteHost {
     pub credential_status: RemoteHostCredentialStatus,
     /// 用户标签。
     pub tags: Vec<String>,
-    /// 是否生产主机；后续用于确认策略。
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,
@@ -572,9 +570,6 @@ pub struct RemoteHostCreateRequest {
     /// 用户标签。
     #[serde(default)]
     pub tags: Vec<String>,
-    /// 是否生产主机。
-    #[serde(default)]
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,
@@ -657,9 +652,6 @@ pub struct RemoteHostUpdateRequest {
     /// 用户标签。
     #[serde(default)]
     pub tags: Vec<String>,
-    /// 是否生产主机。
-    #[serde(default)]
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,

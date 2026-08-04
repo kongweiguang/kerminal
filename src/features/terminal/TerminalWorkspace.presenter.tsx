@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   useCallback,
   useEffect,
@@ -252,7 +254,6 @@ export function TerminalWorkspace({
     broadcastTargetOptions,
     handleBroadcastTargetModeChange,
     handleToggleCustomTarget,
-    productionTargetCount,
     selectedTargetPaneIds,
   } = useTerminalBroadcastTargets({
     activePaneIds,
@@ -697,7 +698,6 @@ export function TerminalWorkspace({
           onRequestBroadcast={requestBroadcast}
           onTargetModeChange={handleBroadcastTargetModeChange}
           onToggleCustomTarget={handleToggleCustomTarget}
-          productionTargetCount={productionTargetCount}
           selectedTargetPaneIds={selectedTargetPaneIds}
           sending={sendingBroadcast}
           status={broadcastStatus}

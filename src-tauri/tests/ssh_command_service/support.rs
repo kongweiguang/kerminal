@@ -1,4 +1,6 @@
 //! SSH 命令集成测试共享支持。
+//!
+//! @author kongweiguang
 
 use super::*;
 
@@ -497,7 +499,6 @@ pub(super) fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         credential_secret: None,
         credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
-        production: false,
         ssh_options: Default::default(),
         sort_order: 10,
         created_at: "now".to_owned(),
@@ -526,7 +527,6 @@ pub(super) fn create_saved_password_remote_host(
             host: host.host,
             name: host.name,
             port: host.port,
-            production: host.production,
             ssh_options: host.ssh_options,
             tags: host.tags,
             username: host.username,
@@ -555,7 +555,6 @@ pub(super) fn create_password_remote_host_without_credentials(
         credential_secret: None,
         credential_status: Default::default(),
         tags: vec!["loopback".to_owned()],
-        production: false,
         ssh_options: Default::default(),
         sort_order: 10,
         created_at: "0".to_owned(),

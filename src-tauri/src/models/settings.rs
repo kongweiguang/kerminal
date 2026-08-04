@@ -195,20 +195,9 @@ pub enum TerminalCommandSuggestionMenuShortcut {
 pub enum TerminalCommandSuggestionRemoteRefresh {
     /// 禁止主动刷新，只读取已有缓存。
     Off,
-    /// 使用生产主机门禁、限流和退避的安全刷新。
+    /// 使用限流和退避的安全刷新。
     #[default]
     Safe,
-}
-
-/// 生产主机 inline suggestion 策略。
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum TerminalInlineSuggestionProductionHostPolicy {
-    /// 正常策略。
-    Normal,
-    /// 受限策略，外部 Agent 默认关闭，危险建议降权。
-    #[default]
-    Restricted,
 }
 
 /// 终端 inline suggestion provider 开关。
@@ -275,9 +264,6 @@ pub struct TerminalInlineSuggestionSettings {
     /// 是否允许远端只读探测预热。
     #[serde(default = "default_true")]
     pub remote_probe_enabled: bool,
-    /// 生产主机策略。
-    #[serde(default)]
-    pub production_host_policy: TerminalInlineSuggestionProductionHostPolicy,
     /// suggestion 审计事件保留天数。
     #[serde(default = "default_terminal_inline_suggestion_audit_retention_days")]
     pub audit_retention_days: u32,
@@ -298,7 +284,6 @@ impl Default for TerminalInlineSuggestionSettings {
             remote_refresh: TerminalCommandSuggestionRemoteRefresh::Safe,
             providers: TerminalInlineSuggestionProviderSettings::default(),
             remote_probe_enabled: true,
-            production_host_policy: TerminalInlineSuggestionProductionHostPolicy::Restricted,
             audit_retention_days: DEFAULT_TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS,
             feedback_retention_days: DEFAULT_TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS,
         }

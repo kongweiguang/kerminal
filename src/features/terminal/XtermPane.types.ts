@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type {
@@ -23,7 +25,6 @@ interface XtermPaneProps {
   profileId?: string;
   remoteCommand?: string;
   remoteHostId?: string;
-  remoteHostProduction?: boolean;
   resolvedTheme: ResolvedTheme;
   shell?: string;
   shellAssistEnabled?: boolean;

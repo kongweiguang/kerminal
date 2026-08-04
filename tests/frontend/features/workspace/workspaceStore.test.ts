@@ -85,7 +85,6 @@ describe("workspaceStore", () => {
       .terminalPanes.find((candidate) => candidate.remoteHostId === "host-lab");
 
     expect(pane).toBeDefined();
-    expect(pane?.remoteHostProduction).toBe(true);
     useWorkspaceStore
       .getState()
       .updatePaneCurrentCwd(pane?.id ?? "", "/var/log");
@@ -198,46 +197,6 @@ describe("workspaceStore", () => {
     expect(outputPanes).not.toBe(runtimePanes);
 
     unsubscribe();
-  });
-
-  it("syncs restored pane production flags when remote hosts refresh", () => {
-    useWorkspaceStore.getState().restoreWorkspaceSession({
-      activeTabId: "tab-ssh-1",
-      focusedPaneId: "pane-ssh-1",
-      selectedMachineId: "host-lab",
-      sidebarMachines: [],
-      terminalPanes: [
-        {
-          id: "pane-ssh-1",
-          machineId: "host-lab",
-          mode: "ssh",
-          prompt: "root@192.168.1.253:~$",
-          remoteHostId: "host-lab",
-          status: "offline",
-          title: "lab server",
-          lines: [],
-        },
-      ],
-      terminalTabs: [
-        {
-          id: "tab-ssh-1",
-          layout: { paneId: "pane-ssh-1", type: "pane" },
-          machineId: "host-lab",
-          title: "lab server",
-        },
-      ],
-    });
-
-    expect(
-      useWorkspaceStore.getState().terminalPanes[0]?.remoteHostProduction,
-    ).toBeUndefined();
-
-    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
-
-    expect(useWorkspaceStore.getState().terminalPanes[0]).toMatchObject({
-      remoteHostId: "host-lab",
-      remoteHostProduction: true,
-    });
   });
 
   it("keeps the restored active remote tab selected while profiles and hosts load", () => {
@@ -358,8 +317,7 @@ describe("workspaceStore", () => {
       description: "root@192.168.1.253:2222",
       host: "192.168.1.253",
       id: "host-lab",
-      production: true,
-      status: "warning",
+      status: "offline",
     });
   });
 
@@ -468,7 +426,6 @@ describe("workspaceStore", () => {
       machineId: "docker:host-lab:c0ffee1234567890",
       mode: "container",
       remoteHostId: "host-lab",
-      remoteHostProduction: true,
       shell: "exec bash -l",
       target: {
         containerId: "c0ffee1234567890",

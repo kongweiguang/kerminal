@@ -416,7 +416,6 @@ fn remote_host(
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
         tags: Vec::new(),
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 0,
         created_at: "2026-06-23T00:00:00Z".to_owned(),

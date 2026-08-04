@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 pub(super) fn char_prefix(value: &str, count: usize) -> String {
@@ -129,15 +131,6 @@ pub(super) fn remove_oldest_git_cache_entry(cache: &mut HashMap<GitCacheKey, Git
         return;
     };
     cache.remove(&oldest_key);
-}
-
-pub(super) fn production_host_policy_label(
-    policy: &TerminalInlineSuggestionProductionHostPolicy,
-) -> &'static str {
-    match policy {
-        TerminalInlineSuggestionProductionHostPolicy::Normal => "normal",
-        TerminalInlineSuggestionProductionHostPolicy::Restricted => "restricted",
-    }
 }
 
 pub(super) fn unix_time_millis(time: SystemTime) -> u128 {

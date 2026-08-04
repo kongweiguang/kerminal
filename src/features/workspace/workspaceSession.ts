@@ -272,7 +272,6 @@ function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
     prompt,
     remoteCommand: readOptionalString(value.remoteCommand),
     remoteHostId,
-    remoteHostProduction: readOptionalBoolean(value.remoteHostProduction),
     shell: readOptionalString(value.shell),
     status,
     target: normalizeRemoteTargetRef(value.target),
@@ -379,7 +378,6 @@ function normalizeSidebarMachine(value: unknown): Machine | undefined {
     host: readOptionalString(value.host),
     kind,
     parentMachineId,
-    production: readOptionalBoolean(value.production),
     remoteGroupId: readOptionalString(value.remoteGroupId),
     runtime,
     target: dockerContainerTarget({
@@ -723,10 +721,6 @@ function readOptionalString(value: unknown) {
 
 function readOptionalNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function readOptionalBoolean(value: unknown) {
-  return typeof value === "boolean" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

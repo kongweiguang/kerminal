@@ -76,7 +76,6 @@ describe("settingsModel", () => {
         inlineSuggestion: {
           acceptKey: "tab",
           enabled: "yes",
-          productionHostPolicy: "open",
           providers: {
             git: false,
             history: 1,
@@ -143,8 +142,6 @@ describe("settingsModel", () => {
       inlineSuggestion: {
         acceptKey: defaultAppSettings.terminal.inlineSuggestion.acceptKey,
         enabled: defaultAppSettings.terminal.inlineSuggestion.enabled,
-        productionHostPolicy:
-          defaultAppSettings.terminal.inlineSuggestion.productionHostPolicy,
         providers: {
           git: false,
           history:

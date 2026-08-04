@@ -400,7 +400,6 @@ fn remote_host_from_create_input(
         credential_secret,
         credential_status: Default::default(),
         tags,
-        production: request.production,
         ssh_options: request.ssh_options,
         sort_order: 0,
         created_at: String::new(),

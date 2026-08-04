@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,7 +97,6 @@ const sshMachine: Machine = {
   kind: "ssh",
   name: "prod api",
   port: 22,
-  production: true,
   status: "warning",
   tags: ["ssh", "prod"],
   username: "deploy",
@@ -108,7 +109,6 @@ const stageSshMachine: Machine = {
   host: "stage.internal",
   id: "stage-api",
   name: "stage api",
-  production: false,
   status: "online",
   tags: ["ssh", "stage"],
 };
@@ -571,7 +571,6 @@ describe("PortForwardToolContent", () => {
           host: "dev.internal",
           id: "dev-api",
           name: "dev api",
-          production: false,
           status: "online",
           tags: ["ssh", "dev"],
           username: "dev",
@@ -594,7 +593,7 @@ describe("PortForwardToolContent", () => {
     await user.click(screen.getByRole("option", { name: "全部接口 (0.0.0.0)" }));
 
     expect(screen.getByText(/GatewayPorts/)).toBeInTheDocument();
-    expect(screen.getAllByText(/生产主机/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/主机监听 0\.0\.0\.0 会扩大暴露范围/)).toBeInTheDocument();
   });
 
   it("does not list while inactive and reloads the current host when reopened", async () => {

@@ -38,7 +38,6 @@ export const defaultTerminalAppearance: TerminalAppearance = {
     tabOpensMenu: false,
     partialAccept: true,
     remoteRefresh: "safe",
-    productionHostPolicy: "restricted",
     providers: {
       git: true,
       history: true,

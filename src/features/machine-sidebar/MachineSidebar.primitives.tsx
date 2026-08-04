@@ -1,4 +1,6 @@
-import { Box, Cloud, Monitor, Pin, Server, Terminal } from "lucide-react";
+// @author kongweiguang
+
+import { Box, Monitor, Pin, Server, Terminal } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { Machine, MachineGroup } from "../workspace/contracts/index";
@@ -89,7 +91,7 @@ function previewMachineIcon(machine: Machine) {
   if (machine.kind === "local" || machine.kind === "rdp") return Monitor;
   if (machine.kind === "telnet" || machine.kind === "serial") return Terminal;
   if (machine.kind === "dockerContainer") return Box;
-  return machine.production ? Cloud : Server;
+  return Server;
 }
 
 export function clampContextMenuPosition(x: number, y: number, width: number, height: number) {

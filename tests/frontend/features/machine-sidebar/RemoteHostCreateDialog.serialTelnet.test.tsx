@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +59,6 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       host: "lab.internal",
       name: "lab telnet",
       port: 2323,
-      production: false,
       protocol: "telnet",
       tags: ["telnet"],
       username: "",
@@ -122,7 +123,6 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       host: "COM9",
       name: "console serial",
       port: 1,
-      production: false,
       protocol: "serial",
       tags: [
         "serial",

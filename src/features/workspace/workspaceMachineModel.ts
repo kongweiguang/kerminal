@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   browserPreviewProfiles,
   type TerminalProfile,
@@ -16,7 +18,7 @@ import {
   UNGROUPED_REMOTE_HOST_GROUP_ID,
   type RemoteHostGroupWithHosts,
 } from "../../lib/remoteHostApi";
-import type { Machine, MachineGroup, TerminalPane } from "./types";
+import type { Machine, MachineGroup } from "./types";
 import type { WorkspaceSessionSnapshot } from "./workspaceSession";
 
 export interface ContainerMachineOptions {
@@ -47,23 +49,6 @@ export function sidebarMachinesForWorkspaceSession(
   groups: MachineGroup[],
 ): Machine[] {
   return collectPersistentSidebarMachines(groups);
-}
-
-export function syncTerminalPaneProductionFlags(
-  panes: TerminalPane[],
-  groups: MachineGroup[],
-): TerminalPane[] {
-  return panes.map((pane) => {
-    const hostId = pane.remoteHostId ?? pane.machineId;
-    const machine = hostId ? findMachine(groups, hostId) : undefined;
-    if (!machine || machine.production === pane.remoteHostProduction) {
-      return pane;
-    }
-    return {
-      ...pane,
-      remoteHostProduction: machine.production,
-    };
-  });
 }
 
 export function buildMachineGroups(
@@ -112,11 +97,10 @@ export function buildMachineGroups(
             kind,
             name: host.name,
             port: host.port,
-            production: host.production,
             remoteGroupId: host.groupId,
             sortOrder: host.sortOrder,
             sshOptions: host.sshOptions,
-            status: host.production ? ("warning" as const) : ("offline" as const),
+            status: "offline" as const,
             target:
               kind === "ssh" || kind === "sftp"
                 ? sshTarget(host.id)
@@ -165,7 +149,6 @@ export function containerToMachine(
     kind: "dockerContainer",
     name: container.name,
     parentMachineId: container.hostId,
-    production: hostMachine.production,
     remoteGroupId: options.groupId ?? hostMachine.remoteGroupId,
     runtime: container.runtime,
     sortOrder: hostMachine.sortOrder,
@@ -379,7 +362,6 @@ export function dockerContainerMachinesFromSession(
       kind: "dockerContainer",
       name: pane.title,
       parentMachineId: pane.target.hostId,
-      production: pane.remoteHostProduction,
       runtime: pane.target.runtime,
       shell: pane.shell,
       status: pane.status,
@@ -567,7 +549,6 @@ function syncDockerContainerMachine(machine: Machine, hostMachine: Machine): Mac
     containerId,
     host: hostMachine.host,
     parentMachineId: hostMachine.id,
-    production: hostMachine.production,
     remoteGroupId: machine.remoteGroupId ?? hostMachine.remoteGroupId,
     sortOrder: hostMachine.sortOrder,
     target: dockerContainerTarget({

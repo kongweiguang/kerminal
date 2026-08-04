@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   act,
   fireEvent,
@@ -176,7 +178,6 @@ export function resetKerminalShellTestState() {
     id: "host-copy",
     name: "172.16.41.60 副本",
     port: 22,
-    production: false,
     sshOptions: testSshOptions,
     sortOrder: 20,
     tags: ["ssh", "bbb"],
@@ -193,7 +194,6 @@ export function resetKerminalShellTestState() {
       id: request.id,
       name: request.name,
       port: request.port ?? 22,
-      production: request.production ?? false,
       sshOptions: request.sshOptions,
       sortOrder: request.sortOrder,
       tags: request.tags ?? [],

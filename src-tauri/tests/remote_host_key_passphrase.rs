@@ -160,7 +160,6 @@ fn key_host_create_request() -> RemoteHostCreateRequest {
         credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
         credential_secret: None,
         tags: Vec::new(),
-        production: false,
         ssh_options: Default::default(),
     }
 }
@@ -178,7 +177,6 @@ fn update_request_from_host(host: &RemoteHost) -> RemoteHostUpdateRequest {
         credential_ref: host.credential_ref.clone(),
         credential_secret: None,
         tags: host.tags.clone(),
-        production: host.production,
         ssh_options: host.ssh_options.clone(),
         sort_order: host.sort_order,
     }

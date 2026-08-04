@@ -25,7 +25,6 @@ fn remote_host(host: &str, tags: Vec<String>) -> RemoteHost {
         credential_secret: None,
         credential_status: Default::default(),
         tags,
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "now".to_owned(),

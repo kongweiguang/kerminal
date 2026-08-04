@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   createContainerTerminalOpenState,
@@ -110,7 +112,7 @@ describe("workspaceTerminalOpenState", () => {
     });
   });
 
-  it("preserves remote prompts, targets and production flags", () => {
+  it("preserves remote prompts and targets", () => {
     const sshMachine = buildMachineGroups(remoteHostTree)[0].machines[0];
     const [telnetMachine, serialMachine] = buildMachineGroups(
       remoteHostTreeWithTerminalTransports,
@@ -142,21 +144,18 @@ describe("workspaceTerminalOpenState", () => {
       mode: "ssh",
       prompt: "root@192.168.1.253:~$",
       remoteHostId: "host-lab",
-      remoteHostProduction: true,
       target: { hostId: "host-lab", kind: "ssh" },
     });
     expect(telnetPatch.terminalPanes?.[0]).toMatchObject({
       id: "pane-telnet-4",
       mode: "telnet",
       prompt: "lab.internal:2323>",
-      remoteHostProduction: false,
       target: { hostId: "telnet-lab", kind: "telnet" },
     });
     expect(serialPatch.terminalPanes?.[0]).toMatchObject({
       id: "pane-serial-5",
       mode: "serial",
       prompt: "COM9>",
-      remoteHostProduction: false,
       target: { hostId: "serial-console", kind: "serial" },
     });
   });

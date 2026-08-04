@@ -493,7 +493,6 @@ describe("RemoteHostCreateDialog", () => {
     const user = userEvent.setup();
     const editingHost: RemoteHost = {
       ...createdHost,
-      production: true,
     };
     const updatedHost: RemoteHost = {
       ...editingHost,
@@ -532,7 +531,6 @@ describe("RemoteHostCreateDialog", () => {
       id: "host-1",
       name: "ubuntu-prod",
       port: 22,
-      production: true,
       protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       sortOrder: 10,

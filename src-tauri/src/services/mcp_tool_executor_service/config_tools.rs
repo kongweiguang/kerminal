@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use std::{collections::HashSet, fs, path::Path};
 
 use super::*;
@@ -177,7 +179,6 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
         }
     };
 
-    validate_host_public_files_are_explicit(root, report);
     validate_host_gitignore_rules(root, report);
 
     match store.list_remote_host_metadata() {
@@ -208,70 +209,6 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
             }
         }
         Err(error) => report.error_from_file_store("hosts", "hosts/*.toml", error),
-    }
-}
-
-fn validate_host_public_files_are_explicit(root: &Path, report: &mut ConfigValidationReport) {
-    let host_dir = root.join("hosts");
-    let entries = match fs::read_dir(&host_dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
-        Err(error) => {
-            report.error("hosts", "hosts", error.to_string());
-            return;
-        }
-    };
-
-    for entry in entries.filter_map(Result::ok) {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let file_name = entry.file_name();
-        let file_name = file_name.to_string_lossy();
-        if !file_name.ends_with(".toml") || file_name == "groups.toml" {
-            continue;
-        }
-        let display_path = format!("hosts/{file_name}");
-        let source = match fs::read_to_string(entry.path()) {
-            Ok(source) => source,
-            Err(error) => {
-                report.error("hosts", display_path, error.to_string());
-                continue;
-            }
-        };
-        let parsed = match toml::from_str::<toml::Value>(&source) {
-            Ok(parsed) => parsed,
-            Err(_) => {
-                continue;
-            }
-        };
-        match parsed.get("production") {
-            Some(toml::Value::Boolean(_)) => {}
-            Some(_) => report.error_with_details(
-                "hosts",
-                display_path,
-                "production must be a boolean and explicitly set to true or false",
-                ConfigDiagnosticDetails {
-                    line: line_for_toml_key(&source, "production"),
-                    key: Some("production".to_owned()),
-                    recovery: Some("Set production = true or production = false.".to_owned()),
-                    ..ConfigDiagnosticDetails::default()
-                },
-            ),
-            None => report.warning_with_details(
-                "hosts",
-                display_path,
-                "production must be explicitly set to true or false",
-                ConfigDiagnosticDetails {
-                    key: Some("production".to_owned()),
-                    recovery: Some("Add production = true or production = false.".to_owned()),
-                    ..ConfigDiagnosticDetails::default()
-                },
-            ),
-        }
     }
 }
 
@@ -491,19 +428,6 @@ impl ConfigValidationReport {
         }
     }
 
-    fn warning_with_details(
-        &mut self,
-        scope: impl Into<String>,
-        path: impl Into<String>,
-        message: impl Into<String>,
-        details: ConfigDiagnosticDetails,
-    ) {
-        self.warning_count += 1;
-        self.diagnostics.push(config_diagnostic_json(
-            "warning", scope, path, message, details,
-        ));
-    }
-
     fn error_count(&self) -> usize {
         self.error_count
     }
@@ -577,16 +501,4 @@ fn safe_config_path_label(path: &Path) -> Option<String> {
     } else {
         Some(normalized)
     }
-}
-
-fn line_for_toml_key(source: &str, key: &str) -> Option<usize> {
-    source
-        .lines()
-        .position(|line| {
-            let Some((raw_key, _)) = line.split_once('=') else {
-                return false;
-            };
-            raw_key.trim().trim_matches('"').trim_matches('\'') == key
-        })
-        .map(|index| index + 1)
 }

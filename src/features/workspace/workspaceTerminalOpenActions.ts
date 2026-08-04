@@ -9,7 +9,6 @@ import {
   externalSshLaunchDescription,
   externalSshLaunchDisplayName,
   externalSshLaunchMachineId,
-  externalSshLaunchProduction,
   externalSshLaunchTags,
   type ExternalSshLaunchResolvedRequest,
 } from "../external-launch";
@@ -140,7 +139,6 @@ export function createWorkspaceTerminalOpenActions(
           kind: "ssh",
           name: externalSshLaunchDisplayName(launch),
           port: launch.target.port,
-          production: externalSshLaunchProduction(launch),
           status: "online",
           tags: externalSshLaunchTags(launch),
           target: sshTarget(machineId),
@@ -204,7 +202,6 @@ export function createWorkspaceTerminalOpenActions(
           kind: "ssh",
           name: externalSshLaunchDisplayName(launch),
           port: launch.target.port,
-          production: externalSshLaunchProduction(launch),
           status: "online",
           tags: externalSshLaunchTags(launch),
           target: sshTarget(machineId),

@@ -1,15 +1,14 @@
+// @author kongweiguang
+
 import {
   Activity,
   Network,
-  Server,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
-import {
-  type TerminalInlineSuggestionSettings,
-} from "../settingsModel";
+import type { TerminalInlineSuggestionSettings } from "../settingsModel";
 
 const inlineSuggestionTileClassName =
   "rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]";
@@ -19,8 +18,6 @@ export function InlineSuggestionPolicyStatus({
 }: {
   inlineSuggestion: TerminalInlineSuggestionSettings;
 }) {
-  const productionRestricted =
-    inlineSuggestion.productionHostPolicy === "restricted";
   const statusItems: Array<{
     icon: LucideIcon;
     label: string;
@@ -38,12 +35,6 @@ export function InlineSuggestionPolicyStatus({
       label: "远端探测",
       tone: inlineSuggestion.remoteProbeEnabled ? "sky" : "zinc",
       value: inlineSuggestion.remoteProbeEnabled ? "后台只读" : "已关闭",
-    },
-    {
-      icon: Server,
-      label: "生产主机",
-      tone: productionRestricted ? "emerald" : "sky",
-      value: productionRestricted ? "限制预热" : "普通策略",
     },
     {
       icon: Activity,

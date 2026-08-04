@@ -61,7 +61,6 @@ interface RemoteHostDialogSectionContentProps {
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
-  production: boolean;
   rdpFullscreen: boolean;
   rdpHeight: string;
   rdpNote: string;
@@ -91,7 +90,6 @@ interface RemoteHostDialogSectionContentProps {
   setLocalTitle: StringSetter;
   setName: StringSetter;
   setPort: StringSetter;
-  setProduction: BooleanSetter;
   setRdpFullscreen: BooleanSetter;
   setRdpHeight: StringSetter;
   setRdpNote: StringSetter;
@@ -139,7 +137,6 @@ export function RemoteHostDialogSectionContent({
   name,
   onCreateGroupClick,
   port,
-  production,
   rdpFullscreen,
   rdpHeight,
   rdpNote,
@@ -169,7 +166,6 @@ export function RemoteHostDialogSectionContent({
   setLocalTitle,
   setName,
   setPort,
-  setProduction,
   setRdpFullscreen,
   setRdpHeight,
   setRdpNote,
@@ -323,7 +319,6 @@ export function RemoteHostDialogSectionContent({
       name={name}
       onCreateGroupClick={onCreateGroupClick}
       port={port}
-      production={production}
       groupOptions={groupOptions}
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
@@ -334,7 +329,6 @@ export function RemoteHostDialogSectionContent({
       setHost={setHost}
       setName={setName}
       setPort={setPort}
-      setProduction={setProduction}
       setTags={setTags}
       setUsername={setUsername}
       tags={tags}

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import type { Machine } from "../../../../src/features/workspace/types";
 import { serverInfoTargetContext } from "../../../../src/features/tool-panel/serverInfoTargetModel";
@@ -11,14 +13,12 @@ describe("serverInfoTargetModel", () => {
       kind: "ssh",
       name: "prod api",
       port: 22,
-      production: true,
       status: "online",
       tags: [],
       username: "deploy",
     };
 
     expect(serverInfoTargetContext(machine)).toMatchObject({
-      badgeText: "生产主机",
       cacheKey: "ssh:prod-api",
       hostId: "prod-api",
       refreshAriaLabel: "刷新服务器信息",
@@ -38,7 +38,6 @@ describe("serverInfoTargetModel", () => {
       kind: "dockerContainer",
       name: "api",
       parentMachineId: "prod-api",
-      production: false,
       runtime: "docker",
       status: "online",
       tags: [],
@@ -65,7 +64,7 @@ describe("serverInfoTargetModel", () => {
     expect(context?.badgeText).toBeUndefined();
   });
 
-  it("omits the default development badge for non-production SSH targets", () => {
+  it("omits badges for SSH targets", () => {
     const machine: Machine = {
       description: "dev@dev.internal:22",
       host: "dev.internal",
@@ -73,7 +72,6 @@ describe("serverInfoTargetModel", () => {
       kind: "ssh",
       name: "dev api",
       port: 22,
-      production: false,
       status: "online",
       tags: [],
       username: "dev",

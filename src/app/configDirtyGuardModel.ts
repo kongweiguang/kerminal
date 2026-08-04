@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { SettingsSaveState } from "../features/settings/SettingsToolContent";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import type { RemoteHost } from "../lib/remoteHostApi";
@@ -158,7 +160,6 @@ function remoteMachineFingerprint(machine: Machine) {
     port:
       machine.port ??
       (machine.kind === "rdp" ? 3389 : machine.kind === "telnet" ? 23 : 1),
-    production: machine.production ?? false,
     sortOrder: machine.sortOrder ?? 0,
     tags: [...machine.tags].sort(),
     username: machine.username ?? "",
@@ -181,7 +182,6 @@ function remoteHostFingerprint(host: RemoteHost) {
           : "ssh",
     name: host.name,
     port: host.port,
-    production: host.production,
     sortOrder: host.sortOrder,
     tags: [...host.tags].sort(),
     username: host.username,

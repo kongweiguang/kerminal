@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
 import type { DockerContainerSummary } from "../../../../src/lib/dockerApi";
 import type { TerminalProfile } from "../../../../src/lib/profileApi";
@@ -51,7 +53,6 @@ export const remoteHostTree: RemoteHostGroupWithHosts[] = [
         name: "lab server",
         port: 2222,
         protocol: "ssh",
-        production: true,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 10,
         tags: ["ssh", "lab"],
@@ -91,7 +92,6 @@ export const unorderedRemoteHostTree: RemoteHostGroupWithHosts[] = [
         name: "zeta-b",
         port: 22,
         protocol: "ssh",
-        production: false,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 20,
         tags: ["ssh"],
@@ -107,7 +107,6 @@ export const unorderedRemoteHostTree: RemoteHostGroupWithHosts[] = [
         name: "zeta-a",
         port: 22,
         protocol: "ssh",
-        production: false,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 10,
         tags: ["ssh"],
@@ -144,7 +143,6 @@ export const remoteHostTreeWithRdp: RemoteHostGroupWithHosts[] = [
         name: "office-rdp",
         port: 3389,
         protocol: "rdp",
-        production: false,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 10,
         tags: ["rdp", "office"],
@@ -172,7 +170,6 @@ export const remoteHostTreeWithTerminalTransports: RemoteHostGroupWithHosts[] = 
         name: "lab telnet",
         port: 2323,
         protocol: "telnet",
-        production: false,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 10,
         tags: ["telnet", "lab"],
@@ -188,7 +185,6 @@ export const remoteHostTreeWithTerminalTransports: RemoteHostGroupWithHosts[] = 
         name: "console serial",
         port: 1,
         protocol: "serial",
-        production: false,
         sshOptions: createDefaultSshOptions(),
         sortOrder: 20,
         tags: [

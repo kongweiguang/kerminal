@@ -79,7 +79,7 @@ fn concurrent_group_creates_do_not_lose_updates() {
 }
 
 #[test]
-fn create_host_persists_tags_private_key_path_and_production_flag() {
+fn create_host_persists_tags_and_private_key_path() {
     let (_home, state) = test_state();
     let group = state
         .remote_hosts()
@@ -101,7 +101,6 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
             credential_ref: Some("/home/root/.ssh/armbian".to_owned()),
             credential_secret: None,
             tags: vec![" lab ".to_owned(), "LAB".to_owned(), "arm".to_owned()],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create host");
@@ -115,7 +114,6 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
         Some("/home/root/.ssh/armbian")
     );
     assert_eq!(host.tags, vec!["lab", "arm"]);
-    assert!(!host.production);
 
     let tree = state.remote_hosts().list_tree().expect("list host tree");
     let lab = tree
@@ -141,7 +139,6 @@ fn create_sftp_host_persists_v2_protocol_and_vault_boundary() {
             credential_ref: None,
             credential_secret: Some("fixture-password".to_owned()),
             tags: vec!["files".to_owned()],
-            production: true,
             ssh_options: Default::default(),
         })
         .expect("create SFTP host");
@@ -172,7 +169,6 @@ fn sftp_username_requirement_cannot_be_bypassed_with_unrelated_protocol_label() 
             credential_ref: None,
             credential_secret: None,
             tags: vec!["rdp".to_owned()],
-            production: false,
             ssh_options: SshOptions::default(),
         })
         .expect_err("SFTP username must remain required");
@@ -196,7 +192,6 @@ fn protocol_tags_are_plain_labels_and_do_not_override_explicit_protocol() {
             credential_ref: None,
             credential_secret: None,
             tags: vec!["rdp".to_owned()],
-            production: false,
             ssh_options: SshOptions::default(),
         })
         .expect("create RDP host");
@@ -256,7 +251,6 @@ fn update_host_rejects_protocol_change() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create SSH host");
@@ -275,7 +269,6 @@ fn update_host_rejects_protocol_change() {
             credential_ref: host.credential_ref,
             credential_secret: None,
             tags: host.tags,
-            production: host.production,
             ssh_options: host.ssh_options,
             sort_order: host.sort_order,
         })
@@ -301,7 +294,6 @@ fn create_password_host_writes_encrypted_vault_ref() {
             credential_ref: None,
             credential_secret: Some("s3cr3t".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create password host");
@@ -378,7 +370,6 @@ fn create_rdp_password_host_writes_rdp_vault_ref() {
             credential_ref: None,
             credential_secret: Some("rdp-secret".to_owned()),
             tags: vec!["rdp".to_owned()],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create rdp host");
@@ -413,7 +404,6 @@ fn update_ssh_host_keeps_explicit_protocol_and_vault_ref_when_tags_change() {
             credential_ref: None,
             credential_secret: Some("ssh-secret".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create ssh password host");
@@ -436,7 +426,6 @@ fn update_ssh_host_keeps_explicit_protocol_and_vault_ref_when_tags_change() {
             credential_ref: None,
             credential_secret: None,
             tags: vec!["rdp".to_owned()],
-            production: false,
             ssh_options: Default::default(),
             sort_order: host.sort_order,
         })
@@ -463,7 +452,6 @@ fn reveal_password_host_credential_returns_vault_secret_without_exposing_tree() 
             credential_ref: None,
             credential_secret: Some("edit-form-secret".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create password host");
@@ -513,7 +501,6 @@ fn reveal_non_secret_host_credentials_returns_status_without_secret() {
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create key path host");
@@ -530,7 +517,6 @@ fn reveal_non_secret_host_credentials_returns_status_without_secret() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create agent host");
@@ -600,7 +586,6 @@ fn create_host_persists_ssh_options() {
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
             tags: vec!["app".to_owned()],
-            production: false,
             ssh_options: ssh_options.clone(),
         })
         .expect("create host with ssh options");
@@ -633,7 +618,6 @@ fn update_key_host_saves_inline_private_key_into_vault() {
             credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create key host");
@@ -652,7 +636,6 @@ fn update_key_host_saves_inline_private_key_into_vault() {
             credential_ref: None,
             credential_secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
             sort_order: host.sort_order,
         })
@@ -697,7 +680,6 @@ fn update_group_and_host_persist_changes() {
             credential_ref: None,
             credential_secret: None,
             tags: vec!["dev".to_owned()],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create host");
@@ -716,7 +698,6 @@ fn update_group_and_host_persist_changes() {
             credential_ref: None,
             credential_secret: Some("updated-password".to_owned()),
             tags: vec!["dev".to_owned(), "api".to_owned()],
-            production: true,
             ssh_options: Default::default(),
             sort_order: host.sort_order,
         })
@@ -736,7 +717,6 @@ fn update_group_and_host_persist_changes() {
         updated_host.secret_ref.as_deref(),
         Some(build_vault_secret_ref("ssh-host", &updated_host.id, "target", "password").as_str())
     );
-    assert!(updated_host.production);
 }
 
 fn test_state() -> (TempDir, AppState) {

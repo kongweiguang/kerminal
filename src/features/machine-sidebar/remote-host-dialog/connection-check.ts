@@ -34,7 +34,6 @@ export interface ConnectionCheckInput {
   mode: ConnectionMode;
   name: string;
   port: string;
-  production: boolean;
   rdpFullscreen: boolean;
   rdpHeight: string;
   rdpNote: string;
@@ -74,7 +73,6 @@ export function evaluateConnectionCheck({
   mode,
   name,
   port,
-  production,
   rdpFullscreen,
   rdpHeight,
   rdpNote,
@@ -136,7 +134,6 @@ export function evaluateConnectionCheck({
       host,
       name,
       port,
-      production,
       tags,
     });
     const validationError = validateTelnetHostRequest(request);
@@ -149,7 +146,6 @@ export function evaluateConnectionCheck({
     const request = buildSerialHostRequest({
       groupId,
       name,
-      production,
       serialBaud,
       serialDataBits,
       serialFlow,
@@ -177,7 +173,6 @@ export function evaluateConnectionCheck({
     host,
     name,
     port,
-    production,
     sshOptions,
     tags,
     username,

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   act,
   fireEvent,
@@ -235,7 +237,6 @@ export function registerSessionAndToolTests() {
       name: "transfer-dev",
       port: 22,
       protocol: "sftp",
-      production: false,
       sshOptions: testSshOptions,
       sortOrder: 30,
       tags: [],

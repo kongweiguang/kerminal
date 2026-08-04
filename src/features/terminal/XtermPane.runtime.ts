@@ -72,7 +72,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     reconnectSessionRef,
     remoteCommand,
     remoteHostId,
-    remoteHostProduction,
     searchAddonRef,
     sessionIdRef,
     setCommandBlockNotice,
@@ -179,7 +178,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     paneId,
     profileId,
     remoteHostId,
-    remoteHostProduction,
     scheduleCommandBlockViewSync: commandBlockRuntime.scheduleCommandBlockViewSync,
     sessionIdRef,
     setGhostSuggestion,
@@ -204,7 +202,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     canScheduleProbe: canScheduleSuggestionProbe,
     paneId,
     remoteHostId,
-    remoteHostProduction,
     target,
     terminalAppearanceRef,
   });

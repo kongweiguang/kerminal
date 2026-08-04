@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   useCallback,
   useEffect,
@@ -622,7 +624,6 @@ function TerminalRuntimePortal({
         profileId={pane.profileId}
         remoteCommand={pane.remoteCommand}
         remoteHostId={pane.remoteHostId}
-        remoteHostProduction={pane.remoteHostProduction}
         onConnectionStateChange={(state) =>
           onPaneConnectionStateChange?.(pane.id, state)
         }

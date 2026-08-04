@@ -199,7 +199,6 @@ export const sshMachine: Machine = {
   kind: "ssh",
   name: "prod api",
   port: 22,
-  production: true,
   status: "warning",
   tags: ["ssh", "prod"],
   username: "deploy",
@@ -231,7 +230,6 @@ export const stageSshMachine: Machine = {
   host: "stage.internal",
   id: "stage-api",
   name: "stage api",
-  production: false,
   status: "online",
 };
 

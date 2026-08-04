@@ -85,7 +85,6 @@ export interface InstallXtermPaneRuntimeParams
   reconnectSessionRef: MutableRefObject<(() => Promise<void>) | null>;
   remoteCommand: XtermPaneProps["remoteCommand"];
   remoteHostId: XtermPaneProps["remoteHostId"];
-  remoteHostProduction: boolean;
   searchAddonRef: MutableRefObject<SearchAddon | null>;
   sessionIdRef: MutableRefObject<string | null>;
   setCommandBlockNotice: (notice: string | null) => void;

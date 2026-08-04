@@ -56,7 +56,6 @@ fn connection_test_wire_accepts_flat_key_passphrase_without_debug_leak() {
             "credentialRef": "/home/deploy/.ssh/id_ed25519",
             "keyPassphraseSecret": "wire-key-passphrase",
             "tags": [],
-            "production": false,
             "sshOptions": SshOptions::default()
         }
     }))
@@ -148,7 +147,6 @@ fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
         credential_ref: None,
         credential_secret: None,
         tags,
-        production: false,
         ssh_options: SshOptions::default(),
     }
 }
@@ -175,7 +173,6 @@ fn rdp_host(
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
         tags: vec!["rdp".to_owned()],
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "now".to_owned(),

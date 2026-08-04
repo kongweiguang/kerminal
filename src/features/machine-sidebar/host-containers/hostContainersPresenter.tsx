@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { RefreshCw, Search } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
@@ -113,7 +115,7 @@ export function formatHostIdentity(host: Machine) {
   const endpoint = host.host
     ? `${host.username ? `${host.username}@` : ""}${host.host}${host.port ? `:${host.port}` : ""}`
     : host.description;
-  return `${endpoint} · ${host.production ? "production" : "workspace"} · SSH`;
+  return `${endpoint} · SSH`;
 }
 
 export function containerLifecycleActionText(action: string) {

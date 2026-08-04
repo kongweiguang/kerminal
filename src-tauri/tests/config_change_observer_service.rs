@@ -354,7 +354,6 @@ fn seed_rendered_config_files(root: &Path) {
                 credential_secret: None,
                 credential_status: Default::default(),
                 tags: vec!["smoke".to_owned()],
-                production: false,
                 ssh_options: SshOptions::default(),
                 sort_order: 10,
                 created_at: timestamp.clone(),

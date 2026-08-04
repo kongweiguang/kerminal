@@ -82,9 +82,8 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("kerminal.vault.encrypt_secret"));
     assert!(config_reference.contains("Never add plaintext keys such as `password`"));
     assert!(!config_reference.contains("secrets/hosts/*.toml"));
-    assert!(config_reference.contains("production = true"));
-    assert!(config_reference.contains("production = false"));
-    assert!(config_reference.contains("production` is required"));
+    assert!(!config_reference.contains("production ="));
+    assert!(!config_reference.contains("`production`"));
     assert!(config_reference.contains("kerminal.config.validate"));
     assert!(!config_reference.contains("validate-kerminal-config.mjs"));
     assert!(config_reference.contains("macOS/Linux example"));

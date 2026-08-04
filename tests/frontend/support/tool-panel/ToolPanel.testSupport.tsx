@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { screen } from "@testing-library/react";
 import { beforeEach, expect, vi } from "vitest";
 import type { Machine, TerminalTab } from "../../../../src/features/workspace/types";
@@ -84,7 +86,6 @@ export const sshMachine: Machine = {
   kind: "ssh",
   name: "prod api",
   port: 22,
-  production: true,
   status: "warning",
   tags: ["ssh", "prod"],
   username: "deploy",
@@ -116,7 +117,6 @@ export const secondarySshMachine: Machine = {
   kind: "ssh",
   name: "staging api",
   port: 22,
-  production: false,
   status: "online",
   tags: ["ssh", "staging"],
   username: "ops",
@@ -151,14 +151,12 @@ export const contextWorkspaceProjection: WorkspaceContextProjection = {
     name: sshMachine.name,
     kind: "ssh",
     status: "online",
-    production: true,
     groupId: "production",
   },
   target: {
     id: sshMachine.id,
     kind: "ssh",
     label: sshMachine.host ?? sshMachine.name,
-    production: true,
   },
   location: {
     cwd: "/srv/app",

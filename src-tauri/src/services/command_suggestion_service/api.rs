@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 use crate::models::command_suggestion::{SuggestionPresentation, SuggestionQueryMode};
 
@@ -553,14 +555,6 @@ impl CommandSuggestionService {
         metadata.insert("maxEntries".to_owned(), max_entries.to_string());
         metadata.insert("ttlSeconds".to_owned(), ttl_seconds.to_string());
         metadata.insert(
-            "productionHost".to_owned(),
-            skip.production_host.to_string(),
-        );
-        metadata.insert(
-            "productionHostPolicy".to_owned(),
-            production_host_policy_label(&skip.production_host_policy).to_owned(),
-        );
-        metadata.insert(
             "remoteProbeEnabled".to_owned(),
             skip.remote_probe_enabled.to_string(),
         );
@@ -584,38 +578,12 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_probe_policy_skip(
         &self,
-        storage: &CommandSqliteStore,
-        paths: &KerminalPaths,
-        host_id: &str,
         inline_settings: &TerminalInlineSuggestionSettings,
     ) -> AppResult<Option<RemoteProbePolicySkip>> {
-        let _ = storage;
-        let Some(host) = ConfigFileStore::new(paths.root.clone())
-            .remote_host_by_id(host_id)
-            .map_err(config_file_error)?
-        else {
-            return Ok(None);
-        };
-        let production_host_policy = inline_settings.production_host_policy.clone();
         if !inline_settings.remote_probe_enabled {
             return Ok(Some(RemoteProbePolicySkip {
-                production_host: host.production,
-                production_host_policy,
                 remote_probe_enabled: false,
                 reason: "remote-probe-disabled",
-            }));
-        }
-        if host.production
-            && matches!(
-                &production_host_policy,
-                TerminalInlineSuggestionProductionHostPolicy::Restricted
-            )
-        {
-            return Ok(Some(RemoteProbePolicySkip {
-                production_host: true,
-                production_host_policy,
-                remote_probe_enabled: true,
-                reason: "production-host-restricted",
             }));
         }
         Ok(None)
@@ -735,11 +703,4 @@ fn resolve_snippet_usage_identity(
         .iter()
         .any(|item| item.id == snippet_id)
         .then(|| (SnippetPreferenceOrigin::Builtin, snippet_id.to_owned()))
-}
-
-fn config_file_error(error: FileStoreError) -> AppError {
-    match error {
-        FileStoreError::Io(error) => AppError::Io(error),
-        other => AppError::InvalidInput(other.to_string()),
-    }
 }

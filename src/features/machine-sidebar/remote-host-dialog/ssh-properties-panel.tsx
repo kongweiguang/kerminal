@@ -3,7 +3,6 @@
 import { FolderOpen } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
-import { Switch } from "../../../components/ui/switch";
 import { selectLocalFile } from "../../../lib/fileDialogApi";
 import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
@@ -25,7 +24,6 @@ export function SshPropertiesPanel({
   name,
   onCreateGroupClick,
   port,
-  production,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
@@ -35,7 +33,6 @@ export function SshPropertiesPanel({
   setHost,
   setName,
   setPort,
-  setProduction,
   setTags,
   setUsername,
   tags,
@@ -51,7 +48,6 @@ export function SshPropertiesPanel({
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
-  production: boolean;
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
@@ -61,7 +57,6 @@ export function SshPropertiesPanel({
   setHost: (value: string) => void;
   setName: (value: string) => void;
   setPort: (value: string) => void;
-  setProduction: (value: boolean) => void;
   setTags: (value: string) => void;
   setUsername: (value: string) => void;
   tags: string;
@@ -134,16 +129,6 @@ export function SshPropertiesPanel({
             placeholder="dev, ubuntu, staging"
             value={tags}
           />
-        </FieldRow>
-        <FieldRow label="环境">
-          <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
-            <span>生产或安全敏感主机</span>
-            <Switch
-              aria-label="生产主机"
-              checked={production}
-              onCheckedChange={setProduction}
-            />
-          </div>
         </FieldRow>
       </div>
     </div>

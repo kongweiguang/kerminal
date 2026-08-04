@@ -1,8 +1,9 @@
+// @author kongweiguang
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isBroadcastCommandTargetMode } from "./broadcastCommandPolicy";
 import type { TerminalPane } from "../workspace/contracts/index";
 import {
-  countProductionTargets,
   createBroadcastTargetOption,
   filterBroadcastTargetsByPaneIds,
   resolveBroadcastTargetPaneIds,
@@ -22,7 +23,6 @@ interface UseTerminalBroadcastTargetsResult {
   broadcastTargetOptions: BroadcastTargetOption[];
   handleBroadcastTargetModeChange: (mode: BroadcastTargetMode) => void;
   handleToggleCustomTarget: (paneId: string, selected: boolean) => void;
-  productionTargetCount: number;
   selectedTargetPaneIds: string[];
 }
 
@@ -69,11 +69,6 @@ export function useTerminalBroadcastTargets({
       ),
     [broadcastTargetOptions, selectedTargetPaneIds],
   );
-  const productionTargetCount = useMemo(
-    () => countProductionTargets(broadcastTargets),
-    [broadcastTargets],
-  );
-
   useEffect(() => {
     const validTargetPaneIds = new Set(
       broadcastTargetOptions.map((target) => target.paneId),
@@ -138,7 +133,6 @@ export function useTerminalBroadcastTargets({
     broadcastTargetOptions,
     handleBroadcastTargetModeChange,
     handleToggleCustomTarget,
-    productionTargetCount,
     selectedTargetPaneIds,
   };
 }

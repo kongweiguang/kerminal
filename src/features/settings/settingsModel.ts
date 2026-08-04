@@ -77,9 +77,6 @@ export type TerminalCommandSuggestionPresentation =
   | "off";
 type TerminalCommandSuggestionMenuShortcut = "ctrlSpace";
 export type TerminalCommandSuggestionRemoteRefresh = "off" | "safe";
-export type TerminalInlineSuggestionProductionHostPolicy =
-  | "normal"
-  | "restricted";
 export type KeybindingScope = "global" | "terminal" | "workspace";
 export type KeybindingPlatform = "windows" | "mac";
 export type ExternalLaunchSourceTool =
@@ -119,7 +116,6 @@ export interface TerminalInlineSuggestionSettings {
   remoteRefresh: TerminalCommandSuggestionRemoteRefresh;
   providers: TerminalInlineSuggestionProviderSettings;
   remoteProbeEnabled: boolean;
-  productionHostPolicy: TerminalInlineSuggestionProductionHostPolicy;
   auditRetentionDays: number;
   feedbackRetentionDays: number;
 }
@@ -523,9 +519,6 @@ function normalizeTerminalInlineSuggestion(
       defaults.partialAccept,
     ),
     remoteRefresh,
-    productionHostPolicy: normalizeTerminalInlineSuggestionProductionHostPolicy(
-      settings?.productionHostPolicy,
-    ),
     providers: {
       git: readBoolean(providers.git, defaults.providers.git),
       history: readBoolean(providers.history, defaults.providers.history),
@@ -595,15 +588,6 @@ function normalizeTerminalInlineSuggestionAcceptKey(
     return value;
   }
   return defaultTerminalAppearance.inlineSuggestion.acceptKey;
-}
-
-function normalizeTerminalInlineSuggestionProductionHostPolicy(
-  value: TerminalInlineSuggestionProductionHostPolicy | undefined,
-): TerminalInlineSuggestionProductionHostPolicy {
-  if (value === "normal" || value === "restricted") {
-    return value;
-  }
-  return defaultTerminalAppearance.inlineSuggestion.productionHostPolicy;
 }
 
 function normalizeKeybindingScope(

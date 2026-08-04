@@ -663,7 +663,6 @@ fn create_saved_password_host(state: &AppState) -> String {
             host: "dev.internal".to_owned(),
             name: "dev".to_owned(),
             port: 2222,
-            production: false,
             ssh_options: Default::default(),
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),

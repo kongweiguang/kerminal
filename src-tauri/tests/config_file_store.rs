@@ -205,7 +205,6 @@ fn remote_host_toml_does_not_persist_transient_secrets() {
         credential_secret: Some("target-secret".to_owned()),
         credential_status: Default::default(),
         tags: vec!["prod".to_owned()],
-        production: true,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "1".to_owned(),
@@ -273,7 +272,6 @@ fn remote_host_toml_tree_uses_runtime_ungrouped_group() {
         credential_secret: None,
         credential_status: RemoteHostCredentialStatus::Agent,
         tags: Vec::new(),
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "1".to_owned(),
@@ -293,20 +291,21 @@ fn remote_host_toml_tree_uses_runtime_ungrouped_group() {
 }
 
 #[test]
-fn remote_host_toml_defaults_missing_production_to_false() {
+fn remote_host_toml_reads_legacy_production_and_drops_it_on_write() {
     let temp = tempdir().expect("temp dir");
     let store = ConfigFileStore::new(temp.path());
     fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
     fs::write(
-        temp.path().join("hosts/host-missing-production.toml"),
+        temp.path().join("hosts/host-legacy-production.toml"),
         r#"schema_version = 2
 protocol = "ssh"
-id = "host-missing-production"
+id = "host-legacy-production"
 name = "AI added host"
 host = "host.internal"
 port = 22
 username = "deploy"
 auth_type = "agent"
+production = true
 sort_order = 10
 created_at = "1"
 updated_at = "1"
@@ -315,12 +314,17 @@ updated_at = "1"
     .expect("write host");
 
     let loaded = store
-        .remote_host_by_id("host-missing-production")
+        .remote_host_by_id("host-legacy-production")
         .expect("read host")
         .expect("host exists");
 
-    assert!(!loaded.production);
     assert_eq!(loaded.protocol, RemoteHostProtocol::Ssh);
+    store
+        .apply_remote_host_change_set(None, std::slice::from_ref(&loaded), &[])
+        .expect("write host without legacy classification");
+    let rewritten = fs::read_to_string(temp.path().join("hosts/host-legacy-production.toml"))
+        .expect("read rewritten host");
+    assert!(!rewritten.contains("production ="));
 }
 
 #[test]
@@ -387,7 +391,6 @@ fn remote_host_toml_v2_roundtrips_every_explicit_protocol_without_secrets() {
             credential_secret: None,
             credential_status: RemoteHostCredentialStatus::Agent,
             tags: vec!["files".to_owned()],
-            production: false,
             ssh_options: SshOptions::default(),
             sort_order: 10,
             created_at: "1".to_owned(),
@@ -513,7 +516,6 @@ fn remote_host_toml_allows_key_passphrase_vault_reference() {
             "credential_ref = \"/home/deploy/.ssh/id_ed25519\"\n",
             "key_passphrase_ref = \"credential:kerminal:ssh-host:host-key-ref:target:key-passphrase:v1\"\n",
             "tags = []\n",
-            "production = false\n",
             "sort_order = 10\n",
             "created_at = \"1\"\n",
             "updated_at = \"1\"\n",

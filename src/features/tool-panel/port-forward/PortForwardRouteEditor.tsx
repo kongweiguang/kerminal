@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { ArrowLeft, ArrowRight, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -198,11 +200,9 @@ export function PreviewValue({ label, value }: { label: string; value: string })
 
 export function ExposureWarning({
   bindHost,
-  production,
   side,
 }: {
   bindHost: string;
-  production: boolean;
   side: "local" | "remote";
 }) {
   if (!isNonLoopbackBindHost(bindHost)) {
@@ -215,7 +215,6 @@ export function ExposureWarning({
         {side === "remote"
           ? `主机监听 ${bindHost} 会扩大暴露范围；需确认 GatewayPorts 和防火墙。`
           : `本机监听 ${bindHost} 会对外暴露，请确认可信网络。`}
-        {production ? " 生产主机建议保持 loopback。" : null}
       </div>
     </div>
   );

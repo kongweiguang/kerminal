@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useState, type ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -131,7 +133,6 @@ describe("TerminalWorkspace runtime overlay", () => {
       mode: "ssh",
       prompt: "deploy@prod.internal:~$",
       remoteHostId: "host-prod",
-      remoteHostProduction: true,
       title: "源 SSH",
     };
     const sourceTab: TerminalTab = {

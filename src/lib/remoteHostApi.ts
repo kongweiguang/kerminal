@@ -89,7 +89,6 @@ export interface RemoteHost {
   credentialSecret?: string;
   credentialStatus?: RemoteHostCredentialStatus;
   tags: string[];
-  production: boolean;
   sshOptions: SshOptions;
   sortOrder: number;
   createdAt: string;
@@ -143,7 +142,6 @@ export interface RemoteHostCreateRequest {
   keyPassphraseSecret?: string;
   clearKeyPassphrase?: boolean;
   tags?: string[];
-  production?: boolean;
   sshOptions?: SshOptions;
 }
 
@@ -187,13 +185,12 @@ const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] =
               groupId: "group-preview-infrastructure",
               host: "preview.internal",
               id: "prod-api",
-              name: "生产 API",
+              name: "API 服务",
               port: 22,
               protocol: "ssh",
-              production: true,
               sortOrder: 10,
               sshOptions: createDefaultSshOptions(),
-              tags: ["production", "preview"],
+              tags: ["preview"],
               updatedAt: "browser-preview",
               username: "deploy",
             },
@@ -533,7 +530,6 @@ function normalizeRemoteHostRequest(
     groupId: request.groupId?.trim() || undefined,
     port: request.port ?? 22,
     protocol: request.protocol ?? "ssh",
-    production: request.production ?? false,
     sshOptions: normalizeSshOptions(request.sshOptions),
     tags: request.tags ?? [],
   };

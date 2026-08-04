@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { screen } from "@testing-library/react";
 import type userEvent from "@testing-library/user-event";
 import {
@@ -29,7 +31,6 @@ export const createdHost: RemoteHost = {
   name: "ubuntu-dev",
   port: 22,
   protocol: "ssh",
-  production: false,
   sshOptions: createDefaultSshOptions(),
   sortOrder: 10,
   tags: ["ssh", "ubuntu"],
@@ -51,7 +52,6 @@ export const groupsWithSsh: MachineGroup[] = [
         kind: "ssh",
         name: "ubuntu-dev",
         port: 22,
-        production: false,
         remoteGroupId: "group-dev",
         status: "offline",
         target: { hostId: "host-1", kind: "ssh" },
@@ -66,7 +66,6 @@ export const groupsWithSsh: MachineGroup[] = [
         kind: "ssh",
         name: "db-prod",
         port: 22,
-        production: true,
         remoteGroupId: "group-dev",
         status: "warning",
         target: { hostId: "host-2", kind: "ssh" },
