@@ -30,7 +30,7 @@ describe("workspaceToolPanelState", () => {
     ).toMatchObject({ activeTool: "sftp" });
   });
 
-  it("defaults a new tab to a collapsed panel without clearing the old tab", () => {
+  it("inherits the current tool for a new tab without clearing the old tab", () => {
     const current = state("tab-a", {
       "tab-a": "agentLauncher",
     });
@@ -39,10 +39,29 @@ describe("workspaceToolPanelState", () => {
       activeTabId: "tab-new",
     });
 
-    expect(next.activeTool).toBeNull();
+    expect(next.activeTool).toBe("agentLauncher");
+    expect(next.activeToolByTabId).toMatchObject({
+      "tab-new": "agentLauncher",
+    });
     expect(activeToolForTab(next.activeToolByTabId, "tab-a")).toBe(
       "agentLauncher",
     );
+  });
+
+  it("keeps an explicit per-tab close distinct from an uninitialized tab", () => {
+    const current = state("tab-a", { "tab-a": "agentLauncher" });
+    const closed = setActiveToolForCurrentTabState(current, null);
+
+    expect(closed).toMatchObject({
+      activeTool: null,
+      activeToolByTabId: { "tab-a": null },
+    });
+    expect(
+      withToolPanelTabTransition(
+        { ...current, ...closed },
+        { activeTabId: "tab-a" },
+      ),
+    ).toMatchObject({ activeTool: null });
   });
 
   it("cleans only the closed tab and restores the next active tab", () => {
@@ -62,6 +81,21 @@ describe("workspaceToolPanelState", () => {
       activeToolByTabId: { "tab-a": "agentLauncher" },
     });
     expect(next.activeToolByTabId).not.toHaveProperty("tab-b");
+  });
+
+  it("transfers the open tool when closing into an uninitialized next tab", () => {
+    const current = state("tab-a", { "tab-a": "agentLauncher" });
+
+    const next = withClosedToolPanelTab(
+      current,
+      { activeTabId: "tab-b" },
+      "tab-a",
+    );
+
+    expect(next).toMatchObject({
+      activeTool: "agentLauncher",
+      activeToolByTabId: { "tab-b": "agentLauncher" },
+    });
   });
 });
 

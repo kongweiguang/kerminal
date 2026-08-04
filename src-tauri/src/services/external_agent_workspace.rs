@@ -316,9 +316,15 @@ impl ExternalAgentWorkspaceService {
         agent_id: AgentId,
         context: &AgentSessionWorkspaceContext,
     ) -> Option<String> {
+        // Older provider.toml files may have been written while a provider was
+        // marked resumable but had no concrete command. Keep those sessions
+        // resumable by filling only the missing command from the current
+        // provider defaults; an explicit `resume_supported = false` remains a
+        // deliberate opt-out.
+        let defaults = AgentProviderSession::for_agent(agent_id);
         let provider = self
             .read_agent_provider_session(agent_id, context)
-            .unwrap_or_else(|| AgentProviderSession::for_agent(agent_id));
+            .unwrap_or_else(|| defaults.clone());
         if !provider.resume_supported {
             return None;
         }
@@ -328,6 +334,11 @@ impl ExternalAgentWorkspaceService {
             .map(str::trim)
             .filter(|command| !command.is_empty())
             .map(ToOwned::to_owned)
+            .or_else(|| {
+                defaults
+                    .resume_command
+                    .filter(|command| !command.trim().is_empty())
+            })
     }
 
     fn read_agent_provider_session(

@@ -151,19 +151,26 @@ export function ShellToolRail({
 }
 
 /**
- * 紧凑布局使用覆盖式工具抽屉，避免把终端工作区压缩到不可用宽度。
+ * ToolPanel 使用单一稳定宿主；紧凑布局只切换为覆盖式抽屉，不能重建子树。
  * 抽屉保留 ToolPanel 自身工具栏，并提供遮罩与 Escape 两种关闭路径。
  */
 export function ShellCompactToolPanel({
   children,
+  compact = true,
   onClose,
+  open = true,
 }: {
   children: ReactNode;
+  compact?: boolean;
   onClose: () => void;
+  open?: boolean;
 }) {
   const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    if (!compact || !open) {
+      return undefined;
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
@@ -220,24 +227,40 @@ export function ShellCompactToolPanel({
       window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [compact, onClose, open]);
 
   return (
     <>
       <button
         aria-label="关闭紧凑工具面板"
         className="kerminal-layer-overlay absolute inset-x-0 bottom-0 top-9 bg-zinc-950/18 backdrop-blur-[2px] dark:bg-black/40"
+        hidden={!compact || !open}
         onClick={onClose}
         type="button"
       />
       <section
-        aria-modal="true"
-        aria-label="紧凑工具面板"
-        className="kerminal-floating-enter kerminal-floating-surface kerminal-layer-dialog absolute bottom-2 right-2 top-11 w-[min(440px,calc(100%-16px))] overflow-hidden rounded-[var(--radius-panel)] border"
+        aria-hidden={!open}
+        aria-modal={compact ? "true" : undefined}
+        aria-label={compact ? "紧凑工具面板" : undefined}
+        className={cn(
+          compact
+            ? "kerminal-floating-enter kerminal-floating-surface kerminal-layer-dialog absolute bottom-2 right-2 top-11 w-[min(440px,calc(100%-16px))] overflow-hidden rounded-[var(--radius-panel)] border"
+            : "relative z-[var(--layer-chrome)] h-full overflow-hidden",
+        )}
+        hidden={!open}
+        inert={!open}
         ref={panelRef}
-        role="dialog"
+        role={compact ? "dialog" : undefined}
+        style={
+          compact
+            ? undefined
+            : { gridColumn: "5 / 6", gridRow: "2 / 3" }
+        }
       >
-        <header className="flex h-10 items-center justify-end border-b border-[var(--border-subtle)] px-2">
+        <header
+          className="flex h-10 items-center justify-end border-b border-[var(--border-subtle)] px-2"
+          hidden={!compact}
+        >
           <Button
             aria-label="关闭工具面板"
             className="h-8 w-8 rounded-[var(--radius-control)]"
@@ -249,7 +272,14 @@ export function ShellCompactToolPanel({
             <X aria-hidden className="h-4 w-4" />
           </Button>
         </header>
-        <div className="h-[calc(100%-2.5rem)] min-h-0">{children}</div>
+        <div
+          className={cn(
+            "min-h-0",
+            compact ? "h-[calc(100%-2.5rem)]" : "h-full",
+          )}
+        >
+          {children}
+        </div>
       </section>
     </>
   );
@@ -295,13 +325,15 @@ export function ShellResponsiveToolPanel({
         className="relative z-[var(--layer-chrome)] h-full overflow-hidden"
         style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
       >
-        {open ? (compact ? null : panel) : rail}
+        {open ? null : rail}
       </div>
-      {compact && open ? (
-        <ShellCompactToolPanel onClose={onClose}>
-          {panel}
-        </ShellCompactToolPanel>
-      ) : null}
+      <ShellCompactToolPanel
+        compact={compact}
+        onClose={onClose}
+        open={open}
+      >
+        {panel}
+      </ShellCompactToolPanel>
     </>
   );
 }

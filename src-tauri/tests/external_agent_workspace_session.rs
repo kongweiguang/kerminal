@@ -1,4 +1,6 @@
 //! External agent session workspace behavior tests.
+//!
+//! @author kongweiguang
 
 mod support;
 
@@ -341,7 +343,7 @@ fn prepare_codex_agent_session_resume_uses_provider_resume_command() {
 }
 
 #[test]
-fn prepare_claude_agent_session_resume_without_command_falls_back_to_plain_cli() {
+fn prepare_claude_agent_session_resume_uses_directory_scoped_continue_command() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
         temp.path(),
@@ -373,8 +375,45 @@ fn prepare_claude_agent_session_resume_without_command_falls_back_to_plain_cli()
         })
         .expect("prepare claude resume session");
 
-    assert_agent_launch_command(&spec, "claude");
+    assert_agent_launch_command(&spec, "claude --continue");
     assert_eq!(spec.cwd, path_to_string(&session_root));
+}
+
+#[test]
+fn prepare_claude_agent_session_resume_migrates_legacy_provider_without_command() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let service = ExternalAgentWorkspaceService::new(
+        temp.path(),
+        Some("http://127.0.0.1:3024/mcp".to_owned()),
+        true,
+    );
+    let agent_session_id = "ags_claude_legacy_resume_20260624";
+    let session_root = temp
+        .path()
+        .join("agents")
+        .join("sessions")
+        .join(agent_session_id);
+    fs::create_dir_all(&session_root).expect("session root");
+    let mut legacy_provider = AgentProviderSession::for_agent(AgentId::Claude);
+    legacy_provider.resume_command = None;
+    fs::write(
+        session_root.join("provider.toml"),
+        toml::to_string_pretty(&legacy_provider).expect("legacy provider toml"),
+    )
+    .expect("write legacy provider");
+
+    let spec = service
+        .prepare(&PrepareExternalAgentWorkspaceRequest {
+            agent_id: "claude".to_owned(),
+            agent_session_id: Some(agent_session_id.to_owned()),
+            custom_command: None,
+            resume_provider_session: true,
+            dry_run: false,
+            overwrite_policy: ExternalAgentOverwritePolicy::BackupAndReplaceInvalid,
+        })
+        .expect("prepare legacy claude resume session");
+
+    assert_agent_launch_command(&spec, "claude --continue");
 }
 
 #[test]
