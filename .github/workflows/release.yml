@@ -213,8 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - Agent 会话和 Claude 对话在终端 Tab 切换、右栏收起和紧凑布局切换时保持；显式关闭 Tab 或会话仍按原契约清理。
-            - SSH 与独立 SFTP 的私钥认证支持独立口令，可测试连接、加密保存、编辑回显、替换和明确清空；普通主机配置只保存凭据保险箱引用。
+            - 移除远程主机“生产”分类及命令建议的生产主机门禁；旧配置字段仍可迁移读取，并在写回时清理。
+            - 终端标签页与分组的关闭操作统一使用危险样式，保留原有关闭范围、确认和清理契约。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

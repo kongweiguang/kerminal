@@ -2,7 +2,7 @@
 
 [package]
 name = "kerminal"
-version = "0.3.17"
+version = "0.3.18"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -86,3 +86,18 @@ rmcp = { version = "1.7.0", features = ["client", "transport-streamable-http-cli
 rustls = { version = "0.23.40", default-features = false, features = ["ring", "std"] }
 tauri = { version = "2", features = ["test"] }
 tempfile = "3.27.0"
+
+# Windows MSVC 会为每个集成测试生成独立 PDB；项目仅保留行号级调试信息，第三方依赖不生成调试符号。
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = 0
+
+# 测试 target 数量较多，关闭增量缓存，避免历史哈希产物持续堆积。
+[profile.test]
+debug = 1
+incremental = false
+
+[profile.test.package."*"]
+debug = 0
