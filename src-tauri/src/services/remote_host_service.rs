@@ -11,7 +11,8 @@ mod normalization;
 mod ssh_options;
 
 use credential_persistence::{
-    password_required_message, persist_secret_ref, reusable_secret_ref_for_kind,
+    normalize_key_passphrase_input, password_required_message, persist_key_passphrase_ref,
+    persist_secret_ref, reusable_secret_ref_for_kind, KeyPassphrasePersistenceInput,
     SecretPersistenceInput,
 };
 use normalization::{normalize_host, normalize_port, normalize_tags};
@@ -20,10 +21,11 @@ use ssh_options::normalize_ssh_options;
 use crate::{
     error::{AppError, AppResult},
     models::remote_host::{
-        RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostCredentialReveal,
-        RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus, RemoteHostGroup,
-        RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
-        RemoteHostProtocol, RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions,
+        RemoteHost, RemoteHostAuthType, RemoteHostCreateInput, RemoteHostCreateRequest,
+        RemoteHostCredentialReveal, RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus,
+        RemoteHostGroup, RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest,
+        RemoteHostGroupWithHosts, RemoteHostProtocol, RemoteHostUpdateInput,
+        RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions,
     },
     paths::KerminalPaths,
     services::{
@@ -143,6 +145,19 @@ impl RemoteHostService {
 
     /// 创建远程主机配置。
     pub fn create_host(&self, request: RemoteHostCreateRequest) -> AppResult<RemoteHost> {
+        self.create_host_with_input(request.into())
+    }
+
+    /// 创建远程主机并在同一事务中保存可选私钥口令。
+    pub fn create_host_with_input(&self, input: RemoteHostCreateInput) -> AppResult<RemoteHost> {
+        let key_passphrase = normalize_key_passphrase_input(
+            input.request.protocol,
+            input.request.auth_type,
+            input.key_passphrase_secret,
+            input.clear_key_passphrase,
+            false,
+        )?;
+        let request = input.request;
         let tags = normalize_tags(request.tags);
         let protocol = request.protocol;
         let group_id = normalize_optional_text(request.group_id);
@@ -170,7 +185,7 @@ impl RemoteHostService {
             credential_ref: credential.credential_ref,
             secret_ref: None,
             key_passphrase_ref: None,
-            key_passphrase_secret: None,
+            key_passphrase_secret: key_passphrase.secret,
             credential_secret: credential.credential_secret,
             credential_status: Default::default(),
             tags,
@@ -182,7 +197,8 @@ impl RemoteHostService {
         };
         let vault = self.vault_service();
         vault.run_unit_of_work("remote-host-create", |unit, transaction| {
-            let host = self.persist_host_credentials(&vault, unit, host, None)?;
+            let host =
+                self.persist_host_credentials(&vault, unit, host, None, key_passphrase.clear)?;
             self.config
                 .stage_remote_host_write(transaction, &host)
                 .map_err(config_file_error)?;
@@ -192,6 +208,19 @@ impl RemoteHostService {
 
     /// 更新远程主机配置。
     pub fn update_host(&self, request: RemoteHostUpdateRequest) -> AppResult<RemoteHost> {
+        self.update_host_with_input(request.into())
+    }
+
+    /// 更新远程主机并显式保留、替换或清空私钥口令。
+    pub fn update_host_with_input(&self, input: RemoteHostUpdateInput) -> AppResult<RemoteHost> {
+        let key_passphrase = normalize_key_passphrase_input(
+            input.request.protocol,
+            input.request.auth_type,
+            input.key_passphrase_secret,
+            input.clear_key_passphrase,
+            true,
+        )?;
+        let request = input.request;
         let tags = normalize_tags(request.tags);
         let protocol = request.protocol;
         let group_id = normalize_optional_text(request.group_id);
@@ -232,7 +261,7 @@ impl RemoteHostService {
                 credential_ref: credential.credential_ref,
                 secret_ref: existing.secret_ref.clone(),
                 key_passphrase_ref: existing.key_passphrase_ref.clone(),
-                key_passphrase_secret: None,
+                key_passphrase_secret: key_passphrase.secret.clone(),
                 credential_secret: credential.credential_secret,
                 credential_status: Default::default(),
                 tags,
@@ -242,7 +271,13 @@ impl RemoteHostService {
                 created_at: existing.created_at.clone(),
                 updated_at: timestamp_now(),
             };
-            let host = self.persist_host_credentials(&vault, unit, host, Some(&existing))?;
+            let host = self.persist_host_credentials(
+                &vault,
+                unit,
+                host,
+                Some(&existing),
+                key_passphrase.clear,
+            )?;
             self.config
                 .stage_remote_host_write(transaction, &host)
                 .map_err(config_file_error)?;
@@ -265,54 +300,59 @@ impl RemoteHostService {
     pub fn reveal_host_credential(&self, host_id: &str) -> AppResult<RemoteHostCredentialReveal> {
         let host_id = normalize_required_text("主机 ID", host_id.to_owned())?;
         let host = self.require_host(&host_id)?;
-        let base = |status, credential_secret, message| RemoteHostCredentialReveal {
-            host_id: host.id.clone(),
-            auth_type: host.auth_type,
-            status,
-            credential_secret,
-            message,
+        let base = |status, credential_secret, key_passphrase_secret, message| {
+            RemoteHostCredentialReveal {
+                host_id: host.id.clone(),
+                auth_type: host.auth_type,
+                status,
+                credential_secret,
+                key_passphrase_secret,
+                message,
+            }
         };
 
         match host.auth_type {
             RemoteHostAuthType::Agent => Ok(base(
                 RemoteHostCredentialRevealStatus::Agent,
                 None,
+                None,
                 Some("SSH Agent 认证不需要保存密码。".to_owned()),
             )),
-            RemoteHostAuthType::Key
-                if host
-                    .credential_ref
-                    .as_deref()
-                    .is_some_and(|value| !value.trim().is_empty()) =>
-            {
-                Ok(base(
-                    RemoteHostCredentialRevealStatus::ConfigPath,
-                    None,
-                    Some("该主机使用私钥路径，无需回显私钥内容。".to_owned()),
-                ))
-            }
             RemoteHostAuthType::Password | RemoteHostAuthType::Key => {
                 let resolver = SshCredentialResolver::new(self.vault_service());
                 let resolved = resolver.resolve_host(&host)?;
                 match resolved.target.material {
-                    ResolvedSshAuthMaterial::Password { value, .. }
-                    | ResolvedSshAuthMaterial::PrivateKeyPem { content: value, .. } => Ok(base(
+                    ResolvedSshAuthMaterial::Password { value, .. } => Ok(base(
                         RemoteHostCredentialRevealStatus::Available,
                         Some(value),
                         None,
+                        None,
                     )),
-                    ResolvedSshAuthMaterial::PrivateKeyPath { .. } => Ok(base(
+                    ResolvedSshAuthMaterial::PrivateKeyPem {
+                        content,
+                        passphrase,
+                        ..
+                    } => Ok(base(
+                        RemoteHostCredentialRevealStatus::Available,
+                        Some(content),
+                        passphrase.map(|value| value.value),
+                        None,
+                    )),
+                    ResolvedSshAuthMaterial::PrivateKeyPath { passphrase, .. } => Ok(base(
                         RemoteHostCredentialRevealStatus::ConfigPath,
                         None,
+                        passphrase.map(|value| value.value),
                         Some("该主机使用私钥路径，无需回显私钥内容。".to_owned()),
                     )),
                     ResolvedSshAuthMaterial::Agent { .. } => Ok(base(
                         RemoteHostCredentialRevealStatus::Agent,
                         None,
+                        None,
                         Some("SSH Agent 认证不需要保存密码。".to_owned()),
                     )),
                     ResolvedSshAuthMaterial::PromptOnly { reason, .. } => Ok(base(
                         RemoteHostCredentialRevealStatus::Missing,
+                        None,
                         None,
                         Some(reason),
                     )),
@@ -327,8 +367,9 @@ impl RemoteHostService {
         unit: &mut VaultUnitOfWork,
         host: RemoteHost,
         existing: Option<&RemoteHost>,
+        clear_key_passphrase: bool,
     ) -> AppResult<RemoteHost> {
-        self.persist_host_credentials_for_mode(vault, unit, host, existing)
+        self.persist_host_credentials_for_mode(vault, unit, host, existing, clear_key_passphrase)
     }
 
     fn persist_host_credentials_for_mode(
@@ -337,6 +378,7 @@ impl RemoteHostService {
         unit: &mut VaultUnitOfWork,
         mut host: RemoteHost,
         existing: Option<&RemoteHost>,
+        clear_key_passphrase: bool,
     ) -> AppResult<RemoteHost> {
         let primary_secret_kind = primary_credential_secret_kind(&host);
 
@@ -355,7 +397,21 @@ impl RemoteHostService {
         )?;
         host.credential_ref = top_level.credential_ref;
         host.secret_ref = top_level.secret_ref;
-        host.key_passphrase_ref = top_level.key_passphrase_ref;
+        let existing_key_passphrase_ref = existing
+            .filter(|item| matches!(item.auth_type, RemoteHostAuthType::Key))
+            .and_then(|item| item.key_passphrase_ref.clone());
+        host.key_passphrase_ref = persist_key_passphrase_ref(
+            vault,
+            unit,
+            KeyPassphrasePersistenceInput {
+                host_id: &host.id,
+                kind: primary_secret_kind,
+                plaintext: host.key_passphrase_secret.take(),
+                existing_secret_ref: existing_key_passphrase_ref,
+                clear: clear_key_passphrase || !matches!(host.auth_type, RemoteHostAuthType::Key),
+            },
+        )?;
+        host.key_passphrase_secret = None;
         host.credential_secret = None;
         host.credential_status = top_level.credential_status;
 
@@ -387,7 +443,6 @@ impl RemoteHostService {
 struct PersistedPrimaryCredential {
     credential_ref: Option<String>,
     secret_ref: Option<String>,
-    key_passphrase_ref: Option<String>,
     credential_status: RemoteHostCredentialStatus,
 }
 
@@ -550,7 +605,6 @@ fn persist_primary_credential(
         RemoteHostAuthType::Agent => Ok(PersistedPrimaryCredential {
             credential_ref: None,
             secret_ref: None,
-            key_passphrase_ref: None,
             credential_status: RemoteHostCredentialStatus::Agent,
         }),
         RemoteHostAuthType::Password => {
@@ -575,7 +629,6 @@ fn persist_primary_credential(
             Ok(PersistedPrimaryCredential {
                 credential_ref: None,
                 secret_ref: Some(persisted_secret_ref),
-                key_passphrase_ref: None,
                 credential_status: RemoteHostCredentialStatus::Vault,
             })
         }
@@ -588,7 +641,6 @@ fn persist_primary_credential(
                 return Ok(PersistedPrimaryCredential {
                     credential_ref: Some(path),
                     secret_ref: None,
-                    key_passphrase_ref: existing.and_then(|host| host.key_passphrase_ref.clone()),
                     credential_status: RemoteHostCredentialStatus::Missing,
                 });
             }
@@ -610,7 +662,6 @@ fn persist_primary_credential(
             Ok(PersistedPrimaryCredential {
                 credential_ref: None,
                 secret_ref: Some(persisted_secret_ref),
-                key_passphrase_ref: existing.and_then(|host| host.key_passphrase_ref.clone()),
                 credential_status: RemoteHostCredentialStatus::Vault,
             })
         }

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   useCallback,
   useEffect,
@@ -100,6 +102,8 @@ export function RemoteHostCreateDialog({
   const [authType, setAuthType] = useState<RemoteHostAuthType>("password");
   const [credentialRef, setCredentialRef] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
+  const [keyPassphraseSecret, setKeyPassphraseSecret] = useState("");
+  const [keyPassphraseDirty, setKeyPassphraseDirty] = useState(false);
   const [error, setErrorState] = useState<string | null>(null);
   const [operationError, setOperationError] =
     useState<UserFacingMessage | null>(null);
@@ -154,6 +158,10 @@ export function RemoteHostCreateDialog({
     },
     [],
   );
+  const updateKeyPassphraseSecret = useCallback((value: string) => {
+    setKeyPassphraseSecret(value);
+    setKeyPassphraseDirty(true);
+  }, []);
   const formTargetKey = editingLocalMachine
     ? `local:${editingLocalMachine.id}`
     : editingHost
@@ -163,6 +171,7 @@ export function RemoteHostCreateDialog({
   const credentialAuthType = editingHost?.authType;
   const persistedCredentialRef = editingHost?.credentialRef;
   const persistedCredentialSecret = editingHost?.credentialSecret;
+  const persistedKeyPassphraseRef = editingHost?.keyPassphraseRef;
   const credentialHostUsesRdp = editingHost
     ? isRdpRemoteHost(editingHost)
     : false;
@@ -210,6 +219,12 @@ export function RemoteHostCreateDialog({
         ? (editingHost.credentialSecret ?? "")
         : "",
     );
+    setKeyPassphraseSecret(
+      editingHost?.authType === "key"
+        ? (editingHost.keyPassphraseSecret ?? "")
+        : "",
+    );
+    setKeyPassphraseDirty(false);
     setError(null);
     setGroupId(initialGroupId);
     setHost(editingHost?.host ?? "");
@@ -299,12 +314,20 @@ export function RemoteHostCreateDialog({
     if (!open || !credentialHostId) {
       return undefined;
     }
-    if (persistedCredentialSecret?.trim()) {
+    if (
+      credentialAuthType === "password" &&
+      persistedCredentialSecret?.trim()
+    ) {
+      return undefined;
+    }
+    if (credentialAuthType === "key" && keyPassphraseDirty) {
       return undefined;
     }
     const shouldReveal =
       credentialAuthType === "password" ||
-      (credentialAuthType === "key" && !persistedCredentialRef?.trim());
+      (credentialAuthType === "key" &&
+        (Boolean(persistedKeyPassphraseRef?.trim()) ||
+          !persistedCredentialRef?.trim()));
     if (!shouldReveal) {
       return undefined;
     }
@@ -318,14 +341,26 @@ export function RemoteHostCreateDialog({
         if (disposed || credentialRevealRequestRef.current !== requestId) {
           return;
         }
-        if (result.status === "available" && result.credentialSecret) {
+        let revealedSecret = false;
+        if (result.credentialSecret) {
           setCredentialSecret(result.credentialSecret);
+          revealedSecret = true;
           if (credentialHostUsesRdp) {
             setRdpPassword(result.credentialSecret);
           }
+        }
+        if (result.keyPassphraseSecret !== undefined) {
+          setKeyPassphraseSecret(result.keyPassphraseSecret);
+          setKeyPassphraseDirty(false);
+          revealedSecret = true;
+        }
+        if (revealedSecret) {
           return;
         }
-        if (result.message) {
+        if (
+          result.message &&
+          (result.status === "missing" || result.status === "unsupported")
+        ) {
           setError(result.message);
         }
       })
@@ -350,9 +385,11 @@ export function RemoteHostCreateDialog({
     credentialAuthType,
     credentialHostId,
     credentialHostUsesRdp,
+    keyPassphraseDirty,
     open,
     persistedCredentialRef,
     persistedCredentialSecret,
+    persistedKeyPassphraseRef,
     setError,
   ]);
 
@@ -390,6 +427,7 @@ export function RemoteHostCreateDialog({
     await executeRemoteHostConfirm({
       authType, credentialRef, credentialSecret, editingHost,
       editingLocalMachine, externalConfigConflict, groupId, host,
+      keyPassphraseDirty, keyPassphraseSecret,
       localArgs, localCwd, localEnv, localShell, localTitle, mode, name,
       onClose, onCreateHost, onCreateLocal, onCreated, onUpdateHost,
       onUpdateLocal, port, production, rdpPassword, rdpUsername,
@@ -405,6 +443,7 @@ export function RemoteHostCreateDialog({
       authType,
       credentialRef,
       credentialSecret,
+      keyPassphraseSecret,
       editingLocalMachine: Boolean(editingLocalMachine),
       groupId,
       host,
@@ -515,6 +554,7 @@ export function RemoteHostCreateDialog({
       authType={authType}
       credentialRef={credentialRef}
       credentialSecret={credentialSecret}
+      keyPassphraseSecret={keyPassphraseSecret}
       editingHost={editingHost}
       editingLocalMachine={editingLocalMachine}
       groupId={groupId}
@@ -551,6 +591,7 @@ export function RemoteHostCreateDialog({
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
       setCredentialSecret={setCredentialSecret}
+      setKeyPassphraseSecret={updateKeyPassphraseSecret}
       setError={setError}
       setGroupId={setGroupId}
       setHost={setHost}
@@ -654,6 +695,8 @@ export function RemoteHostCreateDialog({
                       setAuthType("agent");
                       setCredentialRef("");
                       setCredentialSecret("");
+                      setKeyPassphraseSecret("");
+                      setKeyPassphraseDirty(false);
                       setPort("23");
                       setRdpUsername("");
                       setTags("telnet");
@@ -662,6 +705,8 @@ export function RemoteHostCreateDialog({
                       setAuthType("agent");
                       setCredentialRef("");
                       setCredentialSecret("");
+                      setKeyPassphraseSecret("");
+                      setKeyPassphraseDirty(false);
                       setHost("");
                       setPort("1");
                       setRdpUsername("");

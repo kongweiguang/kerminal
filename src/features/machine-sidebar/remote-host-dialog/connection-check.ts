@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   RemoteHostAuthType,
   SshOptions,
@@ -20,6 +22,7 @@ export interface ConnectionCheckInput {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   editingLocalMachine: boolean;
   groupId: string;
   host: string;
@@ -59,6 +62,7 @@ export function evaluateConnectionCheck({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   editingLocalMachine,
   groupId,
   host,
@@ -168,6 +172,7 @@ export function evaluateConnectionCheck({
     authType,
     credentialRef,
     credentialSecret,
+    keyPassphraseSecret,
     groupId,
     host,
     name,

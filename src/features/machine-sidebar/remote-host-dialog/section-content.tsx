@@ -44,6 +44,7 @@ interface RemoteHostDialogSectionContentProps {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   editingHost?: RemoteHost;
   editingLocalMachine?: Machine;
   groupId: string;
@@ -78,6 +79,7 @@ interface RemoteHostDialogSectionContentProps {
   setAuthType: Dispatch<SetStateAction<RemoteHostAuthType>>;
   setCredentialRef: StringSetter;
   setCredentialSecret: StringSetter;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: NullableStringSetter;
   setGroupId: StringSetter;
   setHost: StringSetter;
@@ -120,6 +122,7 @@ export function RemoteHostDialogSectionContent({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   editingHost,
   editingLocalMachine,
   groupId,
@@ -154,6 +157,7 @@ export function RemoteHostDialogSectionContent({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
   setGroupId,
   setHost,
@@ -313,6 +317,7 @@ export function RemoteHostDialogSectionContent({
       authType={authType}
       credentialRef={credentialRef}
       credentialSecret={credentialSecret}
+      keyPassphraseSecret={keyPassphraseSecret}
       groupId={groupId}
       host={host}
       name={name}
@@ -323,6 +328,7 @@ export function RemoteHostDialogSectionContent({
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
       setCredentialSecret={setCredentialSecret}
+      setKeyPassphraseSecret={setKeyPassphraseSecret}
       setError={setError}
       setGroupId={setGroupId}
       setHost={setHost}

@@ -4,9 +4,9 @@
 
 use crate::{
     models::remote_host::{
-        RemoteHost, RemoteHostCreateRequest, RemoteHostCredentialReveal, RemoteHostGroup,
+        RemoteHost, RemoteHostCreateInput, RemoteHostCredentialReveal, RemoteHostGroup,
         RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
-        RemoteHostUpdateRequest,
+        RemoteHostUpdateInput,
     },
     state::AppState,
 };
@@ -72,11 +72,11 @@ pub fn remote_host_group_delete(
 #[tauri::command]
 pub fn remote_host_create(
     state: State<'_, AppState>,
-    request: RemoteHostCreateRequest,
+    request: RemoteHostCreateInput,
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .create_host(request)
+        .create_host_with_input(request)
         .map_err(|error| error.to_string())
 }
 
@@ -84,11 +84,11 @@ pub fn remote_host_create(
 #[tauri::command]
 pub fn remote_host_update(
     state: State<'_, AppState>,
-    request: RemoteHostUpdateRequest,
+    request: RemoteHostUpdateInput,
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .update_host(request)
+        .update_host_with_input(request)
         .map_err(|error| error.to_string())
 }
 

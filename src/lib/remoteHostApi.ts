@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type RemoteHostAuthType = "password" | "key" | "agent";
@@ -83,6 +85,7 @@ export interface RemoteHost {
   credentialRef?: string;
   secretRef?: string;
   keyPassphraseRef?: string;
+  keyPassphraseSecret?: string;
   credentialSecret?: string;
   credentialStatus?: RemoteHostCredentialStatus;
   tags: string[];
@@ -110,6 +113,7 @@ export interface RemoteHostCredentialReveal {
   authType: RemoteHostAuthType;
   status: RemoteHostCredentialRevealStatus;
   credentialSecret?: string;
+  keyPassphraseSecret?: string;
   message?: string;
 }
 
@@ -136,6 +140,8 @@ export interface RemoteHostCreateRequest {
   authType?: RemoteHostAuthType;
   credentialRef?: string;
   credentialSecret?: string;
+  keyPassphraseSecret?: string;
+  clearKeyPassphrase?: boolean;
   tags?: string[];
   production?: boolean;
   sshOptions?: SshOptions;
@@ -147,11 +153,20 @@ export interface RemoteHostUpdateRequest extends RemoteHostCreateRequest {
 }
 
 type NormalizedRemoteHostRequest = Required<
-  Omit<RemoteHostCreateRequest, "credentialRef" | "credentialSecret" | "groupId">
+  Omit<
+    RemoteHostCreateRequest,
+    | "clearKeyPassphrase"
+    | "credentialRef"
+    | "credentialSecret"
+    | "groupId"
+    | "keyPassphraseSecret"
+  >
 > & {
+  clearKeyPassphrase?: boolean;
   credentialRef?: string;
   credentialSecret?: string;
   groupId?: string;
+  keyPassphraseSecret?: string;
 };
 
 interface NormalizedRemoteHostUpdateRequest
@@ -333,14 +348,18 @@ export async function createRemoteHost(
 ): Promise<RemoteHost> {
   if (!isTauri()) {
     const normalized = normalizeRemoteHostRequest(request);
+    if (normalized.clearKeyPassphrase) {
+      throw new Error("新建主机时没有可清空的私钥口令。");
+    }
     const targetGroup = findBrowserPreviewGroup(normalized.groupId);
     if (!targetGroup) {
       throw new Error("远程主机分组不存在。");
     }
 
     browserPreviewSequence += 1;
+    const { clearKeyPassphrase: _clearKeyPassphrase, ...hostFields } = normalized;
     const host: RemoteHost = {
-      ...normalized,
+      ...hostFields,
       createdAt: "browser-preview",
       id: `host-preview-${browserPreviewSequence}`,
       sortOrder: Math.max(0, ...targetGroup.hosts.map((item) => item.sortOrder)) + 10,
@@ -379,9 +398,18 @@ export async function updateRemoteHost(
       throw new Error("远程主机不存在。");
     }
 
+    const {
+      clearKeyPassphrase,
+      keyPassphraseSecret,
+      ...normalizedHostFields
+    } = normalized;
     const updatedHost: RemoteHost = {
       ...previousHost,
-      ...normalized,
+      ...normalizedHostFields,
+      keyPassphraseSecret:
+        normalized.authType !== "key" || clearKeyPassphrase
+          ? undefined
+          : keyPassphraseSecret ?? previousHost.keyPassphraseSecret,
       updatedAt: "browser-preview",
     };
 
@@ -455,6 +483,7 @@ export async function revealRemoteHostCredential(
       return {
         authType: host.authType,
         hostId,
+        keyPassphraseSecret: host.keyPassphraseSecret,
         message: "该主机使用私钥路径，无需回显私钥内容。",
         status: "configPath",
       };
@@ -464,6 +493,7 @@ export async function revealRemoteHostCredential(
         authType: host.authType,
         credentialSecret: host.credentialSecret,
         hostId,
+        keyPassphraseSecret: host.keyPassphraseSecret,
         status: "available",
       };
     }
@@ -493,6 +523,13 @@ function normalizeRemoteHostRequest(
     credentialSecret: request.credentialSecret?.trim()
       ? request.credentialSecret
       : undefined,
+    ...((request.authType ?? "agent") === "key" &&
+    request.keyPassphraseSecret?.length
+      ? { keyPassphraseSecret: request.keyPassphraseSecret }
+      : {}),
+    ...((request.authType ?? "agent") === "key" && request.clearKeyPassphrase
+      ? { clearKeyPassphrase: true }
+      : {}),
     groupId: request.groupId?.trim() || undefined,
     port: request.port ?? 22,
     protocol: request.protocol ?? "ssh",

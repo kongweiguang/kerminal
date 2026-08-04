@@ -18,6 +18,7 @@ export function SshPropertiesPanel({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   groupId,
   groupOptions,
   host,
@@ -28,6 +29,7 @@ export function SshPropertiesPanel({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
   setGroupId,
   setHost,
@@ -42,6 +44,7 @@ export function SshPropertiesPanel({
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   groupId: string;
   groupOptions: Array<{ label: string; value: string }>;
   host: string;
@@ -52,6 +55,7 @@ export function SshPropertiesPanel({
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: (value: string | null) => void;
   setGroupId: (value: string) => void;
   setHost: (value: string) => void;
@@ -114,9 +118,11 @@ export function SshPropertiesPanel({
             authType={authType}
             credentialRef={credentialRef}
             credentialSecret={credentialSecret}
+            keyPassphraseSecret={keyPassphraseSecret}
             setAuthType={setAuthType}
             setCredentialRef={setCredentialRef}
             setCredentialSecret={setCredentialSecret}
+            setKeyPassphraseSecret={setKeyPassphraseSecret}
             setError={setError}
           />
         </FieldRow>
@@ -148,17 +154,21 @@ function SshAuthFields({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
 }: {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: (value: string | null) => void;
 }) {
   const choosePrivateKeyFile = async () => {
@@ -189,6 +199,7 @@ function SshAuthFields({
           setAuthType(nextAuthType);
           setCredentialRef("");
           setCredentialSecret("");
+          setKeyPassphraseSecret("");
         }}
         options={authOptions}
         value={authType}
@@ -244,8 +255,15 @@ function SshAuthFields({
                 spellCheck={false}
                 value={credentialSecret}
               />
+              <PasswordInput
+                ariaLabel="私钥口令"
+                autoComplete="new-password"
+                onChange={setKeyPassphraseSecret}
+                placeholder="私钥未加密时留空"
+                value={keyPassphraseSecret}
+              />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                私钥路径和内容二选一；粘贴内容保存在凭据保险箱中。
+                私钥路径和内容二选一；私钥内容与可选口令分别加密保存到凭据保险箱。
               </p>
             </div>
           )}

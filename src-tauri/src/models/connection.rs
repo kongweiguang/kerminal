@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::remote_host::RemoteHostCreateRequest;
+use super::remote_host::RemoteHostCreateInput;
 
 /// 连接测试协议类型。
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -27,15 +27,15 @@ pub enum ConnectionTestMode {
 #[serde(rename_all = "camelCase", tag = "mode")]
 pub enum ConnectionTestRequest {
     /// 测试未保存的 SSH 主机表单。
-    Ssh { host: RemoteHostCreateRequest },
+    Ssh { host: RemoteHostCreateInput },
     /// 测试未保存的 SFTP 主机表单。
-    Sftp { host: RemoteHostCreateRequest },
+    Sftp { host: RemoteHostCreateInput },
     /// 测试 RDP 主机端口连通，不启动系统 RDP 客户端。
     Rdp { request: RdpOpenRequest },
     /// 测试 Telnet 主机端口连通。
-    Telnet { host: RemoteHostCreateRequest },
+    Telnet { host: RemoteHostCreateInput },
     /// 测试 Serial 串口配置和端口可打开性。
-    Serial { host: RemoteHostCreateRequest },
+    Serial { host: RemoteHostCreateInput },
 }
 
 /// 连接测试结果。

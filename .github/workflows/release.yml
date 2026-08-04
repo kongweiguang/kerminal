@@ -213,8 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 右栏工具状态现在跟随各自的终端 Tab 保存与恢复；新 Tab 默认收起，关闭 Tab 只清理自身状态。
-            - 同一主机的多个终端 Tab 现在分别保留 SFTP 浏览路径，切换主机或容器不会意外关闭正在使用的 Agent。
+            - Agent 会话和 Claude 对话在终端 Tab 切换、右栏收起和紧凑布局切换时保持；显式关闭 Tab 或会话仍按原契约清理。
+            - SSH 与独立 SFTP 的私钥认证支持独立口令，可测试连接、加密保存、编辑回显、替换和明确清空；普通主机配置只保存凭据保险箱引用。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

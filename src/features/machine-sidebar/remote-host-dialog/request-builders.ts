@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   createDefaultSshOptions,
   type RemoteHost,
@@ -172,10 +174,12 @@ export function moveAt<T>(items: T[], from: number, to: number) {
 
 export function buildSshRequest({
   authType,
+  clearKeyPassphrase,
   credentialRef,
   credentialSecret,
   groupId,
   host,
+  keyPassphraseSecret,
   name,
   port,
   production,
@@ -185,10 +189,12 @@ export function buildSshRequest({
   protocol,
 }: {
   authType: RemoteHostAuthType;
+  clearKeyPassphrase?: boolean;
   credentialRef: string;
   credentialSecret: string;
   groupId: string;
   host: string;
+  keyPassphraseSecret?: string;
   name: string;
   port: string;
   production: boolean;
@@ -199,9 +205,15 @@ export function buildSshRequest({
 }): RemoteHostCreateRequest {
   return {
     authType,
+    ...(authType === "key" && clearKeyPassphrase
+      ? { clearKeyPassphrase: true }
+      : {}),
     credentialRef:
       authType === "key" ? normalizePrivateKeyPath(credentialRef) : undefined,
     credentialSecret: credentialSecret.trim() ? credentialSecret : undefined,
+    ...(authType === "key" && keyPassphraseSecret?.length
+      ? { keyPassphraseSecret }
+      : {}),
     groupId: groupId || undefined,
     host: host.trim(),
     name: name.trim(),

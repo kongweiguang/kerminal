@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -78,6 +80,46 @@ describe("remoteHostApi", () => {
         tags: [],
         username: "deploy",
       },
+    });
+  });
+
+  it("preserves private key passphrase mutation semantics across Tauri IPC", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({});
+    const { createRemoteHost, updateRemoteHost } = await import(
+      "../../../src/lib/remoteHostApi"
+    );
+
+    await createRemoteHost({
+      authType: "key",
+      credentialRef: "/home/deploy/.ssh/id_ed25519",
+      host: "key.internal",
+      keyPassphraseSecret: "   ",
+      name: "key host",
+      username: "deploy",
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_host_create", {
+      request: expect.objectContaining({
+        authType: "key",
+        keyPassphraseSecret: "   ",
+      }),
+    });
+
+    await updateRemoteHost({
+      authType: "key",
+      clearKeyPassphrase: true,
+      credentialRef: "/home/deploy/.ssh/id_ed25519",
+      host: "key.internal",
+      id: "host-1",
+      name: "key host",
+      sortOrder: 10,
+      username: "deploy",
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_host_update", {
+      request: expect.objectContaining({
+        authType: "key",
+        clearKeyPassphrase: true,
+      }),
     });
   });
 

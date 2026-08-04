@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import type { SshAuthPromptRequest } from "../../../../src/lib/sshAuthApi";
 import {
@@ -30,7 +32,7 @@ describe("sshAuthPromptModel", () => {
     });
   });
 
-  it("only allows target password and private key prompts to persist", () => {
+  it("allows every target SSH secret kind to persist", () => {
     expect(canPersistSshAuthPrompt(targetPasswordPrompt, "host-1")).toBe(true);
     expect(
       canPersistSshAuthPrompt(
@@ -49,7 +51,7 @@ describe("sshAuthPromptModel", () => {
         },
         "host-1",
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(canPersistSshAuthPrompt(targetPasswordPrompt)).toBe(false);
   });
 

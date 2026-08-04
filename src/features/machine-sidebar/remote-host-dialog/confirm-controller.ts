@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { Dispatch, SetStateAction } from "react";
 import type {
   RemoteHost,
@@ -31,6 +33,8 @@ export interface RemoteHostConfirmInput extends ConfirmCallbacks {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseDirty: boolean;
+  keyPassphraseSecret: string;
   editingHost?: RemoteHost;
   editingLocalMachine?: Machine;
   externalConfigConflict?: string;
@@ -121,7 +125,14 @@ export async function executeRemoteHostConfirm(input: RemoteHostConfirmInput) {
     request = buildSshRequest({
       authType: input.authType, credentialRef: input.credentialRef,
       credentialSecret: input.credentialSecret, groupId: input.groupId,
+      clearKeyPassphrase:
+        Boolean(input.editingHost) && input.keyPassphraseDirty &&
+        input.keyPassphraseSecret.length === 0,
       host: input.host, name: input.name, port: input.port,
+      keyPassphraseSecret:
+        !input.editingHost || input.keyPassphraseDirty
+          ? input.keyPassphraseSecret
+          : undefined,
       production: input.production, sshOptions: input.sshOptions,
       tags: input.tags, username: input.username,
       protocol: mode,

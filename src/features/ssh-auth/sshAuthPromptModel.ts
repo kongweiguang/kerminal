@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   SshAuthPromptRequest,
   SshAuthPromptResponseRequest,
@@ -77,7 +79,9 @@ export function canPersistSshAuthPrompt(
   return (
     isTargetPrompt(prompt) &&
     Boolean(persistToHostId?.trim()) &&
-    (prompt.secretKind === "password" || prompt.secretKind === "privateKey")
+    (prompt.secretKind === "password" ||
+      prompt.secretKind === "privateKey" ||
+      prompt.secretKind === "keyPassphrase")
   );
 }
 

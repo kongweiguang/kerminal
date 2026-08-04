@@ -494,6 +494,44 @@ fn remote_host_toml_rejects_plaintext_password_and_key_fields() {
     }
 }
 
+#[test]
+fn remote_host_toml_allows_key_passphrase_vault_reference() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
+    fs::write(
+        temp.path().join("hosts/host-key-ref.toml"),
+        concat!(
+            "schema_version = 2\n",
+            "protocol = \"ssh\"\n",
+            "id = \"host-key-ref\"\n",
+            "name = \"key host\"\n",
+            "host = \"key.internal\"\n",
+            "port = 22\n",
+            "username = \"deploy\"\n",
+            "auth_type = \"key\"\n",
+            "credential_ref = \"/home/deploy/.ssh/id_ed25519\"\n",
+            "key_passphrase_ref = \"credential:kerminal:ssh-host:host-key-ref:target:key-passphrase:v1\"\n",
+            "tags = []\n",
+            "production = false\n",
+            "sort_order = 10\n",
+            "created_at = \"1\"\n",
+            "updated_at = \"1\"\n",
+        ),
+    )
+    .expect("write host with key passphrase ref");
+
+    let host = store
+        .remote_host_by_id("host-key-ref")
+        .expect("vault reference must be allowed")
+        .expect("host exists");
+
+    assert_eq!(
+        host.key_passphrase_ref.as_deref(),
+        Some("credential:kerminal:ssh-host:host-key-ref:target:key-passphrase:v1")
+    );
+}
+
 fn parse_diagnostics(
     error: &FileStoreError,
 ) -> &[kerminal_lib::storage::file_store::ParseDiagnostic] {

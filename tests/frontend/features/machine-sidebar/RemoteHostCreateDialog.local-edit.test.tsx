@@ -404,6 +404,91 @@ describe("RemoteHostCreateDialog", () => {
     );
   });
 
+  it("reveals a saved private key passphrase without rewriting an unchanged value", async () => {
+    const user = userEvent.setup();
+    const editingHost: RemoteHost = {
+      ...createdHost,
+      keyPassphraseRef:
+        "credential:kerminal:ssh-host:host-1:target:key-passphrase:v1",
+    };
+    const onUpdateHost = vi.fn().mockResolvedValue(editingHost);
+    vi.mocked(revealRemoteHostCredential).mockResolvedValueOnce({
+      authType: "key",
+      hostId: "host-1",
+      keyPassphraseSecret: "saved-key-passphrase",
+      status: "configPath",
+    });
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    expect(revealRemoteHostCredential).toHaveBeenCalledWith("host-1");
+    await waitFor(() =>
+      expect(screen.getByLabelText("私钥口令")).toHaveValue(
+        "saved-key-passphrase",
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    expect(onUpdateHost).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        clearKeyPassphrase: expect.anything(),
+        keyPassphraseSecret: expect.anything(),
+      }),
+    );
+  });
+
+  it("explicitly clears a saved private key passphrase", async () => {
+    const user = userEvent.setup();
+    const editingHost: RemoteHost = {
+      ...createdHost,
+      keyPassphraseRef:
+        "credential:kerminal:ssh-host:host-1:target:key-passphrase:v1",
+    };
+    const onUpdateHost = vi.fn().mockResolvedValue(editingHost);
+    vi.mocked(revealRemoteHostCredential).mockResolvedValueOnce({
+      authType: "key",
+      hostId: "host-1",
+      keyPassphraseSecret: "saved-key-passphrase",
+      status: "configPath",
+    });
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    const passphraseInput = await screen.findByLabelText("私钥口令");
+    await waitFor(() => expect(passphraseInput).toHaveValue("saved-key-passphrase"));
+    await user.clear(passphraseInput);
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(onUpdateHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clearKeyPassphrase: true,
+      }),
+    );
+    expect(onUpdateHost).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        keyPassphraseSecret: expect.anything(),
+      }),
+    );
+  });
+
   it("updates an existing SSH host from the same dialog", async () => {
     const user = userEvent.setup();
     const editingHost: RemoteHost = {
