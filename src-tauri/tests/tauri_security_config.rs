@@ -1,3 +1,7 @@
+//! Tauri 安全配置与窗口/CSP/能力契约集成测试。
+//!
+//! @author kongweiguang
+
 use serde_json::Value;
 use std::{fs, path::PathBuf};
 
@@ -159,12 +163,18 @@ fn macos_window_override_is_complete_and_uses_native_titlebar_chrome() {
             "dragDropEnabled": true,
             "visible": false,
             "titleBarStyle": "Overlay",
-            "hiddenTitle": true
+            "hiddenTitle": true,
+            "acceptFirstMouse": true
         })
     );
     assert!(
         config.get("bundle").is_none() && config.get("plugins").is_none(),
         "macOS window override must not introduce signing, notarization, or updater changes"
+    );
+    assert_eq!(
+        windows[0]["acceptFirstMouse"],
+        serde_json::json!(true),
+        "macOS main window must accept the first mouse click so modal close/cancel buttons respond when the WebView is otherwise inactive"
     );
 }
 
