@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { TerminalProfile } from "../../lib/profileApi";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import {
@@ -149,7 +151,6 @@ export function createSshTerminalOpenState(
     prompt: `${userLabel}@${hostLabel}:~$`,
     remoteCommand: ids.remoteCommand,
     remoteHostId: machine.id,
-    remoteHostProduction: machine.production ?? false,
     status: machine.status,
     target: sshTarget(machine.id),
     title: ids.title ?? machine.name,
@@ -182,7 +183,6 @@ export function createTelnetTerminalOpenState(
     machineId: machine.id,
     mode: "telnet",
     prompt: `${hostLabel}:${machine.port ?? 23}>`,
-    remoteHostProduction: machine.production ?? false,
     status: machine.status,
     target: telnetTarget(machine.id),
     title: machine.name,
@@ -209,7 +209,6 @@ export function createSerialTerminalOpenState(
     machineId: machine.id,
     mode: "serial",
     prompt: `${serialPort}>`,
-    remoteHostProduction: machine.production ?? false,
     status: machine.status,
     target: serialTarget(machine.id),
     title: machine.name,
@@ -236,7 +235,6 @@ export function createContainerTerminalOpenState(
     mode: "container",
     prompt: `${machine.name}:/$`,
     remoteHostId: machine.parentMachineId,
-    remoteHostProduction: machine.production ?? false,
     shell: machine.shell,
     status: machine.status,
     target: machine.target,
@@ -268,7 +266,6 @@ export function syncContainerTerminalOpenState(
       containerId: machine.containerId,
       prompt: `${machine.name}:/$`,
       remoteHostId: machine.parentMachineId,
-      remoteHostProduction: machine.production ?? false,
       status: machine.status,
       target,
       title: machine.name,
@@ -373,7 +370,6 @@ function isSameContainerPane(left: TerminalPane, right: TerminalPane) {
     left.containerId === right.containerId &&
     left.prompt === right.prompt &&
     left.remoteHostId === right.remoteHostId &&
-    left.remoteHostProduction === right.remoteHostProduction &&
     left.status === right.status &&
     left.title === right.title &&
     isSameContainerTarget(left.target, right.target)

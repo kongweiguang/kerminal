@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { GripVertical, Terminal, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -205,7 +207,6 @@ export function TerminalPaneCard({
           profileId={pane.profileId}
           remoteCommand={pane.remoteCommand}
           remoteHostId={pane.remoteHostId}
-          remoteHostProduction={pane.remoteHostProduction}
           onConnectionStateChange={(state) =>
             onConnectionStateChange?.(pane.id, state)
           }

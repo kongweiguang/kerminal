@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { isExternalSshMachineId } from "../../external-launch/index";
 import { targetStableId, type RemoteTargetRef } from "../../../lib/targetModel";
 import {
@@ -194,14 +196,12 @@ function resolveTarget(
     return null;
   }
 
-  const production = Boolean(pane?.remoteHostProduction ?? machine?.production);
   if (machine?.kind === "rdp") {
     return {
       hostLabel: machine.host,
       id: `rdp:${machine.id}`,
       kind: "rdp",
       label: machine.name,
-      production,
     };
   }
   if (!target) {
@@ -225,7 +225,6 @@ function resolveTarget(
         ? "container"
         : target.kind,
     label: machine?.name ?? targetLabel(target),
-    production,
     ref: target,
   };
 }
@@ -405,7 +404,6 @@ function toContextMachine(
     id: value.machine.id,
     kind: value.machine.kind,
     name: value.machine.name,
-    production: Boolean(value.machine.production),
     status: value.machine.status,
   };
 }

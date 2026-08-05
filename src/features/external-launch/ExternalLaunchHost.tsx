@@ -169,7 +169,7 @@ export function ExternalLaunchHost() {
         }
         if (
           hostKey.status === "unknown" ||
-          materialized.safety !== "known-non-production" ||
+          materialized.safety !== "known" ||
           Boolean(resolved.options.remoteCommand?.trim()) ||
           resolved.source.entrypoint === "protocol"
         ) {
@@ -522,7 +522,7 @@ async function materializeExternalLaunchWithPrompts(
 }
 
 /**
- * 后端物化结果必须仍绑定当前 requestId，并保持 safety/production 不变量。
+ * 后端物化结果必须仍绑定当前 requestId，并保持 safety 不变量。
  * 这是前端最后一道过期响应防线，不能让旧请求或降级后的安全级别进入工作区。
  */
 function validateMaterializedTarget(
@@ -532,13 +532,11 @@ function validateMaterializedTarget(
   const expectedTargetId = externalSshLaunchMachineId(launch);
   const validSafety = [
     "restricted-unknown",
-    "known-non-production",
-    "production",
+    "known",
   ].includes(materialized.safety);
   const validAuthType = ["password", "key", "agent"].includes(
     materialized.authType,
   );
-  const expectedProduction = materialized.safety !== "known-non-production";
   if (
     !validSafety ||
     !validAuthType ||
@@ -547,8 +545,7 @@ function validateMaterializedTarget(
     !materialized.host.trim() ||
     !Number.isInteger(materialized.port) ||
     materialized.port < 1 ||
-    materialized.port > 65_535 ||
-    materialized.production !== expectedProduction
+    materialized.port > 65_535
   ) {
     throw new Error("物化目标与当前启动请求不一致，已拒绝连接。");
   }
@@ -660,19 +657,11 @@ function ExternalLaunchSecurityDialog({
               </div>
             </div>
           ) : null}
-          {materialized.safety === "production" ? (
-            <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
-              <div className="font-medium">生产目标</div>
-              <div className="mt-1 text-xs">
-                该连接按生产主机保护，确认后才会创建终端。
-              </div>
-            </div>
-          ) : null}
           {materialized.safety === "restricted-unknown" ? (
             <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
               <div className="font-medium">受限的未知目标</div>
               <div className="mt-1 text-xs">
-                该目标未精确匹配已保存的非生产主机，默认按受限目标保护。
+                该目标未精确匹配已保存主机，默认按受限目标保护。
               </div>
             </div>
           ) : null}

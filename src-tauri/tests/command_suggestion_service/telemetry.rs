@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 #[test]
@@ -209,7 +211,7 @@ fn telemetry_export_persists_across_app_state_reopen() {
 fn telemetry_export_includes_recent_audit_events() {
     let (_home, state) = test_state();
     let mut metadata = BTreeMap::new();
-    metadata.insert("productionHost".to_owned(), "true".to_owned());
+    metadata.insert("remoteProbeEnabled".to_owned(), "false".to_owned());
 
     state
         .command_suggestions()
@@ -223,8 +225,8 @@ fn telemetry_export_includes_recent_audit_events() {
                 pane_id: Some("pane-1".to_owned()),
                 path: None,
                 provider: Some(SuggestionProviderKind::RemoteCommand),
-                reason: Some("production-host-restricted".to_owned()),
-                remote_host_id: Some("host-prod".to_owned()),
+                reason: Some("remote-probe-disabled".to_owned()),
+                remote_host_id: Some("host-1".to_owned()),
                 session_id: Some("session-1".to_owned()),
                 target: CommandHistoryTarget::Ssh,
             },
@@ -244,10 +246,12 @@ fn telemetry_export_includes_recent_audit_events() {
     );
     assert_eq!(event.decision, CommandSuggestionAuditDecision::Skipped);
     assert_eq!(event.provider, Some(SuggestionProviderKind::RemoteCommand));
-    assert_eq!(event.remote_host_id.as_deref(), Some("host-prod"));
-    assert_eq!(event.reason.as_deref(), Some("production-host-restricted"));
+    assert_eq!(event.remote_host_id.as_deref(), Some("host-1"));
+    assert_eq!(event.reason.as_deref(), Some("remote-probe-disabled"));
     assert_eq!(
-        event.metadata.get("productionHost").map(String::as_str),
-        Some("true")
+        event.metadata.get("remoteProbeEnabled").map(String::as_str),
+        Some("false")
     );
+    assert!(!event.metadata.contains_key("productionHost"));
+    assert!(!event.metadata.contains_key("productionHostPolicy"));
 }

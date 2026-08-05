@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   createDefaultSshOptions,
   type RemoteHost,
@@ -172,26 +174,28 @@ export function moveAt<T>(items: T[], from: number, to: number) {
 
 export function buildSshRequest({
   authType,
+  clearKeyPassphrase,
   credentialRef,
   credentialSecret,
   groupId,
   host,
+  keyPassphraseSecret,
   name,
   port,
-  production,
   sshOptions,
   tags,
   username,
   protocol,
 }: {
   authType: RemoteHostAuthType;
+  clearKeyPassphrase?: boolean;
   credentialRef: string;
   credentialSecret: string;
   groupId: string;
   host: string;
+  keyPassphraseSecret?: string;
   name: string;
   port: string;
-  production: boolean;
   sshOptions: SshOptions;
   tags: string;
   username: string;
@@ -199,15 +203,20 @@ export function buildSshRequest({
 }): RemoteHostCreateRequest {
   return {
     authType,
+    ...(authType === "key" && clearKeyPassphrase
+      ? { clearKeyPassphrase: true }
+      : {}),
     credentialRef:
       authType === "key" ? normalizePrivateKeyPath(credentialRef) : undefined,
     credentialSecret: credentialSecret.trim() ? credentialSecret : undefined,
+    ...(authType === "key" && keyPassphraseSecret?.length
+      ? { keyPassphraseSecret }
+      : {}),
     groupId: groupId || undefined,
     host: host.trim(),
     name: name.trim(),
     port: Number(port),
     protocol: protocol ?? "ssh",
-    production,
     sshOptions: normalizeSshOptionsForRequest(sshOptions),
     tags: parseTags(tags),
     username: username.trim(),
@@ -255,7 +264,6 @@ export function buildRdpHostRequest({
   name,
   password,
   port,
-  production,
   tags,
   username,
 }: {
@@ -265,7 +273,6 @@ export function buildRdpHostRequest({
   name: string;
   password: string;
   port: string;
-  production: boolean;
   tags: string;
   username: string;
 }): RemoteHostCreateRequest {
@@ -280,7 +287,6 @@ export function buildRdpHostRequest({
     name: name.trim(),
     port: Number(port),
     protocol: "rdp",
-    production,
     tags: ensureTag(parseTags(tags), "rdp"),
     username: username.trim(),
   };
@@ -291,14 +297,12 @@ export function buildTelnetHostRequest({
   host,
   name,
   port,
-  production,
   tags,
 }: {
   groupId: string;
   host: string;
   name: string;
   port: string;
-  production: boolean;
   tags: string;
 }): RemoteHostCreateRequest {
   return {
@@ -310,7 +314,6 @@ export function buildTelnetHostRequest({
     name: name.trim(),
     port: Number(port),
     protocol: "telnet",
-    production,
     tags: ensureTag(parseTags(tags), "telnet"),
     username: "",
   };
@@ -319,7 +322,6 @@ export function buildTelnetHostRequest({
 export function buildSerialHostRequest({
   groupId,
   name,
-  production,
   serialBaud,
   serialDataBits,
   serialFlow,
@@ -330,7 +332,6 @@ export function buildSerialHostRequest({
 }: {
   groupId: string;
   name: string;
-  production: boolean;
   serialBaud: string;
   serialDataBits: string;
   serialFlow: string;
@@ -354,7 +355,6 @@ export function buildSerialHostRequest({
     name: name.trim(),
     port: 1,
     protocol: "serial",
-    production,
     tags: buildSerialTags(parseTags(tags), {
       baud: normalizedBaud,
       dataBits: normalizedDataBits,

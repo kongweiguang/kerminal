@@ -213,8 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 右栏工具状态现在跟随各自的终端 Tab 保存与恢复；新 Tab 默认收起，关闭 Tab 只清理自身状态。
-            - 同一主机的多个终端 Tab 现在分别保留 SFTP 浏览路径，切换主机或容器不会意外关闭正在使用的 Agent。
+            - 移除远程主机“生产”分类及命令建议的生产主机门禁；旧配置字段仍可迁移读取，并在写回时清理。
+            - 终端标签页与分组的关闭操作统一使用危险样式，保留原有关闭范围、确认和清理契约。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

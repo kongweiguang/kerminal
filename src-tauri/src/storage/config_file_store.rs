@@ -476,10 +476,17 @@ fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
         if trimmed.starts_with('#') {
             continue;
         }
-        if let Some(key) = FORBIDDEN_KEYS
-            .iter()
-            .find(|key| trimmed.starts_with(**key) || trimmed.contains(&format!(".{key}")))
-        {
+        let Some((assignment, _)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let leaf_key = assignment
+            .trim()
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .trim_matches(['"', '\'']);
+        if let Some(key) = FORBIDDEN_KEYS.iter().find(|key| leaf_key == **key) {
             let column = line.find(key).map(|index| index + 1).unwrap_or(1);
             let diagnostic = ParseDiagnostic::new(
                 line_index + 1,

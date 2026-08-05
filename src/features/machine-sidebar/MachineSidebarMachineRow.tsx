@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   Box,
   Cloud,
@@ -166,7 +168,7 @@ function machineIcon(
   if (machine.kind === "dockerContainer") {
     return Box;
   }
-  if (group.id === "cloud" || group.id === "group-cloud" || machine.production) {
+  if (group.id === "cloud" || group.id === "group-cloud") {
     return Cloud;
   }
   return Server;

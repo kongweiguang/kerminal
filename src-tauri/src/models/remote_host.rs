@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// 保存主机的协议语义；SFTP 使用 SSH transport，但不具备 shell 能力。
@@ -424,8 +426,6 @@ pub struct RemoteHost {
     pub credential_status: RemoteHostCredentialStatus,
     /// 用户标签。
     pub tags: Vec<String>,
-    /// 是否生产主机；后续用于确认策略。
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,
@@ -450,6 +450,9 @@ pub struct RemoteHostCredentialReveal {
     /// 仅在 `status = available` 时返回给编辑表单的明文凭据。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_secret: Option<String>,
+    /// 仅在当前 key 主机已保存口令时返回给受信编辑表单。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_secret: Option<String>,
     /// 可展示的非敏感说明。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -567,12 +570,57 @@ pub struct RemoteHostCreateRequest {
     /// 用户标签。
     #[serde(default)]
     pub tags: Vec<String>,
-    /// 是否生产主机。
-    #[serde(default)]
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,
+}
+
+/// 受信 UI/IPC 可提交的私钥口令上限，限制异常 payload 的内存占用。
+pub const SSH_KEY_PASSPHRASE_MAX_BYTES: usize = 16 * 1024;
+
+/// 创建远程主机的受信 IPC 输入；私钥口令与公开/主凭据字段保持独立。
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteHostCreateInput {
+    /// 既有主机创建字段以扁平 wire shape 保持兼容。
+    #[serde(flatten)]
+    pub request: RemoteHostCreateRequest,
+    /// 私钥口令，仅作为本次连接测试或保存的瞬时输入。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_secret: Option<String>,
+    /// 新建请求不应清空口令；保留字段用于统一前端 wire shape 和边界校验。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clear_key_passphrase: bool,
+}
+
+impl From<RemoteHostCreateRequest> for RemoteHostCreateInput {
+    fn from(request: RemoteHostCreateRequest) -> Self {
+        Self {
+            request,
+            key_passphrase_secret: None,
+            clear_key_passphrase: false,
+        }
+    }
+}
+
+impl fmt::Debug for RemoteHostCreateInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RemoteHostCreateInput")
+            .field("protocol", &self.request.protocol)
+            .field("auth_type", &self.request.auth_type)
+            .field("has_credential_ref", &self.request.credential_ref.is_some())
+            .field(
+                "has_credential_secret",
+                &self.request.credential_secret.is_some(),
+            )
+            .field(
+                "key_passphrase_secret",
+                &self.key_passphrase_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("clear_key_passphrase", &self.clear_key_passphrase)
+            .finish()
+    }
 }
 
 /// 更新远程主机请求。
@@ -604,12 +652,55 @@ pub struct RemoteHostUpdateRequest {
     /// 用户标签。
     #[serde(default)]
     pub tags: Vec<String>,
-    /// 是否生产主机。
-    #[serde(default)]
-    pub production: bool,
     /// SSH 附加连接选项。
     #[serde(default)]
     pub ssh_options: SshOptions,
     /// 列表排序字段。
     pub sort_order: i64,
+}
+
+/// 更新远程主机的受信 IPC 输入，显式区分保留、替换与清空私钥口令。
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteHostUpdateInput {
+    /// 既有主机更新字段以扁平 wire shape 保持兼容。
+    #[serde(flatten)]
+    pub request: RemoteHostUpdateRequest,
+    /// 非空时替换 encrypted vault 中的私钥口令。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_secret: Option<String>,
+    /// 为 true 时删除既有口令引用和对应 vault 条目。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clear_key_passphrase: bool,
+}
+
+impl From<RemoteHostUpdateRequest> for RemoteHostUpdateInput {
+    fn from(request: RemoteHostUpdateRequest) -> Self {
+        Self {
+            request,
+            key_passphrase_secret: None,
+            clear_key_passphrase: false,
+        }
+    }
+}
+
+impl fmt::Debug for RemoteHostUpdateInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RemoteHostUpdateInput")
+            .field("id", &self.request.id)
+            .field("protocol", &self.request.protocol)
+            .field("auth_type", &self.request.auth_type)
+            .field("has_credential_ref", &self.request.credential_ref.is_some())
+            .field(
+                "has_credential_secret",
+                &self.request.credential_secret.is_some(),
+            )
+            .field(
+                "key_passphrase_secret",
+                &self.key_passphrase_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("clear_key_passphrase", &self.clear_key_passphrase)
+            .finish()
+    }
 }

@@ -9,7 +9,7 @@ use tauri::State;
 
 use crate::{
     error::{AppError, AppResult},
-    models::remote_host::{RemoteHostAuthType, RemoteHostUpdateRequest},
+    models::remote_host::{RemoteHostAuthType, RemoteHostUpdateInput, RemoteHostUpdateRequest},
     services::ssh_runtime::{
         auth_broker::{SshAuthBrokerSnapshot, SshSessionSecretInput, SshSessionSecretReceipt},
         SshAuthSecretKind,
@@ -126,41 +126,52 @@ fn persist_target_host_secret(
     }
 
     let host = state.remote_hosts().require_host(host_id)?;
-    let (auth_type, credential_ref) = match secret_kind {
-        SshAuthSecretKind::Password if matches!(host.auth_type, RemoteHostAuthType::Password) => {
-            (RemoteHostAuthType::Password, None)
-        }
+    let (auth_type, credential_ref, credential_secret, key_passphrase_secret) = match secret_kind {
+        SshAuthSecretKind::Password if matches!(host.auth_type, RemoteHostAuthType::Password) => (
+            RemoteHostAuthType::Password,
+            None,
+            Some(value.to_owned()),
+            None,
+        ),
         SshAuthSecretKind::PrivateKey if matches!(host.auth_type, RemoteHostAuthType::Key) => {
-            (RemoteHostAuthType::Key, None)
+            (RemoteHostAuthType::Key, None, Some(value.to_owned()), None)
         }
-        SshAuthSecretKind::KeyPassphrase => {
-            return Err(AppError::InvalidInput(
-                "暂不支持从认证 prompt 单独保存私钥 passphrase".to_owned(),
-            ));
-        }
-        SshAuthSecretKind::Password | SshAuthSecretKind::PrivateKey => {
+        SshAuthSecretKind::KeyPassphrase if matches!(host.auth_type, RemoteHostAuthType::Key) => (
+            RemoteHostAuthType::Key,
+            host.credential_ref.clone(),
+            None,
+            Some(value.to_owned()),
+        ),
+        SshAuthSecretKind::Password
+        | SshAuthSecretKind::PrivateKey
+        | SshAuthSecretKind::KeyPassphrase => {
             return Err(AppError::InvalidInput(
                 "认证材料类型与目标主机认证方式不匹配，未写入 encrypted vault".to_owned(),
             ));
         }
     };
 
-    state.remote_hosts().update_host(RemoteHostUpdateRequest {
-        id: host.id,
-        group_id: host.group_id,
-        name: host.name,
-        host: host.host,
-        port: host.port,
-        username: host.username,
-        protocol: host.protocol,
-        auth_type,
-        credential_ref,
-        credential_secret: Some(value.to_owned()),
-        tags: host.tags,
-        production: host.production,
-        ssh_options: host.ssh_options,
-        sort_order: host.sort_order,
-    })?;
+    state
+        .remote_hosts()
+        .update_host_with_input(RemoteHostUpdateInput {
+            request: RemoteHostUpdateRequest {
+                id: host.id,
+                group_id: host.group_id,
+                name: host.name,
+                host: host.host,
+                port: host.port,
+                username: host.username,
+                protocol: host.protocol,
+                auth_type,
+                credential_ref,
+                credential_secret,
+                tags: host.tags,
+                ssh_options: host.ssh_options,
+                sort_order: host.sort_order,
+            },
+            key_passphrase_secret,
+            clear_key_passphrase: false,
+        })?;
 
     Ok(())
 }

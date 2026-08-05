@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { localTarget } from "../../lib/targetModel";
 import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
 import { collectPaneIds } from "./workspaceLayout";
@@ -163,7 +165,6 @@ function buildTmuxSplitPane(
       prompt: `${userLabel}@${hostLabel}:~$`,
       remoteCommand: launch.remoteCommand,
       remoteHostId: machine.id,
-      remoteHostProduction: machine.production ?? false,
       status: machine.status,
       target: { hostId: machine.id, kind: "ssh" },
       title: launch.title,

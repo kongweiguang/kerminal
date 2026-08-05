@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "tauri": {
     "commandCount": 185,
-    "signatureFingerprint": "fnv1a64:8e679cb2cc346036",
+    "signatureFingerprint": "fnv1a64:0a22fc9ee611dc50",
     "frontendInvokeCount": 136,
     "frontendInvokeFingerprint": "fnv1a64:bb95b9455ac1a4ca"
   },
@@ -41,7 +41,7 @@
   },
   "mcp": {
     "toolCount": 70,
-    "contractFingerprint": "fnv1a64:b33bfaa002f73473",
+    "contractFingerprint": "fnv1a64:38f428bcf82320de",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Network, Puzzle, ShieldCheck, Terminal } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -7,7 +9,6 @@ import type {
   TerminalCommandSuggestionPresentation,
   TerminalCommandSuggestionRemoteRefresh,
   TerminalInlineSuggestionAcceptKey,
-  TerminalInlineSuggestionProductionHostPolicy,
   TerminalInlineSuggestionProviderSettings,
   TerminalInlineSuggestionSettings,
 } from "../settingsModel";
@@ -15,7 +16,6 @@ import {
   commandSuggestionPresentationOptions,
   commandSuggestionRemoteRefreshOptions,
   inlineSuggestionAcceptKeyOptions,
-  inlineSuggestionProductionHostPolicyOptions,
   inlineSuggestionProviderOptions,
 } from "./options";
 import {
@@ -145,23 +145,6 @@ export function CommandSuggestionSettingsSection({
                   }
                   options={[...commandSuggestionRemoteRefreshOptions]}
                   value={inlineSuggestion.remoteRefresh}
-                />
-              </label>
-              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2">
-                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                  生产主机策略
-                </span>
-                <Select
-                  aria-label="灰色提示生产主机策略"
-                  className="mt-1"
-                  onValueChange={(value) =>
-                    updateTerminalInlineSuggestion({
-                      productionHostPolicy:
-                        value as TerminalInlineSuggestionProductionHostPolicy,
-                    })
-                  }
-                  options={inlineSuggestionProductionHostPolicyOptions}
-                  value={inlineSuggestion.productionHostPolicy}
                 />
               </label>
               <div className="flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 text-[13px] text-[var(--text-primary)]">

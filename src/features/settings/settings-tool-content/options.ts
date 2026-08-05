@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   Bell,
   Clipboard,
@@ -18,7 +20,6 @@ import {
 import type {
   KeybindingPlatform,
   TerminalInlineSuggestionAcceptKey,
-  TerminalInlineSuggestionProductionHostPolicy,
   TerminalInlineSuggestionProviderSettings,
   ThemeMode,
 } from "../settingsModel";
@@ -52,14 +53,6 @@ export const commandSuggestionRemoteRefreshOptions = [
   { label: "安全后台刷新", value: "safe" },
   { label: "仅使用已有缓存", value: "off" },
 ] as const;
-
-export const inlineSuggestionProductionHostPolicyOptions: Array<{
-  label: string;
-  value: TerminalInlineSuggestionProductionHostPolicy;
-}> = [
-  { label: "限制远端探测", value: "restricted" },
-  { label: "按普通主机", value: "normal" },
-];
 
 export const inlineSuggestionProviderOptions: Array<{
   icon: LucideIcon;
@@ -205,7 +198,7 @@ export const settingsSearchEntries: Array<{
     title: "光标形态",
   },
   {
-    description: "灰色命令提示开关、接受按键和生产主机策略。",
+    description: "灰色命令提示开关、接受按键和远端探测策略。",
     keywords: ["suggestion", "ghost", "inline", "提示", "灰色提示", "接受按键"],
     sectionId: "settings-suggestions",
     targetId: "settings-command-suggestions-policy-panel",

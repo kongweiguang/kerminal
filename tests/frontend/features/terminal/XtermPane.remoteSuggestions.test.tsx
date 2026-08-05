@@ -532,91 +532,16 @@ describe("XtermPane remote suggestions", () => {
     });
   });
 
-  it("skips remote prewarm and remote providers for production hosts under restricted policy", async () => {
+  it("allows remote prewarm and remote providers when remote probing is enabled", async () => {
     render(
       <XtermPane
         currentCwd="/srv/app"
         focused
         paneId="pane-ssh"
         remoteHostId="host-prod"
-        remoteHostProduction
         resolvedTheme="dark"
         terminalAppearance={defaultAppSettings.terminal}
-        title="生产 SSH"
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 850));
-    });
-
-    expect(mocks.api.refreshTerminalGitSuggestions).not.toHaveBeenCalled();
-    expect(
-      mocks.api.refreshTerminalRemoteCommandSuggestions,
-    ).not.toHaveBeenCalled();
-    expect(
-      mocks.api.refreshTerminalRemoteHistorySuggestions,
-    ).not.toHaveBeenCalled();
-    expect(
-      mocks.api.refreshTerminalRemotePathSuggestions,
-    ).not.toHaveBeenCalled();
-    expect(mocks.api.recordTerminalSuggestionAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        decision: "skipped",
-        eventKind: "remoteProbeSchedule",
-        provider: "remoteCommand",
-        reason: "production-host-restricted",
-        remoteHostId: "host-prod",
-        target: "ssh",
-      }),
-    );
-    expect(mocks.api.recordTerminalSuggestionAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        decision: "skipped",
-        eventKind: "remoteProbeSchedule",
-        provider: "history",
-        reason: "production-host-restricted",
-        remoteHostId: "host-prod",
-        target: "ssh",
-      }),
-    );
-
-    const terminal = mocks.terminalInstances[0];
-    terminal.buffer.active.cursorX = 2;
-    act(() => {
-      terminal.onDataCallback?.("l");
-      terminal.onDataCallback?.("s");
-    });
-
-    await waitFor(() => {
-      expect(mocks.api.listTerminalSuggestions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          input: "ls",
-          providers: ["history", "spec", "snippet"],
-          remoteHostId: "host-prod",
-          target: "ssh",
-        }),
-      );
-    });
-  });
-
-  it("allows remote prewarm and remote providers for production hosts under normal policy", async () => {
-    render(
-      <XtermPane
-        currentCwd="/srv/app"
-        focused
-        paneId="pane-ssh"
-        remoteHostId="host-prod"
-        remoteHostProduction
-        resolvedTheme="dark"
-        terminalAppearance={terminalAppearanceWithInlineSuggestion({
-          productionHostPolicy: "normal",
-        })}
-        title="生产 SSH"
+        title="SSH"
       />,
     );
 

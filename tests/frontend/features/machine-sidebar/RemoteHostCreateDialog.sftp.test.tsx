@@ -49,7 +49,6 @@ describe("RemoteHostCreateDialog SFTP host", () => {
       id: "sftp-1",
       name: "files-only",
       port: 22,
-      production: true,
       protocol: "sftp",
       sortOrder: 10,
       sshOptions: createDefaultSshOptions(),
@@ -82,7 +81,6 @@ describe("RemoteHostCreateDialog SFTP host", () => {
     await user.type(screen.getByLabelText("用户名"), "upload");
     await user.type(screen.getByLabelText("标签"), "files");
     await chooseSelectOption(user, "认证方式", "SSH Agent");
-    await user.click(screen.getByLabelText("生产主机"));
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(onCreateHost).toHaveBeenCalledWith({
@@ -93,7 +91,6 @@ describe("RemoteHostCreateDialog SFTP host", () => {
       host: "files.internal",
       name: "files-only",
       port: 22,
-      production: true,
       protocol: "sftp",
       sshOptions: createDefaultSshOptions(),
       tags: ["files"],

@@ -1,4 +1,7 @@
 #![allow(unused_imports)]
+
+// @author kongweiguang
+
 pub use async_trait::async_trait;
 pub use kerminal_lib::{
     error::{AppError, AppResult},
@@ -81,7 +84,6 @@ pub fn create_test_remote_host_with_options(
             host: "dev.internal".to_owned(),
             name: "dev ssh".to_owned(),
             port: 22,
-            production: false,
             ssh_options,
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),
@@ -141,7 +143,6 @@ pub fn create_test_remote_host_with_secret_and_options(
             host: "dev.internal".to_owned(),
             name: "dev ssh".to_owned(),
             port: 22,
-            production: false,
             ssh_options,
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),

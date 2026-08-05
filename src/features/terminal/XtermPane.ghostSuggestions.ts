@@ -94,7 +94,6 @@ export function createXtermPaneGhostSuggestions({
   paneId,
   profileId,
   remoteHostId,
-  remoteHostProduction,
   scheduleCommandBlockViewSync,
   sessionIdRef,
   setGhostSuggestion,
@@ -117,7 +116,6 @@ export function createXtermPaneGhostSuggestions({
   paneId: string;
   profileId?: string;
   remoteHostId?: string;
-  remoteHostProduction?: boolean;
   scheduleCommandBlockViewSync: () => void;
   sessionIdRef: MutableRefObject<string | null>;
   setGhostSuggestion: Dispatch<SetStateAction<TerminalGhostSuggestion | null>>;
@@ -356,7 +354,6 @@ export function createXtermPaneGhostSuggestions({
           suggestionTarget.target === "ssh" && !target?.kind,
         ),
         inlineSuggestion: terminalAppearanceRef.current.inlineSuggestion,
-        remoteHostProduction,
       });
       if (suggestionProviders.length === 0) {
         clearGhostSuggestion();
@@ -426,7 +423,6 @@ export function createXtermPaneGhostSuggestions({
         suggestionTarget.target === "ssh" && !target?.kind,
       ),
       inlineSuggestion,
-      remoteHostProduction,
     });
     if (providers.length === 0) {
       return false;

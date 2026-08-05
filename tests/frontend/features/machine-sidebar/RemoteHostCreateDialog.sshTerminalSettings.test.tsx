@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,7 +100,6 @@ describe("RemoteHostCreateDialog SSH terminal settings", () => {
       host: "127.0.0.1",
       name: "keepalive-dev",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: {
         ...createDefaultSshOptions(),

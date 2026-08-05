@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   MachineStatus,
   TerminalPane,
@@ -9,7 +11,6 @@ export interface BroadcastTargetOption {
   machineId: string;
   mode: TerminalPane["mode"];
   paneId: string;
-  production: boolean;
   status: MachineStatus;
   subtitle: string;
   title: string;
@@ -28,7 +29,6 @@ export function createBroadcastTargetOption(
     machineId: pane.machineId,
     mode: pane.mode,
     paneId: pane.id,
-    production: Boolean(pane.remoteHostProduction),
     status: pane.status,
     subtitle: subtitleParts.join(" · "),
     title: pane.title,
@@ -64,8 +64,4 @@ export function filterBroadcastTargetsByPaneIds<
 >(targets: T[], paneIds: string[]) {
   const selectedPaneIds = new Set(paneIds);
   return targets.filter((target) => selectedPaneIds.has(target.paneId));
-}
-
-export function countProductionTargets(targets: BroadcastTargetOption[]) {
-  return targets.filter((target) => target.production).length;
 }

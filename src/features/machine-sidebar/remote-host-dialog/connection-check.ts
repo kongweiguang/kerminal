@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   RemoteHostAuthType,
   SshOptions,
@@ -20,6 +22,7 @@ export interface ConnectionCheckInput {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   editingLocalMachine: boolean;
   groupId: string;
   host: string;
@@ -31,7 +34,6 @@ export interface ConnectionCheckInput {
   mode: ConnectionMode;
   name: string;
   port: string;
-  production: boolean;
   rdpFullscreen: boolean;
   rdpHeight: string;
   rdpNote: string;
@@ -59,6 +61,7 @@ export function evaluateConnectionCheck({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   editingLocalMachine,
   groupId,
   host,
@@ -70,7 +73,6 @@ export function evaluateConnectionCheck({
   mode,
   name,
   port,
-  production,
   rdpFullscreen,
   rdpHeight,
   rdpNote,
@@ -132,7 +134,6 @@ export function evaluateConnectionCheck({
       host,
       name,
       port,
-      production,
       tags,
     });
     const validationError = validateTelnetHostRequest(request);
@@ -145,7 +146,6 @@ export function evaluateConnectionCheck({
     const request = buildSerialHostRequest({
       groupId,
       name,
-      production,
       serialBaud,
       serialDataBits,
       serialFlow,
@@ -168,11 +168,11 @@ export function evaluateConnectionCheck({
     authType,
     credentialRef,
     credentialSecret,
+    keyPassphraseSecret,
     groupId,
     host,
     name,
     port,
-    production,
     sshOptions,
     tags,
     username,

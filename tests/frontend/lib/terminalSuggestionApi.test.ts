@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -452,11 +454,11 @@ describe("terminalSuggestionApi", () => {
       decision: "skipped",
       eventKind: "remoteProbeSchedule",
       metadata: {
-        " productionHost ": " true ",
+        " ttlSeconds ": " 30 ",
       },
       paneId: " pane-1 ",
       provider: "remoteCommand",
-      reason: " production-host-restricted ",
+      reason: " remote-probe-disabled ",
       remoteHostId: " host-prod ",
       target: "ssh",
     });
@@ -468,11 +470,11 @@ describe("terminalSuggestionApi", () => {
           decision: "skipped",
           eventKind: "remoteProbeSchedule",
           metadata: {
-            productionHost: "true",
+            ttlSeconds: "30",
           },
           paneId: "pane-1",
           provider: "remoteCommand",
-          reason: "production-host-restricted",
+          reason: "remote-probe-disabled",
           remoteHostId: "host-prod",
           target: "ssh",
         },

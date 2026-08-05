@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::super::schema::{
-    boolean_field, enum_field, number_field, object_schema, string_field, tool, ToolEffect,
+    enum_field, number_field, object_schema, string_field, tool, ToolEffect,
 };
 
 pub(super) fn credential_tools() -> Vec<ToolDescriptor> {
@@ -27,7 +27,6 @@ pub(super) fn credential_tools() -> Vec<ToolDescriptor> {
                 number_field("port", "SSH 端口；默认 22。", false),
                 string_field("username", "SSH 用户名。", true),
                 string_field("password", "本次保存的 SSH 明文密码；只写入 encrypted vault。", true),
-                boolean_field("production", "是否为生产或安全敏感主机。", false),
             ]),
         ),
         tool(

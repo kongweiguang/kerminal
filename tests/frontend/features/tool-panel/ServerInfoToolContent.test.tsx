@@ -260,7 +260,6 @@ function sshMachine(id: string, host: string): Machine {
     kind: "ssh",
     name: id,
     port: 22,
-    production: false,
     status: "online",
     tags: ["ssh"],
     username: "ops",

@@ -27,7 +27,8 @@ use crate::{
             RdpOpenResult,
         },
         remote_host::{
-            parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
+            parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateInput,
+            SSH_KEY_PASSPHRASE_MAX_BYTES,
         },
     },
     services::encrypted_vault_service::{EncryptedVaultService, VaultKeyEntryReadError},
@@ -73,7 +74,7 @@ pub mod rules {
         label: &str,
         request: RemoteHostCreateRequest,
     ) -> AppResult<RemoteHost> {
-        super::remote_host_from_create_request(label, request)
+        super::remote_host_from_create_input(label, request.into())
     }
 
     pub fn saved_rdp_password(state: &AppState, host: &RemoteHost) -> AppResult<Option<String>> {
@@ -236,7 +237,7 @@ async fn test_connection(
     let started = Instant::now();
     match request {
         ConnectionTestRequest::Ssh { host } => {
-            let host = remote_host_from_create_request("SSH", host)?;
+            let host = remote_host_from_create_input("SSH", host)?;
             state
                 .ssh_commands()
                 .test_connection(state.paths(), &host)
@@ -251,7 +252,7 @@ async fn test_connection(
             ))
         }
         ConnectionTestRequest::Sftp { host } => {
-            let host = remote_host_from_create_request("SFTP", host)?;
+            let host = remote_host_from_create_input("SFTP", host)?;
             state.sftp().test_connection(state.paths(), &host).await?;
             Ok(connection_test_result(
                 ConnectionTestMode::Sftp,
@@ -272,7 +273,7 @@ async fn test_connection(
             ))
         }
         ConnectionTestRequest::Telnet { host } => {
-            let host = remote_host_from_create_request("Telnet", host)?;
+            let host = remote_host_from_create_input("Telnet", host)?;
             test_tcp_endpoint("Telnet", &host.host, host.port, 10).await?;
             Ok(connection_test_result(
                 ConnectionTestMode::Telnet,
@@ -281,7 +282,7 @@ async fn test_connection(
             ))
         }
         ConnectionTestRequest::Serial { host } => {
-            let host = remote_host_from_create_request("Serial", host)?;
+            let host = remote_host_from_create_input("Serial", host)?;
             state.serial_terminals().test_connection(&host)?;
             Ok(connection_test_result(
                 ConnectionTestMode::Serial,
@@ -336,10 +337,32 @@ async fn test_tcp_endpoint(
     }
 }
 
-fn remote_host_from_create_request(
+fn remote_host_from_create_input(
     label: &str,
-    request: RemoteHostCreateRequest,
+    input: RemoteHostCreateInput,
 ) -> AppResult<RemoteHost> {
+    if input.clear_key_passphrase {
+        return Err(AppError::InvalidInput(
+            "连接测试没有可清空的私钥口令".to_owned(),
+        ));
+    }
+    let key_passphrase_secret = input
+        .key_passphrase_secret
+        .filter(|value| !value.is_empty());
+    if key_passphrase_secret
+        .as_ref()
+        .is_some_and(|value| value.len() > SSH_KEY_PASSPHRASE_MAX_BYTES)
+    {
+        return Err(AppError::InvalidInput(format!(
+            "私钥口令不能超过 {SSH_KEY_PASSPHRASE_MAX_BYTES} 字节"
+        )));
+    }
+    let request = input.request;
+    if !matches!(request.auth_type, RemoteHostAuthType::Key) && key_passphrase_secret.is_some() {
+        return Err(AppError::InvalidInput(
+            "只有私钥认证可以使用私钥口令".to_owned(),
+        ));
+    }
     let tags = normalize_tags(request.tags);
     let name = normalize_required_text(&format!("{label} 名称"), request.name)?;
     let host = normalize_required_text(&format!("{label} 主机地址"), request.host)?;
@@ -373,11 +396,10 @@ fn remote_host_from_create_request(
         credential_ref,
         secret_ref: None,
         key_passphrase_ref: None,
-        key_passphrase_secret: None,
+        key_passphrase_secret,
         credential_secret,
         credential_status: Default::default(),
         tags,
-        production: request.production,
         ssh_options: request.ssh_options,
         sort_order: 0,
         created_at: String::new(),

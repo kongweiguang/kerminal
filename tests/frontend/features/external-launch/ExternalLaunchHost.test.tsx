@@ -489,24 +489,13 @@ describe("ExternalLaunchHost", () => {
     expect(apiMocks.ackExternalSshLaunch).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {
-      production: true,
-      safety: "production" as const,
-      warning: "生产目标",
-    },
-    {
-      production: true,
-      safety: "restricted-unknown" as const,
-      warning: "受限的未知目标",
-    },
-  ])(
-    "requires confirmation for a $safety target with a known host key",
-    async ({ production, safety, warning }) => {
+  it(
+    "requires confirmation for an unknown target with a known host key",
+    async () => {
       const user = userEvent.setup();
       const openSpy = spyOnOpenExternalSshLaunch();
       apiMocks.materializeExternalSshLaunch.mockResolvedValue(
-        materializedTarget({ production, safety }),
+        materializedTarget({ safety: "restricted-unknown" }),
       );
       apiMocks.takePendingExternalSshLaunches.mockResolvedValue([
         createLaunch({ username: "deploy" }),
@@ -515,7 +504,7 @@ describe("ExternalLaunchHost", () => {
       render(<ExternalLaunchHost />);
 
       await screen.findByRole("dialog", { name: "确认外部 SSH 目标" });
-      expect(screen.getByText(warning)).toBeVisible();
+      expect(screen.getByText("受限的未知目标")).toBeVisible();
       expect(openSpy).not.toHaveBeenCalled();
       await user.click(screen.getByRole("button", { name: "确认并连接" }));
 
@@ -538,7 +527,7 @@ describe("ExternalLaunchHost", () => {
       visibleReason: "连接后执行命令",
     },
   ])(
-    "requires confirmation for $visibleReason even on a known non-production target",
+    "requires confirmation for $visibleReason even on a known target",
     async ({ launch, visibleReason }) => {
       const user = userEvent.setup();
       const openSpy = spyOnOpenExternalSshLaunch();
@@ -580,7 +569,7 @@ describe("ExternalLaunchHost", () => {
     const user = userEvent.setup();
     const openSpy = spyOnOpenExternalSshLaunch();
     apiMocks.materializeExternalSshLaunch.mockResolvedValue(
-      materializedTarget({ production: true, safety: "production" }),
+      materializedTarget({ safety: "restricted-unknown" }),
     );
     apiMocks.ackExternalSshLaunch
       .mockRejectedValueOnce(new Error("ack temporarily unavailable"))

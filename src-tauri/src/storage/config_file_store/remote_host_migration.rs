@@ -144,6 +144,8 @@ fn parse_host_document(source: &str, relative_path: &Path) -> FileStoreResult<Op
             let protocol = legacy_protocol(&document);
             replace_schema_version(&mut document)?;
             document.as_table_mut().insert("protocol", value(protocol));
+            // 旧环境分类不属于 v2 运行模型；迁移时直接删除，避免把废弃字段带入新文件。
+            document.as_table_mut().remove("production");
             let migrated = document.to_string();
             validate_v2_host(&migrated, relative_path)?;
             Ok(Some(migrated))

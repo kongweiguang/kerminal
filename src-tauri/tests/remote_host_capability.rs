@@ -46,7 +46,6 @@ fn host(protocol: RemoteHostProtocol) -> RemoteHost {
         credential_secret: None,
         credential_status: Default::default(),
         tags: Vec::new(),
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "1".to_owned(),

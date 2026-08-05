@@ -676,7 +676,6 @@ fn create_test_remote_host(state: &AppState) -> String {
             host: "dev.internal".to_owned(),
             name: "dev ssh".to_owned(),
             port: 22,
-            production: false,
             ssh_options: Default::default(),
             tags: vec!["dev".to_owned()],
             username: "deploy".to_owned(),

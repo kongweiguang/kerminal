@@ -78,7 +78,6 @@ fn materializer_moves_password_to_auth_broker_and_keeps_external_target_after_ac
     assert_eq!(target.host.host, "example.internal");
     assert_eq!(target.host.port, 2202);
     assert_eq!(target.host.username, "deploy");
-    assert!(target.host.production);
     assert_eq!(target.safety, ExternalTargetSafety::RestrictedUnknown);
     assert_eq!(
         fixture
@@ -138,7 +137,7 @@ fn materializer_moves_password_to_auth_broker_and_keeps_external_target_after_ac
 }
 
 #[test]
-fn external_target_safety_only_downgrades_for_exact_saved_non_production_match() {
+fn external_target_safety_marks_only_an_exact_saved_host_as_known() {
     let fixture = materializer_fixture();
     let launch_id = queue_putty_password_launch(&fixture.intake, Some("deploy"));
     let _ = fixture.intake.take_pending().expect("take pending");
@@ -153,18 +152,11 @@ fn external_target_safety_only_downgrades_for_exact_saved_non_production_match()
         .expect("materialize restricted target");
 
     let mut saved = target.host.clone();
-    saved.id = "saved-non-production".to_owned();
+    saved.id = "saved-host".to_owned();
     saved.host = "EXAMPLE.INTERNAL.".to_owned();
-    saved.production = false;
     assert_eq!(
         external_target_safety_for_saved_hosts(&request, "deploy", &[saved.clone()]),
-        ExternalTargetSafety::KnownNonProduction
-    );
-
-    saved.production = true;
-    assert_eq!(
-        external_target_safety_for_saved_hosts(&request, "deploy", &[saved.clone()]),
-        ExternalTargetSafety::Production
+        ExternalTargetSafety::Known
     );
 
     saved.port += 1;

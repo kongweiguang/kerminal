@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useKerminalShellSftpHostCreate } from "../../../src/app/useKerminalShellSftpHostCreate";
@@ -14,7 +16,6 @@ const sshHost: RemoteHost = {
   name: "dev-api",
   port: 22,
   protocol: "ssh",
-  production: false,
   sortOrder: 1,
   sshOptions: createDefaultSshOptions(),
   tags: ["ssh"],

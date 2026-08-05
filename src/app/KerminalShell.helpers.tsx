@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   useEffect,
   useState,
@@ -233,7 +235,6 @@ export function remoteHostCreateRequestFromMachine(
     name: overrides.name ?? host.name,
     port: host.port,
     protocol: host.protocol,
-    production: host.production,
     sshOptions: host.sshOptions,
     tags: [...host.tags],
     username: host.username,
@@ -291,7 +292,6 @@ export function remoteHostFromMachine(machine: Machine | undefined): RemoteHost 
             : machine.kind === "serial"
               ? "serial"
               : "ssh",
-    production: machine.production ?? false,
     sshOptions: machine.sshOptions ?? createDefaultSshOptions(),
     sortOrder: machine.sortOrder ?? 0,
     tags: machine.tags,

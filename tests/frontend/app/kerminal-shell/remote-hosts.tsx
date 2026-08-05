@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   act,
   fireEvent,
@@ -136,7 +138,6 @@ export function registerRemoteHostTests() {
       id: "host-default",
       name: "default-dev",
       port: 22,
-      production: false,
       sortOrder: 10,
       tags: ["ssh"],
       updatedAt: "test",
@@ -248,7 +249,6 @@ export function registerRemoteHostTests() {
         host: "172.16.41.60",
         name: "172.16.41.60 副本",
         port: 22,
-        production: false,
         protocol: "ssh",
         sshOptions: testSshOptions,
         tags: ["ssh", "bbb"],
@@ -299,7 +299,6 @@ export function registerRemoteHostTests() {
         id: "db980b17-2ed0-44e5-b72a-6ecadf788439",
         name: "172.16.41.60",
         port: 22,
-        production: false,
         protocol: "ssh",
         sortOrder: 10,
         sshOptions: testSshOptions,

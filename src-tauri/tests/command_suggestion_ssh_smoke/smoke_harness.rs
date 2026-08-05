@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 pub(super) struct SmokeHarness {
@@ -33,14 +35,6 @@ impl SmokeHarness {
         &self,
         config: &SmokeConfig,
     ) -> kerminal_lib::models::remote_host::RemoteHost {
-        self.create_remote_host_with_production(config, false)
-    }
-
-    pub(super) fn create_remote_host_with_production(
-        &self,
-        config: &SmokeConfig,
-        production: bool,
-    ) -> kerminal_lib::models::remote_host::RemoteHost {
         self.remote_hosts
             .create_host(RemoteHostCreateRequest {
                 auth_type: config.auth_type,
@@ -50,7 +44,6 @@ impl SmokeHarness {
                 host: config.host.clone(),
                 name: "SSH suggestion smoke".to_owned(),
                 port: config.port,
-                production,
                 ssh_options: Default::default(),
                 tags: vec!["smoke".to_owned(), "command-suggestion".to_owned()],
                 username: config.username.clone(),

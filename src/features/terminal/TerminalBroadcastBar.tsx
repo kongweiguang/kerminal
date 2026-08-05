@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Send } from "lucide-react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { Button } from "../../components/ui/button";
@@ -21,7 +23,6 @@ interface TerminalBroadcastBarProps {
   onRequestBroadcast: () => void;
   onTargetModeChange: (mode: BroadcastTargetMode) => void;
   onToggleCustomTarget: (paneId: string, selected: boolean) => void;
-  productionTargetCount: number;
   selectedTargetPaneIds: string[];
   sending: boolean;
   status: string | null;
@@ -40,7 +41,6 @@ export function TerminalBroadcastBar({
   onRequestBroadcast,
   onTargetModeChange,
   onToggleCustomTarget,
-  productionTargetCount,
   selectedTargetPaneIds,
   sending,
   status,
@@ -75,7 +75,6 @@ export function TerminalBroadcastBar({
           focusedPaneId={focusedPaneId}
           onTargetModeChange={onTargetModeChange}
           onToggleCustomTarget={onToggleCustomTarget}
-          productionTargetCount={productionTargetCount}
           selectedTargetPaneIds={selectedTargetPaneIds}
           targetCount={analysis.targetCount}
           targetMode={targetMode}

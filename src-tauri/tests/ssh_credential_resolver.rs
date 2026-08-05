@@ -568,7 +568,6 @@ fn base_host(id: &str, auth_type: RemoteHostAuthType) -> RemoteHost {
         credential_secret: None,
         credential_status: RemoteHostCredentialStatus::Missing,
         tags: Vec::new(),
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 0,
         created_at: "1".to_owned(),

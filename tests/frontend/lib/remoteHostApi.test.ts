@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -46,7 +48,6 @@ describe("remoteHostApi", () => {
       id: "host-1",
       name: "dev",
       port: 22,
-      production: false,
       sortOrder: 10,
       tags: [],
       updatedAt: "now",
@@ -72,12 +73,51 @@ describe("remoteHostApi", () => {
         host: "dev.internal",
         name: "dev",
         port: 22,
-        production: false,
         protocol: "ssh",
         sshOptions: createDefaultSshOptions(),
         tags: [],
         username: "deploy",
       },
+    });
+  });
+
+  it("preserves private key passphrase mutation semantics across Tauri IPC", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({});
+    const { createRemoteHost, updateRemoteHost } = await import(
+      "../../../src/lib/remoteHostApi"
+    );
+
+    await createRemoteHost({
+      authType: "key",
+      credentialRef: "/home/deploy/.ssh/id_ed25519",
+      host: "key.internal",
+      keyPassphraseSecret: "   ",
+      name: "key host",
+      username: "deploy",
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_host_create", {
+      request: expect.objectContaining({
+        authType: "key",
+        keyPassphraseSecret: "   ",
+      }),
+    });
+
+    await updateRemoteHost({
+      authType: "key",
+      clearKeyPassphrase: true,
+      credentialRef: "/home/deploy/.ssh/id_ed25519",
+      host: "key.internal",
+      id: "host-1",
+      name: "key host",
+      sortOrder: 10,
+      username: "deploy",
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_host_update", {
+      request: expect.objectContaining({
+        authType: "key",
+        clearKeyPassphrase: true,
+      }),
     });
   });
 
@@ -91,7 +131,6 @@ describe("remoteHostApi", () => {
       id: "host-1",
       name: "dev",
       port: 22,
-      production: false,
       sortOrder: 10,
       tags: [],
       updatedAt: "now",
@@ -116,7 +155,6 @@ describe("remoteHostApi", () => {
         host: "dev.internal",
         name: "dev",
         port: 22,
-        production: false,
         protocol: "ssh",
         sshOptions: createDefaultSshOptions(),
         tags: [],
@@ -168,8 +206,7 @@ describe("remoteHostApi", () => {
       authType: "agent",
       host: "preview.internal",
       id: "prod-api",
-      name: "生产 API",
-      production: true,
+      name: "API 服务",
       username: "deploy",
     });
     expect(invokeMock).not.toHaveBeenCalled();
@@ -264,7 +301,6 @@ describe("remoteHostApi", () => {
       host: pinnedHost.host,
       id: pinnedHost.id,
       name: pinnedHost.name,
-      production: false,
       sortOrder: -10,
       tags: [],
       username: pinnedHost.username,

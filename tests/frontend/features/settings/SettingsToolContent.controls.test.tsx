@@ -279,17 +279,6 @@ describe("SettingsToolContent controls", () => {
       }),
     );
 
-    await chooseSelectOption(user, "灰色提示生产主机策略", "按普通主机");
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        terminal: expect.objectContaining({
-          inlineSuggestion: expect.objectContaining({
-            productionHostPolicy: "normal",
-          }),
-        }),
-      }),
-    );
-
     expect(screen.queryByLabelText("审计保留天数")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("反馈保留天数")).not.toBeInTheDocument();
 

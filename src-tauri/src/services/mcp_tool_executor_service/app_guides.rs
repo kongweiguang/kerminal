@@ -264,7 +264,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                         "Do not expect remote_host.* CRUD/list MCP tools.",
                         "Do not read secrets/vault*.toml directly.",
                         "SFTP-only hosts expose file operations only; SSH command, terminal, tmux, container, server-info, and port-forward tools reject them with host_capability_not_supported.",
-                        "Ask for user/host approval before production writes or destructive remote commands."
+                        "Ask for user/host approval before remote writes or destructive remote commands."
                     ]
                 },
                 {

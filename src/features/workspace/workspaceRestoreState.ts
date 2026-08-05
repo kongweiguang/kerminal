@@ -7,7 +7,6 @@ import {
   dockerContainerMachinesFromSession,
   localMachinesFromSession,
   mergeSidebarMachines,
-  syncTerminalPaneProductionFlags,
 } from "./workspaceMachineModel";
 import {
   restoredSelectedMachineId,
@@ -45,10 +44,7 @@ export function restoreWorkspaceSessionState(
     focusedPaneId: session.focusedPaneId,
     machineGroups,
     removedSidebarMachineIds,
-    terminalPanes: syncTerminalPaneProductionFlags(
-      session.terminalPanes,
-      machineGroups,
-    ),
+    terminalPanes: session.terminalPanes,
     terminalTabGroupPreferences: session.terminalTabGroupPreferences ?? {},
     terminalTabs,
     selectedMachineId: restoredSelectedMachineId({

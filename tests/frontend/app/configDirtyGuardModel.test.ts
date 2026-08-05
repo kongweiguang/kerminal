@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import { createDefaultSshOptions, type RemoteHost } from "../../../src/lib/remoteHostApi";
 import type { Machine, MachineGroup } from "../../../src/features/workspace/types";
@@ -16,7 +18,6 @@ const host: RemoteHost = {
   name: "dev-api",
   port: 22,
   protocol: "ssh",
-  production: false,
   sortOrder: 10,
   sshOptions: createDefaultSshOptions(),
   tags: ["ssh"],
@@ -32,7 +33,6 @@ const machine: Machine = {
   kind: "ssh",
   name: "dev-api",
   port: 22,
-  production: false,
   remoteGroupId: "group-dev",
   sortOrder: 10,
   status: "offline",

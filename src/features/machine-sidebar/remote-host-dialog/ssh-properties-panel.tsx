@@ -3,7 +3,6 @@
 import { FolderOpen } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
-import { Switch } from "../../../components/ui/switch";
 import { selectLocalFile } from "../../../lib/fileDialogApi";
 import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
@@ -18,22 +17,22 @@ export function SshPropertiesPanel({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   groupId,
   groupOptions,
   host,
   name,
   onCreateGroupClick,
   port,
-  production,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
   setGroupId,
   setHost,
   setName,
   setPort,
-  setProduction,
   setTags,
   setUsername,
   tags,
@@ -42,22 +41,22 @@ export function SshPropertiesPanel({
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   groupId: string;
   groupOptions: Array<{ label: string; value: string }>;
   host: string;
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
-  production: boolean;
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: (value: string | null) => void;
   setGroupId: (value: string) => void;
   setHost: (value: string) => void;
   setName: (value: string) => void;
   setPort: (value: string) => void;
-  setProduction: (value: boolean) => void;
   setTags: (value: string) => void;
   setUsername: (value: string) => void;
   tags: string;
@@ -114,9 +113,11 @@ export function SshPropertiesPanel({
             authType={authType}
             credentialRef={credentialRef}
             credentialSecret={credentialSecret}
+            keyPassphraseSecret={keyPassphraseSecret}
             setAuthType={setAuthType}
             setCredentialRef={setCredentialRef}
             setCredentialSecret={setCredentialSecret}
+            setKeyPassphraseSecret={setKeyPassphraseSecret}
             setError={setError}
           />
         </FieldRow>
@@ -129,16 +130,6 @@ export function SshPropertiesPanel({
             value={tags}
           />
         </FieldRow>
-        <FieldRow label="环境">
-          <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
-            <span>生产或安全敏感主机</span>
-            <Switch
-              aria-label="生产主机"
-              checked={production}
-              onCheckedChange={setProduction}
-            />
-          </div>
-        </FieldRow>
       </div>
     </div>
   );
@@ -148,17 +139,21 @@ function SshAuthFields({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
 }: {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: (value: string | null) => void;
 }) {
   const choosePrivateKeyFile = async () => {
@@ -189,6 +184,7 @@ function SshAuthFields({
           setAuthType(nextAuthType);
           setCredentialRef("");
           setCredentialSecret("");
+          setKeyPassphraseSecret("");
         }}
         options={authOptions}
         value={authType}
@@ -244,8 +240,15 @@ function SshAuthFields({
                 spellCheck={false}
                 value={credentialSecret}
               />
+              <PasswordInput
+                ariaLabel="私钥口令"
+                autoComplete="new-password"
+                onChange={setKeyPassphraseSecret}
+                placeholder="私钥未加密时留空"
+                value={keyPassphraseSecret}
+              />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                私钥路径和内容二选一；粘贴内容保存在凭据保险箱中。
+                私钥路径和内容二选一；私钥内容与可选口令分别加密保存到凭据保险箱。
               </p>
             </div>
           )}

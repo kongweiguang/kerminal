@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import type {
   MachineGroup,
@@ -167,7 +169,6 @@ describe("KerminalShell workspace selector snapshots", () => {
             kind: "ssh",
             name: "Lab",
             port: 22,
-            production: false,
             remoteGroupId: "remote",
             status: "online",
             tags: [],
@@ -203,7 +204,6 @@ describe("KerminalShell workspace selector snapshots", () => {
       mode: "container",
       prompt: "api:/$",
       remoteHostId: "host-lab",
-      remoteHostProduction: true,
       status: "online",
       target: {
         containerId: "c0ffee1234567890",
@@ -227,7 +227,6 @@ describe("KerminalShell workspace selector snapshots", () => {
             kind: "ssh",
             name: "Lab",
             port: 22,
-            production: true,
             remoteGroupId: "remote",
             status: "online",
             tags: [],
@@ -254,7 +253,6 @@ describe("KerminalShell workspace selector snapshots", () => {
       kind: "dockerContainer",
       name: "api",
       parentMachineId: "host-lab",
-      production: true,
       username: "ops",
       workdir: "/srv/api",
     });
@@ -283,7 +281,6 @@ describe("KerminalShell workspace selector snapshots", () => {
             kind: "ssh",
             name: "Lab",
             port: 22,
-            production: false,
             remoteGroupId: "remote",
             status: "online",
             tags: [],

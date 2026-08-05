@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Columns2, PanelBottom, Search } from "lucide-react";
 import {
   useEffect,
@@ -303,11 +305,6 @@ export function TerminalSplitTargetSelector({
                             <span className="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-500 dark:text-zinc-400">
                               {kindLabels[target.kind]}
                             </span>
-                            {target.production ? (
-                              <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
-                                生产
-                              </span>
-                            ) : null}
                           </button>
                         ))}
                       </div>

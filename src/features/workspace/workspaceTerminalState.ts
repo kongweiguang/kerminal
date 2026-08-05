@@ -348,7 +348,6 @@ export function splitTargetPaneForMachine(
       mode: "ssh",
       prompt: `${userLabel}@${hostLabel}:~$`,
       remoteHostId: machine.id,
-      remoteHostProduction: machine.production ?? false,
       status: machine.status,
       target:
         machine.target?.kind === "ssh" ? machine.target : sshTarget(machine.id),
@@ -365,7 +364,6 @@ export function splitTargetPaneForMachine(
       machineId: machine.id,
       mode: "telnet",
       prompt: `${hostLabel}:${machine.port ?? 23}>`,
-      remoteHostProduction: machine.production ?? false,
       status: machine.status,
       target:
         machine.target?.kind === "telnet"
@@ -385,7 +383,6 @@ export function splitTargetPaneForMachine(
       machineId: machine.id,
       mode: "serial",
       prompt: `${serialPort}>`,
-      remoteHostProduction: machine.production ?? false,
       status: machine.status,
       target:
         machine.target?.kind === "serial"
@@ -404,7 +401,6 @@ export function splitTargetPaneForMachine(
       mode: "container",
       prompt: `${machine.name}:/$`,
       remoteHostId: machine.parentMachineId,
-      remoteHostProduction: machine.production ?? false,
       shell: machine.shell,
       status: machine.status,
       target: machine.target,

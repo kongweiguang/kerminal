@@ -116,37 +116,6 @@ describe("workspaceSession", () => {
     ]);
   });
 
-  it("preserves remote host production flags for restored panes", () => {
-    const session = normalizeWorkspaceSessionSnapshot({
-      activeTabId: "tab-1",
-      focusedPaneId: "pane-1",
-      selectedMachineId: "",
-      terminalPanes: [
-        {
-          id: "pane-1",
-          machineId: "host-prod",
-          mode: "ssh",
-          prompt: "root@prod:~$",
-          remoteHostId: "host-prod",
-          remoteHostProduction: true,
-          status: "warning",
-          title: "prod",
-        },
-      ],
-      terminalTabs: [
-        {
-          id: "tab-1",
-          layout: { paneId: "pane-1", type: "pane" },
-          machineId: "host-prod",
-          title: "prod",
-        },
-      ],
-    });
-
-    expect(session.terminalPanes[0]?.remoteHostProduction).toBe(true);
-    expect(session.selectedMachineId).toBe("host-prod");
-  });
-
   it("preserves tmux attach metadata and SSH remote command for restored panes", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "tab-1",
@@ -193,7 +162,7 @@ describe("workspaceSession", () => {
     });
   });
 
-  it("ignores non-boolean remote host production flags from older snapshots", () => {
+  it("drops removed remote host production flags from older snapshots", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "tab-1",
       focusedPaneId: "pane-1",
@@ -204,7 +173,7 @@ describe("workspaceSession", () => {
           mode: "ssh",
           prompt: "root@prod:~$",
           remoteHostId: "host-prod",
-          remoteHostProduction: "true",
+          remoteHostProduction: true,
           status: "warning",
           title: "prod",
         },
@@ -219,7 +188,7 @@ describe("workspaceSession", () => {
       ],
     });
 
-    expect(session.terminalPanes[0]?.remoteHostProduction).toBeUndefined();
+    expect(session.terminalPanes[0]).not.toHaveProperty("remoteHostProduction");
   });
 
   it("normalizes terminal tab group preferences", () => {

@@ -25,9 +25,7 @@ use kerminal_lib::{
             SuggestionProviderKind,
         },
         remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest},
-        settings::{
-            TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
-        },
+        settings::TerminalInlineSuggestionSettings,
         sftp::SftpTrustHostKeyRequest,
     },
     paths::KerminalPaths,

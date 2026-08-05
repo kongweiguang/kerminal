@@ -34,7 +34,6 @@ export interface Machine {
   cwd?: string;
   env?: Record<string, string>;
   target?: RemoteTargetRef;
-  production?: boolean;
   sshOptions?: SshOptions;
   remoteGroupId?: string;
   parentMachineId?: string;
@@ -183,7 +182,6 @@ export interface TerminalPane {
   mode: "local" | "ssh" | "telnet" | "serial" | "container" | "preview";
   target?: RemoteTargetRef;
   remoteHostId?: string;
-  remoteHostProduction?: boolean;
   containerId?: string;
   profileId?: string;
   shell?: string;

@@ -40,6 +40,7 @@ fn migrates_v1_hosts_as_one_recoverable_v2_change_set() {
         assert!(source.contains("# keep this comment"));
         assert!(source.contains("custom_note = \"preserve-me\""));
         assert!(source.contains("secret_ref = \"vault://fixture\""));
+        assert!(!source.contains("production ="));
     }
     let hosts = store.list_remote_hosts().expect("strict v2 host loader");
     assert_eq!(hosts.len(), 2);

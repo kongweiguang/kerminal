@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { targetStableId } from "../../lib/targetModel";
 import { collectPaneIds } from "./workspaceLayout";
 import { findMachine } from "./workspaceMachineModel";
@@ -190,7 +192,6 @@ function machineFromContainerPane(
     kind: "dockerContainer",
     name: containerName,
     parentMachineId: target.hostId,
-    production: pane.remoteHostProduction ?? hostMachine?.production,
     remoteGroupId: hostMachine?.remoteGroupId,
     runtime,
     status: pane.status,

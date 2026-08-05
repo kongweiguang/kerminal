@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { WorkspaceContextProjection } from "../../workspace/context";
 
 /** Context Inspector 支持的稳定分区标识。 */
@@ -44,7 +46,6 @@ export interface ContextInspectorActionDescriptor {
 export interface ContextInspectorViewModel {
   readonly title: string;
   readonly subtitle: string;
-  readonly production: boolean;
   readonly status: "ready" | "partial" | "stale" | "error";
   readonly primaryFields: readonly ContextInspectorField[];
   readonly sections: readonly ContextInspectorSection[];

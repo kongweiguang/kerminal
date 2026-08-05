@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import {
   recordTerminalSuggestionAuditEvent,
@@ -28,7 +30,6 @@ interface TerminalRemoteSuggestionPrewarmOptions {
   canScheduleProbe?: () => boolean;
   paneId: string;
   remoteHostId: string | undefined;
-  remoteHostProduction: boolean;
   recordAuditEvent?: RecordAuditEvent;
   scheduler?: TerminalRemoteSuggestionProbeScheduler;
   target: RemoteTargetRef | undefined;
@@ -47,7 +48,6 @@ export function createTerminalRemoteSuggestionPrewarm({
   paneId,
   recordAuditEvent = recordTerminalSuggestionAuditEvent,
   remoteHostId,
-  remoteHostProduction,
   scheduler = terminalSuggestionProbeScheduler,
   target,
   terminalAppearanceRef,
@@ -62,11 +62,6 @@ export function createTerminalRemoteSuggestionPrewarm({
       cwd,
       decision: "skipped",
       eventKind: "remoteProbeSchedule",
-      metadata: {
-        productionHost: String(remoteHostProduction),
-        productionHostPolicy:
-          terminalAppearanceRef.current.inlineSuggestion.productionHostPolicy,
-      },
       paneId,
       path,
       provider,
@@ -97,10 +92,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     ) {
       return;
     }
-    const skipReason = remoteProbeSkipReason(
-      inlineSuggestion,
-      remoteHostProduction,
-    );
+    const skipReason = remoteProbeSkipReason(inlineSuggestion);
     if (skipReason) {
       recordScheduleSkipped({
         cwd,
@@ -130,10 +122,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     ) {
       return;
     }
-    const skipReason = remoteProbeSkipReason(
-      inlineSuggestion,
-      remoteHostProduction,
-    );
+    const skipReason = remoteProbeSkipReason(inlineSuggestion);
     if (skipReason) {
       recordScheduleSkipped({
         provider: "remoteCommand",
@@ -161,10 +150,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     ) {
       return;
     }
-    const skipReason = remoteProbeSkipReason(
-      inlineSuggestion,
-      remoteHostProduction,
-    );
+    const skipReason = remoteProbeSkipReason(inlineSuggestion);
     if (skipReason) {
       recordScheduleSkipped({
         provider: "history",
@@ -194,10 +180,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     ) {
       return;
     }
-    const skipReason = remoteProbeSkipReason(
-      inlineSuggestion,
-      remoteHostProduction,
-    );
+    const skipReason = remoteProbeSkipReason(inlineSuggestion);
     if (skipReason) {
       recordScheduleSkipped({
         path: normalizedPath,
@@ -226,16 +209,9 @@ export function createTerminalRemoteSuggestionPrewarm({
 
 function remoteProbeSkipReason(
   inlineSuggestion: TerminalAppearance["inlineSuggestion"],
-  remoteHostProduction: boolean,
 ) {
   if (!inlineSuggestion.remoteProbeEnabled) {
     return "remote-probe-disabled";
-  }
-  if (
-    remoteHostProduction &&
-    inlineSuggestion.productionHostPolicy === "restricted"
-  ) {
-    return "production-host-restricted";
   }
   return undefined;
 }

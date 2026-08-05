@@ -3,8 +3,11 @@
 //! @author kongweiguang
 
 use crate::{
-    error::AppResult,
-    models::remote_host::{build_vault_secret_ref, parse_vault_secret_ref},
+    error::{AppError, AppResult},
+    models::remote_host::{
+        build_vault_secret_ref, parse_vault_secret_ref, RemoteHostAuthType, RemoteHostProtocol,
+        SSH_KEY_PASSPHRASE_MAX_BYTES,
+    },
     services::encrypted_vault_service::{EncryptedVaultService, VaultUnitOfWork},
 };
 
@@ -69,4 +72,100 @@ pub(super) fn persist_secret_ref(
         plaintext.as_bytes(),
     )?;
     Ok(Some(secret_ref))
+}
+
+/// 目标主机私钥口令的独立持久化意图。
+#[derive(Debug)]
+pub(super) struct KeyPassphrasePersistenceInput<'a> {
+    pub(super) host_id: &'a str,
+    pub(super) kind: &'a str,
+    pub(super) plaintext: Option<String>,
+    pub(super) existing_secret_ref: Option<String>,
+    pub(super) clear: bool,
+}
+
+/// Rust 服务边界归一化后的私钥口令修改意图。
+#[derive(Debug)]
+pub(super) struct NormalizedKeyPassphraseInput {
+    pub(super) secret: Option<String>,
+    pub(super) clear: bool,
+}
+
+/// 校验私钥口令 wire intent，同时保留实际口令中的首尾空白。
+pub(super) fn normalize_key_passphrase_input(
+    protocol: RemoteHostProtocol,
+    auth_type: RemoteHostAuthType,
+    secret: Option<String>,
+    clear: bool,
+    allow_clear: bool,
+) -> AppResult<NormalizedKeyPassphraseInput> {
+    let secret = secret.filter(|value| !value.is_empty());
+    if !matches!(protocol, RemoteHostProtocol::Ssh | RemoteHostProtocol::Sftp)
+        && (secret.is_some() || clear)
+    {
+        return Err(AppError::InvalidInput(
+            "只有 SSH 或 SFTP 主机可以保存或清空私钥口令".to_owned(),
+        ));
+    }
+    if !matches!(auth_type, RemoteHostAuthType::Key) && (secret.is_some() || clear) {
+        return Err(AppError::InvalidInput(
+            "只有私钥认证可以保存或清空私钥口令".to_owned(),
+        ));
+    }
+    if clear && !allow_clear {
+        return Err(AppError::InvalidInput(
+            "新建主机时没有可清空的私钥口令".to_owned(),
+        ));
+    }
+    if clear && secret.is_some() {
+        return Err(AppError::InvalidInput(
+            "私钥口令不能同时替换和清空".to_owned(),
+        ));
+    }
+    if secret
+        .as_ref()
+        .is_some_and(|value| value.len() > SSH_KEY_PASSPHRASE_MAX_BYTES)
+    {
+        return Err(AppError::InvalidInput(format!(
+            "私钥口令不能超过 {SSH_KEY_PASSPHRASE_MAX_BYTES} 字节"
+        )));
+    }
+    Ok(NormalizedKeyPassphraseInput { secret, clear })
+}
+
+/// 原子地保留、替换或清空目标私钥口令，只复用当前主机的精确 vault 引用。
+pub(super) fn persist_key_passphrase_ref(
+    vault: &EncryptedVaultService,
+    unit: &mut VaultUnitOfWork,
+    input: KeyPassphrasePersistenceInput<'_>,
+) -> AppResult<Option<String>> {
+    let expected_ref =
+        build_vault_secret_ref(input.kind, input.host_id, "target", "key-passphrase");
+    let existing_secret_ref = input
+        .existing_secret_ref
+        .filter(|secret_ref| secret_ref == &expected_ref);
+    let plaintext = input.plaintext.filter(|value| !value.is_empty());
+
+    if input.clear && plaintext.is_some() {
+        return Err(AppError::InvalidInput(
+            "私钥口令不能同时替换和清空".to_owned(),
+        ));
+    }
+    if input.clear {
+        if let Some(secret_ref) = existing_secret_ref.as_deref() {
+            vault.remove_secret_in_unit(unit, secret_ref)?;
+        }
+        return Ok(None);
+    }
+    let Some(plaintext) = plaintext else {
+        return Ok(existing_secret_ref);
+    };
+    vault.upsert_secret_in_unit(
+        unit,
+        &expected_ref,
+        input.kind,
+        expected_ref.as_bytes(),
+        plaintext.as_bytes(),
+    )?;
+    Ok(Some(expected_ref))
 }

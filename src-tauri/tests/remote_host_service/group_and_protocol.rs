@@ -26,7 +26,6 @@ fn delete_group_moves_hosts_to_ungrouped() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create host");
@@ -58,7 +57,6 @@ fn create_host_rejects_unknown_group() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect_err("reject unknown group");
@@ -81,7 +79,6 @@ fn create_host_rejects_whitespace_in_host_address() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect_err("reject host address whitespace");
@@ -104,7 +101,6 @@ fn create_host_allows_no_group_and_lists_it_as_ungrouped() {
             credential_ref: None,
             credential_secret: None,
             tags: vec!["adhoc".to_owned()],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create ungrouped host");
@@ -135,7 +131,6 @@ fn create_telnet_host_allows_empty_username_and_normalizes_tags() {
                 "telnet".to_owned(),
                 " console ".to_owned(),
             ],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create telnet host");
@@ -163,7 +158,6 @@ fn create_serial_host_allows_empty_username_and_normalizes_tags() {
                 "serial".to_owned(),
                 " serial-baud:115200 ".to_owned(),
             ],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create serial host");
@@ -187,7 +181,6 @@ fn create_non_telnet_host_rejects_empty_username() {
             credential_ref: None,
             credential_secret: None,
             tags: vec!["rdp".to_owned()],
-            production: false,
             ssh_options: Default::default(),
         })
         .expect_err("reject empty username without telnet tag");

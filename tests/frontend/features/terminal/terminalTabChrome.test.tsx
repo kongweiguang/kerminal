@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -8,7 +10,10 @@ import type {
 import {
   buildTerminalTabGroups,
   TerminalTabButton,
+  TerminalTabContextMenuItems,
   TerminalTabGroupHeader,
+  TerminalTabGroupContextMenuItems,
+  type TerminalTabGroup,
 } from "../../../../src/features/terminal/terminalTabChrome";
 
 const localTab: TerminalTab = {
@@ -138,6 +143,79 @@ describe("TerminalTabGroupHeader", () => {
     expect(groupButton).toHaveClass("rounded-lg");
     expect(groupButton).toHaveClass("text-sm");
     expect(groupButton.querySelector(".h-\\[18px\\]")).toBeInTheDocument();
+  });
+});
+
+describe("terminal tab context menu close actions", () => {
+  const groupedTab: TerminalTab = {
+    ...localTab,
+    id: "tab-local-2",
+    title: "本地 PowerShell #2",
+  };
+  const otherTab: TerminalTab = {
+    ...localTab,
+    id: "tab-remote",
+    machineId: "remote-host",
+    title: "远程主机",
+  };
+  const groupedGroup: TerminalTabGroup = {
+    color: "blue",
+    colorLabel: "蓝色",
+    grouped: true,
+    id: "local-powershell",
+    identityAccent: {
+      accentClassName: "bg-sky-500",
+      color: "blue",
+      source: "automatic",
+      visible: true,
+    },
+    tabs: [localTab, groupedTab],
+    title: "本地 PowerShell",
+  };
+
+  it("marks every tab close action as dangerous", () => {
+    render(
+      <TerminalTabContextMenuItems
+        activeTabId={localTab.id}
+        group={groupedGroup}
+        onCloseTabs={vi.fn()}
+        onRequestRename={vi.fn()}
+        onSelectTab={vi.fn()}
+        runMenuAction={(action) => action?.()}
+        tab={localTab}
+        tabs={[localTab, groupedTab, otherTab]}
+      />,
+    );
+
+    for (const label of [
+      "关闭标签",
+      "关闭同组其他标签",
+      "关闭右侧标签",
+      "关闭其他标签",
+    ]) {
+      expect(screen.getByRole("menuitem", { name: label })).toHaveClass(
+        "kerminal-context-menu-item--danger",
+      );
+    }
+  });
+
+  it("marks both group close actions as dangerous", () => {
+    render(
+      <TerminalTabGroupContextMenuItems
+        collapsed={false}
+        group={groupedGroup}
+        onCloseTabs={vi.fn()}
+        runMenuAction={(action) => action?.()}
+        tabs={[localTab, groupedTab, otherTab]}
+        toggleTabGroup={vi.fn()}
+      />,
+    );
+
+    for (const label of ["关闭分组", "关闭其他分组"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toHaveClass(
+        "kerminal-context-menu-item--danger",
+      );
+    }
   });
 });
 

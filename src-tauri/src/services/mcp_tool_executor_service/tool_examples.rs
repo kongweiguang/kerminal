@@ -245,7 +245,6 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
             "host": "staging.example.internal",
             "port": 22,
             "username": "deploy",
-            "production": false,
             "password": "<credential-provided-by-user-for-this-save-only>"
         })),
         ToolId::KerminalVaultEncryptSecret => Some(json!({

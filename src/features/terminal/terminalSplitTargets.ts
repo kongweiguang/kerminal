@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   Machine,
   MachineGroup,
@@ -28,7 +30,6 @@ export interface SplitTargetOption {
   hostLabel: string;
   id: string;
   kind: TerminalSplitMachineKind;
-  production: boolean;
   status: MachineStatus;
   subtitle: string;
   title: string;
@@ -71,7 +72,6 @@ function createSplitTargetOption(
     hostLabel,
     id: machine.id,
     kind: machine.kind as TerminalSplitMachineKind,
-    production: Boolean(machine.production),
     status: machine.status,
     subtitle: subtitleParts.join(" · "),
     title: machine.name,

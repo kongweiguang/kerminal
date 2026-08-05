@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 impl CommandSuggestionService {
@@ -14,9 +16,7 @@ impl CommandSuggestionService {
         let audit_path = request.path.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) =
-            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
-        {
+        if let Some(skip) = self.remote_probe_policy_skip(&inline_settings)? {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::RemotePath,
@@ -95,9 +95,7 @@ impl CommandSuggestionService {
         let audit_host_id = request.host_id.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) =
-            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
-        {
+        if let Some(skip) = self.remote_probe_policy_skip(&inline_settings)? {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::RemoteCommand,
@@ -183,9 +181,7 @@ impl CommandSuggestionService {
         let audit_host_id = request.host_id.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) =
-            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
-        {
+        if let Some(skip) = self.remote_probe_policy_skip(&inline_settings)? {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::History,
@@ -273,9 +269,7 @@ impl CommandSuggestionService {
         let audit_cwd = request.cwd.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) =
-            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
-        {
+        if let Some(skip) = self.remote_probe_policy_skip(&inline_settings)? {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::Git,

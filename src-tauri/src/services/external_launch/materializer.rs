@@ -73,10 +73,10 @@ impl ExternalSessionMaterializer {
         }
     }
 
-    /// 创建可匹配已保存主机安全级别的生产 materializer。
+    /// 创建可匹配已保存主机的 materializer。
     ///
-    /// 外部目标没有精确匹配时必须 fail closed，按受限生产目标处理；只有精确匹配到
-    /// 已显式标记为非生产的保存主机时，才允许降低保护级别。
+    /// 外部目标没有精确匹配时必须 fail closed；只有精确匹配到已保存主机时，
+    /// 才允许降低保护级别。
     pub fn with_remote_hosts(
         intake: ExternalLaunchIntake,
         auth_broker: SshAuthBroker,
@@ -192,7 +192,7 @@ impl ExternalSessionMaterializer {
         let username = resolve_username(&request, username_override)?;
         let mut receipts = Vec::new();
         let safety = self.resolve_target_safety(&request, &username);
-        let mut host = request_to_remote_host(&request, &username, safety.is_restricted());
+        let mut host = request_to_remote_host(&request, &username);
 
         let result = (|| -> AppResult<ExternalMaterializeOutcome> {
             if let Some(password) = request.auth.password.as_ref() {
@@ -376,18 +376,10 @@ pub struct ExternalMaterializerSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExternalTargetSafety {
-    /// 未找到唯一可信映射，必须按生产/受限目标执行保护。
+    /// 未找到可信映射，必须按受限目标执行保护。
     RestrictedUnknown,
-    /// 精确匹配到已保存的非生产主机。
-    KnownNonProduction,
-    /// 精确匹配到至少一个生产主机。
-    Production,
-}
-
-impl ExternalTargetSafety {
-    pub fn is_restricted(self) -> bool {
-        !matches!(self, Self::KnownNonProduction)
-    }
+    /// 精确匹配到已保存主机。
+    Known,
 }
 
 pub fn external_target_id(launch_id: &str) -> String {
@@ -418,11 +410,7 @@ fn resolve_username(
         })
 }
 
-fn request_to_remote_host(
-    request: &ExternalSshLaunchRequest,
-    username: &str,
-    production: bool,
-) -> RemoteHost {
+fn request_to_remote_host(request: &ExternalSshLaunchRequest, username: &str) -> RemoteHost {
     let auth_type = if request.auth.password.is_some() {
         RemoteHostAuthType::Password
     } else if request.auth.identity_file.is_some() {
@@ -454,7 +442,6 @@ fn request_to_remote_host(
         key_passphrase_secret: None,
         name: display_name_from_request(request),
         port: request.target.port,
-        production,
         protocol: if matches!(request.intent, ExternalLaunchIntent::SftpTransfer { .. }) {
             RemoteHostProtocol::Sftp
         } else {
@@ -479,17 +466,13 @@ pub fn external_target_safety_for_saved_hosts(
     username: &str,
     saved_hosts: &[RemoteHost],
 ) -> ExternalTargetSafety {
-    let matches = saved_hosts
+    if saved_hosts
         .iter()
-        .filter(|host| saved_host_matches_request(host, request, username))
-        .collect::<Vec<_>>();
-    if matches.is_empty() {
-        return ExternalTargetSafety::RestrictedUnknown;
-    }
-    if matches.iter().any(|host| host.production) {
-        ExternalTargetSafety::Production
+        .any(|host| saved_host_matches_request(host, request, username))
+    {
+        ExternalTargetSafety::Known
     } else {
-        ExternalTargetSafety::KnownNonProduction
+        ExternalTargetSafety::RestrictedUnknown
     }
 }
 

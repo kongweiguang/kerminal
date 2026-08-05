@@ -42,7 +42,6 @@ function configHostNoticeItems(groups: MachineGroup[]): ConfigChangePublicItem[]
           machine.remoteGroupId ?? group.id,
           machine.host ?? "",
           machine.port ?? "",
-          machine.production ? "prod" : "dev",
           machine.tags.join(","),
         ].join("|"),
       })),

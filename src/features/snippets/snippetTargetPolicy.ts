@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { PaneSessionRecord } from "../terminal/session/index";
 
 export type SnippetShell = "posix" | "powershell" | "cmd" | "unknown";
@@ -8,7 +10,6 @@ export interface SnippetTargetSnapshot {
   sessionId: string;
   targetId: string;
   displayName: string;
-  production: boolean;
   connectionGeneration: number;
   capturedAt: number;
 }
@@ -24,7 +25,6 @@ interface CreateSnippetTargetSnapshotInput {
   record: PaneSessionRecord;
   connectionGeneration: number;
   displayName?: string;
-  production?: boolean;
   capturedAt?: number;
 }
 
@@ -36,7 +36,6 @@ export function createSnippetTargetSnapshot({
   record,
   connectionGeneration,
   displayName,
-  production = false,
   capturedAt = Date.now(),
 }: CreateSnippetTargetSnapshotInput): SnippetTargetSnapshot {
   return Object.freeze({
@@ -44,7 +43,6 @@ export function createSnippetTargetSnapshot({
     sessionId: record.sessionId,
     targetId: record.targetRef ?? record.remoteHostId ?? record.sessionId,
     displayName: displayName?.trim() || record.targetRef || record.remoteHostId || "本地终端",
-    production,
     connectionGeneration,
     capturedAt,
   });
@@ -66,21 +64,16 @@ export function isSnippetTargetSnapshotCurrent(
 
 /** 片段只根据操作风险决定确认强度，不再探测或判定目标环境兼容性。 */
 export function resolveSnippetExecutionPolicy({
-  snapshot,
   risk,
   hasLegacyRaw = false,
   sensitive = false,
 }: {
-  snapshot: SnippetTargetSnapshot;
   risk: SnippetRisk;
   hasLegacyRaw?: boolean;
   sensitive?: boolean;
 }): SnippetExecutionPolicy {
   const effectiveRisk = hasLegacyRaw && risk === "inspect" ? "change" : risk;
-  const requiresConfirmation =
-    snapshot.production ||
-    sensitive ||
-    effectiveRisk !== "inspect";
+  const requiresConfirmation = sensitive || effectiveRisk !== "inspect";
   return {
     effectiveRisk,
     requiresConfirmation,

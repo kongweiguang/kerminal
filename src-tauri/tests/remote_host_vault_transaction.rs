@@ -35,7 +35,6 @@ fn corrupt_vault_is_never_replaced_by_empty_snapshot_after_host_create_failure()
             credential_ref: None,
             credential_secret: Some("must-not-persist".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect_err("corrupt vault must fail closed");
@@ -68,7 +67,6 @@ fn agent_host_write_does_not_require_parsing_unused_vault_key() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create agent host without reading key");
@@ -101,7 +99,6 @@ fn corrupt_vault_error_is_not_misreported_as_missing_key() {
             credential_ref: None,
             credential_secret: Some("synthetic-test-secret".to_owned()),
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create password host");
@@ -133,7 +130,6 @@ fn concurrent_delete_cannot_be_undone_by_update_from_stale_metadata() {
             credential_ref: None,
             credential_secret: None,
             tags: Vec::new(),
-            production: false,
             ssh_options: Default::default(),
         })
         .expect("create race host");
@@ -156,7 +152,6 @@ fn concurrent_delete_cannot_be_undone_by_update_from_stale_metadata() {
             credential_ref: None,
             credential_secret: None,
             tags,
-            production: false,
             ssh_options: host.ssh_options,
             sort_order: host.sort_order,
         })

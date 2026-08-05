@@ -33,9 +33,7 @@ use crate::{
             CommandSuggestionTelemetryExport, CommandSuggestionTelemetrySummary,
             SuggestionProviderKind,
         },
-        settings::{
-            TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
-        },
+        settings::TerminalInlineSuggestionSettings,
         sftp::{SftpDirectoryListing, SftpEntry, SftpEntryKind, SftpListDirectoryRequest},
         snippet::{SnippetCatalogListRequest, SnippetScope},
         ssh_command::SshCommandRequest,
@@ -52,8 +50,6 @@ use crate::{
         command_suggestion_telemetry::{
             CommandSuggestionTelemetryRow, CommandSuggestionTelemetryUpdate,
         },
-        config_file_store::ConfigFileStore,
-        file_store::FileStoreError,
         CommandSqliteStore,
     },
 };
@@ -230,8 +226,6 @@ fn remote_refresh_policy(capacity: usize) -> RemoteCachePolicy {
 
 #[derive(Debug)]
 struct RemoteProbePolicySkip {
-    production_host: bool,
-    production_host_policy: TerminalInlineSuggestionProductionHostPolicy,
     remote_probe_enabled: bool,
     reason: &'static str,
 }

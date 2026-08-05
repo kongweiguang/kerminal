@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   WorkspaceContextDiagnostic,
   WorkspaceContextProjection,
@@ -123,7 +125,7 @@ export function buildContextInspectorViewModel(
       label: "当前目标",
       value: targetLabel || "未选择目标",
       navigationId: context.target ? `target:${context.target.id}` : undefined,
-      tone: context.target?.production ?? context.machine?.production ? "warning" : "default",
+      tone: "default",
     },
     {
       id: "primary-location",
@@ -169,7 +171,6 @@ export function buildContextInspectorViewModel(
             { id: "machine-name", label: "名称", value: context.machine.name, navigationId: `machine:${context.machine.id}` },
             { id: "machine-kind", label: "类型", value: context.machine.kind },
             { id: "machine-status", label: "状态", value: context.machine.status },
-            { id: "machine-production", label: "生产目标", value: booleanValue(context.machine.production), tone: context.machine.production ? "warning" : "default" },
           ]
         : [],
       emptyMessage: "当前没有选中的机器。",
@@ -286,7 +287,6 @@ export function buildContextInspectorViewModel(
         : context.runtime.paneMode
           ? `${context.runtime.paneMode.toUpperCase()} 工作区`
           : "当前工作区",
-    production: Boolean(context.target?.production ?? context.machine?.production),
     status,
     primaryFields,
     sections,

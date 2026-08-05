@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useMemo, useState } from "react";
 import {
   BookmarkPlus,
@@ -82,7 +84,6 @@ export function SnippetCatalogRowV2({
         connectionGeneration: focusedRecord.connectionGeneration,
         displayName: focusedPane?.title,
         paneId: focusedPane?.id ?? "",
-        production: focusedPane?.remoteHostProduction,
         record: focusedRecord,
       })
     : null;
@@ -155,7 +156,6 @@ export function SnippetCatalogRowV2({
         connectionGeneration: record.connectionGeneration,
         displayName: boundPane.title,
         paneId: boundPane.id,
-        production: boundPane.remoteHostProduction,
         record,
       })
     : null;
@@ -170,7 +170,6 @@ export function SnippetCatalogRowV2({
         hasLegacyRaw: render.plan?.legacyRaw,
         risk: item.risk,
         sensitive: item.sensitive || Boolean(render.plan?.containsSensitiveValue),
-        snapshot: boundSnapshot,
       })
     : null;
   const multiline = Boolean(render.plan && /[\r\n]/.test(render.plan.command));

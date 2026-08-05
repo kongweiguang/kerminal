@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { RemoteTargetRef } from "../../../lib/targetModel";
 import type {
   Machine,
@@ -71,7 +73,6 @@ export interface WorkspaceContextMachine {
   readonly name: string;
   readonly kind: Machine["kind"];
   readonly status: Machine["status"];
-  readonly production: boolean;
   readonly groupId: string | null;
 }
 
@@ -80,7 +81,6 @@ export interface WorkspaceContextTarget {
   readonly kind:
     "local" | "ssh" | "external" | "container" | "telnet" | "serial" | "rdp";
   readonly label: string;
-  readonly production: boolean;
   readonly hostLabel?: string;
   readonly containerLabel?: string;
   readonly ref?: RemoteTargetRef;

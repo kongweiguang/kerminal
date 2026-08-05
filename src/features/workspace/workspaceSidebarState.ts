@@ -1,16 +1,17 @@
+// @author kongweiguang
+
 import {
   browserPreviewProfiles,
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
-import type { MachineGroup, TerminalPane, TerminalTab } from "./types";
+import type { MachineGroup, TerminalTab } from "./types";
 import {
   addPersistentSidebarMachines,
   buildMachineGroups,
   collectPersistentSidebarMachines,
   sidebarMachinesFromProfiles,
   syncLocalSidebarMachines,
-  syncTerminalPaneProductionFlags,
   ungroupedGroupTitle,
   withUngroupedGroupTitle,
 } from "./workspaceMachineModel";
@@ -37,14 +38,12 @@ interface RemoteHostTreeStateInput {
   activeTabId: string;
   machineGroups: MachineGroup[];
   selectedMachineId: string;
-  terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
 
 interface RemoteHostTreeStatePatch {
   machineGroups: MachineGroup[];
   selectedMachineId: string;
-  terminalPanes: TerminalPane[];
 }
 
 /** 将配置文件刷新转换为可原子写入 workspace store 的状态补丁。 */
@@ -111,9 +110,5 @@ export function updateRemoteHostTreeState(
       machineGroups,
       terminalTabs: state.terminalTabs,
     }),
-    terminalPanes: syncTerminalPaneProductionFlags(
-      state.terminalPanes,
-      machineGroups,
-    ),
   };
 }

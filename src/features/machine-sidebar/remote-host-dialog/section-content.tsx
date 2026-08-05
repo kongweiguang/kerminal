@@ -44,6 +44,7 @@ interface RemoteHostDialogSectionContentProps {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
+  keyPassphraseSecret: string;
   editingHost?: RemoteHost;
   editingLocalMachine?: Machine;
   groupId: string;
@@ -60,7 +61,6 @@ interface RemoteHostDialogSectionContentProps {
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
-  production: boolean;
   rdpFullscreen: boolean;
   rdpHeight: string;
   rdpNote: string;
@@ -78,6 +78,7 @@ interface RemoteHostDialogSectionContentProps {
   setAuthType: Dispatch<SetStateAction<RemoteHostAuthType>>;
   setCredentialRef: StringSetter;
   setCredentialSecret: StringSetter;
+  setKeyPassphraseSecret: (value: string) => void;
   setError: NullableStringSetter;
   setGroupId: StringSetter;
   setHost: StringSetter;
@@ -89,7 +90,6 @@ interface RemoteHostDialogSectionContentProps {
   setLocalTitle: StringSetter;
   setName: StringSetter;
   setPort: StringSetter;
-  setProduction: BooleanSetter;
   setRdpFullscreen: BooleanSetter;
   setRdpHeight: StringSetter;
   setRdpNote: StringSetter;
@@ -120,6 +120,7 @@ export function RemoteHostDialogSectionContent({
   authType,
   credentialRef,
   credentialSecret,
+  keyPassphraseSecret,
   editingHost,
   editingLocalMachine,
   groupId,
@@ -136,7 +137,6 @@ export function RemoteHostDialogSectionContent({
   name,
   onCreateGroupClick,
   port,
-  production,
   rdpFullscreen,
   rdpHeight,
   rdpNote,
@@ -154,6 +154,7 @@ export function RemoteHostDialogSectionContent({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setKeyPassphraseSecret,
   setError,
   setGroupId,
   setHost,
@@ -165,7 +166,6 @@ export function RemoteHostDialogSectionContent({
   setLocalTitle,
   setName,
   setPort,
-  setProduction,
   setRdpFullscreen,
   setRdpHeight,
   setRdpNote,
@@ -313,22 +313,22 @@ export function RemoteHostDialogSectionContent({
       authType={authType}
       credentialRef={credentialRef}
       credentialSecret={credentialSecret}
+      keyPassphraseSecret={keyPassphraseSecret}
       groupId={groupId}
       host={host}
       name={name}
       onCreateGroupClick={onCreateGroupClick}
       port={port}
-      production={production}
       groupOptions={groupOptions}
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
       setCredentialSecret={setCredentialSecret}
+      setKeyPassphraseSecret={setKeyPassphraseSecret}
       setError={setError}
       setGroupId={setGroupId}
       setHost={setHost}
       setName={setName}
       setPort={setPort}
-      setProduction={setProduction}
       setTags={setTags}
       setUsername={setUsername}
       tags={tags}

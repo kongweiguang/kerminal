@@ -1,9 +1,10 @@
+// @author kongweiguang
+
 export {
   externalSshLaunchAuthType,
   externalSshLaunchDescription,
   externalSshLaunchDisplayName,
   externalSshLaunchMachineId,
-  externalSshLaunchProduction,
   externalSshLaunchTags,
   isExternalSshMachineId,
   type ExternalSshLaunchResolvedRequest,

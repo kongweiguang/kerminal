@@ -53,7 +53,6 @@ fn remote_host_with_credentials(
         credential_secret,
         credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
-        production: false,
         ssh_options: Default::default(),
         sort_order: 10,
         created_at: "now".to_owned(),

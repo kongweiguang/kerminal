@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -547,7 +549,6 @@ export const remoteHostTree = [
         id: "db980b17-2ed0-44e5-b72a-6ecadf788439",
         name: "172.16.41.60",
         port: 22,
-        production: false,
         sshOptions: testSshOptions,
         sortOrder: 10,
         tags: ["ssh", "bbb"],
@@ -599,7 +600,6 @@ export const rdpRemoteHostTree = [
         id: "rdp-office",
         name: "office-rdp",
         port: 3389,
-        production: false,
         sortOrder: 10,
         tags: ["rdp"],
         updatedAt: "2026-06-19 10:00:00",

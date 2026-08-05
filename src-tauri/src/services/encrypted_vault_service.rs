@@ -219,6 +219,22 @@ impl EncryptedVaultService {
         Ok(next_entry)
     }
 
+    /// 在调用方持有的 vault 工作单元中删除单个 secret；不存在时保持幂等。
+    pub(crate) fn remove_secret_in_unit(
+        &self,
+        unit: &mut VaultUnitOfWork,
+        entry_id: &str,
+    ) -> AppResult<bool> {
+        let vault = unit.ensure_vault()?;
+        let previous_len = vault.entries.len();
+        vault.entries.retain(|entry| entry.id != entry_id);
+        let removed = vault.entries.len() != previous_len;
+        if removed {
+            unit.vault_dirty = true;
+        }
+        Ok(removed)
+    }
+
     pub fn write_vault(&self, vault: &VaultFile) -> AppResult<()> {
         let source = encode_vault_toml(vault).map_err(vault_file_store_error)?;
         self.run_vault_transaction("vault-write", |transaction| {

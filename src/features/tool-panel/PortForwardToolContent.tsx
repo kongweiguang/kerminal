@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -531,11 +533,6 @@ export function PortForwardToolContent({
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            {selectedMachine.production ? (
-              <span className="rounded-lg border border-amber-300/25 bg-amber-400/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-200">
-                生产主机
-              </span>
-            ) : null}
             <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
               {selectedHostSessions.length} 个会话
             </span>
@@ -662,14 +659,12 @@ export function PortForwardToolContent({
           {remoteExposureActive ? (
             <ExposureWarning
               bindHost={remoteBindHost}
-              production={Boolean(selectedMachine.production)}
               side="remote"
             />
           ) : null}
           {localExposureActive ? (
             <ExposureWarning
               bindHost={localBindHost}
-              production={false}
               side="local"
             />
           ) : null}

@@ -66,11 +66,9 @@ const PROMPT_C0_CONTROL_RE = new RegExp(
 export function terminalSuggestionProviders({
   hasSshRemote,
   inlineSuggestion,
-  remoteHostProduction,
 }: {
   hasSshRemote: boolean;
   inlineSuggestion: TerminalAppearance["inlineSuggestion"];
-  remoteHostProduction?: boolean;
 }): CommandSuggestionProvider[] {
   if (!inlineSuggestion.enabled) {
     return [];
@@ -80,11 +78,7 @@ export function terminalSuggestionProviders({
     providers.push("history");
   }
   if (
-    hasSshRemote &&
-    terminalInlineSuggestionAllowsRemoteProbe({
-      inlineSuggestion,
-      remoteHostProduction,
-    })
+    hasSshRemote && inlineSuggestion.remoteProbeEnabled
   ) {
     if (inlineSuggestion.providers.remotePath) {
       providers.push("remotePath");
@@ -103,22 +97,6 @@ export function terminalSuggestionProviders({
     providers.push("snippet");
   }
   return providers;
-}
-
-function terminalInlineSuggestionAllowsRemoteProbe({
-  inlineSuggestion,
-  remoteHostProduction,
-}: {
-  inlineSuggestion: TerminalAppearance["inlineSuggestion"];
-  remoteHostProduction?: boolean;
-}) {
-  if (!inlineSuggestion.remoteProbeEnabled) {
-    return false;
-  }
-  return !(
-    remoteHostProduction &&
-    inlineSuggestion.productionHostPolicy === "restricted"
-  );
 }
 
 export function terminalGhostSuggestionEqual(

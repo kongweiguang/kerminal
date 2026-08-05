@@ -68,7 +68,6 @@ export function serverInfoTargetContext(
       ? `${selectedMachine.username ? `${selectedMachine.username}@` : ""}${selectedMachine.host}${selectedMachine.port ? `:${selectedMachine.port}` : ""}`
       : undefined;
     return {
-      ...(selectedMachine.production ? { badgeText: "生产主机" } : {}),
       cacheKey: targetStableId(target),
       hostId: target.hostId,
       refreshAriaLabel: "刷新服务器信息",
@@ -109,7 +108,6 @@ export function serverInfoTargetContext(
       ? `${selectedMachine.username ? `${selectedMachine.username}@` : ""}${selectedMachine.host}`
       : target.hostId;
     return {
-      ...(selectedMachine.production ? { badgeText: "生产容器" } : {}),
       cacheKey: targetStableId(target),
       hostId: target.hostId,
       refreshAriaLabel: "刷新容器系统信息",

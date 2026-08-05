@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 #[tokio::test]
@@ -27,7 +29,6 @@ async fn sftp_only_host_browses_files_and_rejects_command_before_transport() {
             host: "127.0.0.1".to_owned(),
             name: "sftp-only".to_owned(),
             port: server.addr.port(),
-            production: false,
             protocol: RemoteHostProtocol::Sftp,
             ssh_options: SshOptions::default(),
             tags: vec!["sftp-only".to_owned()],

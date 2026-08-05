@@ -56,8 +56,6 @@ pub struct AgentApplicationMachineContext {
     pub name: String,
     pub kind: String,
     pub status: String,
-    #[serde(default)]
-    pub production: Option<bool>,
 }
 
 /// 请求当前终端上下文的参数。

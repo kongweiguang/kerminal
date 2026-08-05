@@ -1,10 +1,30 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   KerminalShellNotices,
   ShellCompactToolPanel,
+  ShellResponsiveToolPanel,
 } from "../../../src/app/KerminalShell.view";
+
+function StatefulAgentPanel({ onUnmount }: { onUnmount: () => void }) {
+  const [messageCount, setMessageCount] = useState(1);
+
+  useEffect(() => onUnmount, [onUnmount]);
+
+  return (
+    <button
+      data-testid="stateful-agent-panel"
+      onClick={() => setMessageCount((current) => current + 1)}
+      type="button"
+    >
+      Claude 对话记录 {messageCount}
+    </button>
+  );
+}
 
 describe("ShellCompactToolPanel", () => {
   it("keeps keyboard focus inside the modal drawer", async () => {
@@ -56,6 +76,80 @@ describe("ShellCompactToolPanel", () => {
       "kerminal-floating-surface",
       "kerminal-layer-dialog",
       "rounded-[var(--radius-panel)]",
+    );
+  });
+});
+
+describe("ShellResponsiveToolPanel", () => {
+  it.each([
+    ["桌面", false],
+    ["紧凑", true],
+  ])("%s布局收起右栏时保留 Agent 进程与对话视图", async (_label, compact) => {
+    const user = userEvent.setup();
+    const onUnmount = vi.fn();
+    const onClose = vi.fn();
+    const renderPanel = (activeTool: "agentLauncher" | null) => (
+      <ShellResponsiveToolPanel
+        activeTool={activeTool}
+        compact={compact}
+        onClose={onClose}
+        panel={<StatefulAgentPanel onUnmount={onUnmount} />}
+        rail={<button type="button">打开 Agent</button>}
+      />
+    );
+    const { rerender } = render(renderPanel("agentLauncher"));
+
+    const conversation = screen.getByTestId("stateful-agent-panel");
+    await user.click(conversation);
+    expect(conversation).toHaveTextContent("Claude 对话记录 2");
+
+    rerender(renderPanel(null));
+
+    expect(onUnmount).not.toHaveBeenCalled();
+    expect(screen.getByTestId("stateful-agent-panel")).toHaveTextContent(
+      "Claude 对话记录 2",
+    );
+
+    rerender(renderPanel("agentLauncher"));
+
+    expect(onUnmount).not.toHaveBeenCalled();
+    expect(screen.getByTestId("stateful-agent-panel")).toHaveTextContent(
+      "Claude 对话记录 2",
+    );
+  });
+
+  it("跨桌面与紧凑断点时不重建 Agent 终端", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onUnmount = vi.fn();
+    const renderPanel = (compact: boolean) => (
+      <ShellResponsiveToolPanel
+        activeTool="agentLauncher"
+        compact={compact}
+        onClose={onClose}
+        panel={<StatefulAgentPanel onUnmount={onUnmount} />}
+        rail={<button type="button">打开 Agent</button>}
+      />
+    );
+    const { rerender } = render(renderPanel(false));
+
+    await user.click(screen.getByTestId("stateful-agent-panel"));
+    expect(screen.getByTestId("stateful-agent-panel")).toHaveTextContent(
+      "Claude 对话记录 2",
+    );
+
+    rerender(renderPanel(true));
+
+    expect(onUnmount).not.toHaveBeenCalled();
+    expect(screen.getByTestId("stateful-agent-panel")).toHaveTextContent(
+      "Claude 对话记录 2",
+    );
+
+    rerender(renderPanel(false));
+
+    expect(onUnmount).not.toHaveBeenCalled();
+    expect(screen.getByTestId("stateful-agent-panel")).toHaveTextContent(
+      "Claude 对话记录 2",
     );
   });
 });

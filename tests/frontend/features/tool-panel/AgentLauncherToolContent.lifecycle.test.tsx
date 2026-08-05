@@ -175,8 +175,13 @@ describe("AgentLauncherToolContent", () => {
         agentId: ExternalAgentId;
         agentSessionId: string;
         customCommand?: string;
+        resumeProviderSession?: boolean;
       }) => {
-        const command = request.customCommand ?? request.agentId;
+        const command =
+          request.customCommand ??
+          (request.resumeProviderSession && request.agentId === "claude"
+            ? "claude --continue"
+            : request.agentId);
         const title =
           request.agentId === "claude"
             ? "Claude"
@@ -251,6 +256,13 @@ describe("AgentLauncherToolContent", () => {
       });
     });
     expect(await screen.findByTestId("agent-xterm")).toHaveTextContent("Claude");
+    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
+      "data-args",
+      "-NoLogo -NoProfile -NoExit -Command claude --continue",
+    );
+    expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
+      "claude --continue · C:/Users/me/.kerminal/agents/sessions/ags-restored-claude",
+    );
   });
 
   it("creates a fresh provider session when the restore choice selects new session", async () => {

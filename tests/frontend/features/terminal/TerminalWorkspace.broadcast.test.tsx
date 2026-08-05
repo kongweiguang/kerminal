@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useState, type ReactNode } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -299,54 +301,6 @@ describe("TerminalWorkspace broadcast command", () => {
       screen.queryByRole("button", { name: /发送目标/ }),
     ).not.toBeInTheDocument();
     expect(onBroadcastCommand).not.toHaveBeenCalled();
-  });
-
-  it("surfaces production targets inline without blocking send", async () => {
-    const user = userEvent.setup();
-    const onBroadcastCommand = vi.fn().mockResolvedValue({
-      missingPaneIds: [],
-      sentPaneIds: ["pane-batch-local", "pane-batch-ssh"],
-    });
-    const panes: TerminalPane[] = batchPanes.map((pane) =>
-      pane.id === "pane-batch-ssh"
-        ? { ...pane, remoteHostProduction: true }
-        : pane,
-    );
-
-    function ControlledWorkspace() {
-      const [broadcastDraft, setBroadcastDraft] = useState("");
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-batch",
-            broadcastDraft,
-            focusedPaneId: "pane-batch-local",
-            onBroadcastCommand,
-            onBroadcastDraftChange: setBroadcastDraft,
-            panes,
-            tabs: batchTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    expect(
-      screen.getByRole("button", {
-        name: "发送目标：全部分屏 · 2 · 生产 1",
-      }),
-    ).toBeInTheDocument();
-
-    await user.type(screen.getByLabelText("批量命令"), "uptime");
-    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
-
-    expect(onBroadcastCommand).toHaveBeenCalledWith({
-      command: "uptime",
-      data: "uptime\r",
-      targetPaneIds: ["pane-batch-local", "pane-batch-ssh"],
-    });
   });
 
   it("includes telnet and serial panes in broadcast targets without confirmation", async () => {

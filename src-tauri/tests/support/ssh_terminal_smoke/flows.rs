@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 #[derive(Debug)]
 pub struct PasswordSmokeConfig {
     pub host: String,
@@ -101,7 +103,6 @@ pub fn create_remote_host(state: &AppState, config: &PasswordSmokeConfig) -> Str
             host: config.host.clone(),
             name: "OpenSSH password smoke".to_owned(),
             port: config.port,
-            production: false,
             ssh_options: Default::default(),
             tags: vec!["smoke".to_owned()],
             username: config.username.clone(),
@@ -124,7 +125,6 @@ pub fn create_remote_host_with_password_jump(
         host: config.host.clone(),
         name: "OpenSSH password jump smoke".to_owned(),
         port: config.port,
-        production: false,
         ssh_options: Default::default(),
         tags: vec!["smoke".to_owned(), "jump".to_owned()],
         username: config.username.clone(),

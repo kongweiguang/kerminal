@@ -99,13 +99,59 @@ describe("RemoteHostCreateDialog", () => {
       host: "172.16.41.60",
       name: "ubuntu-dev",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: ["ssh", "ubuntu"],
       username: "ubuntu",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdHost));
+  });
+
+  it("saves and tests an encrypted SSH private key with its passphrase", async () => {
+    const user = userEvent.setup();
+    const onCreateHost = vi.fn().mockResolvedValue(createdHost);
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={onCreateHost}
+        open
+      />,
+    );
+
+    await user.type(screen.getByLabelText("名称"), "encrypted-key-host");
+    await user.type(screen.getByLabelText("主机"), "10.0.0.20");
+    await user.type(screen.getByLabelText("用户名"), "deploy");
+    await chooseSelectOption(user, "认证方式", "密钥");
+    await user.type(screen.getByLabelText("私钥路径"), "/home/deploy/.ssh/id_ed25519");
+
+    const passphraseInput = screen.getByLabelText("私钥口令");
+    expect(passphraseInput).toHaveAttribute("type", "password");
+    await user.type(passphraseInput, " key passphrase ");
+    await user.click(screen.getByRole("button", { name: "显示私钥口令" }));
+    expect(passphraseInput).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(testRemoteConnection).toHaveBeenCalledWith({
+        host: expect.objectContaining({
+          authType: "key",
+          keyPassphraseSecret: " key passphrase ",
+        }),
+        mode: "ssh",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    expect(onCreateHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authType: "key",
+        credentialRef: "/home/deploy/.ssh/id_ed25519",
+        keyPassphraseSecret: " key passphrase ",
+      }),
+    );
   });
 
   it("fills the SSH private key path from the local file picker", async () => {
@@ -251,7 +297,6 @@ describe("RemoteHostCreateDialog", () => {
           host: "127.0.0.1",
           name: "test-dev",
           port: 22,
-          production: false,
           protocol: "ssh",
           sshOptions: createDefaultSshOptions(),
           tags: [],
@@ -345,7 +390,6 @@ describe("RemoteHostCreateDialog", () => {
       host: "10.0.0.9",
       name: "password-dev",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: [],
@@ -389,7 +433,6 @@ describe("RemoteHostCreateDialog", () => {
       host: "10.0.0.8",
       name: "ungrouped-dev",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: createDefaultSshOptions(),
       tags: [],
@@ -442,7 +485,6 @@ describe("RemoteHostCreateDialog", () => {
       host: "10.1.2.3",
       name: "prod-edge",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: {
         ...defaultSshOptions,
@@ -529,7 +571,6 @@ describe("RemoteHostCreateDialog", () => {
       host: "10.2.3.4",
       name: "app-prod",
       port: 22,
-      production: false,
       protocol: "ssh",
       sshOptions: {
         ...createDefaultSshOptions(),

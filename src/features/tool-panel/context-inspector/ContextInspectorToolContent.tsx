@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useMemo, useRef } from "react";
 import {
   AlertTriangle,
@@ -392,11 +394,6 @@ export function ContextInspectorToolContent({
                   ? "上下文已过期"
                   : "部分可用"}
           </span>
-          {model.production ? (
-            <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-              生产目标
-            </span>
-          ) : null}
         </div>
       </header>
 

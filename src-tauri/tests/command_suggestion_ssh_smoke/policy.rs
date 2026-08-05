@@ -1,38 +1,9 @@
+// @author kongweiguang
+
 use super::*;
 
 #[tokio::test]
-async fn loopback_production_host_restricted_policy_skips_remote_probes_without_connecting() {
-    let remote_root = tempdir().expect("create restricted loopback remote root");
-    std_fs::create_dir_all(remote_root.path().join("srv").join("repo"))
-        .expect("create restricted loopback repo directory");
-
-    let server = start_loopback_provider_server(remote_root.path().to_path_buf()).await;
-    let harness = SmokeHarness::new();
-    let config = loopback_policy_config(server.addr.port());
-    let remote_host = harness.create_remote_host_with_production(&config, true);
-    let mut settings = harness.inline_settings();
-    settings.remote_probe_enabled = true;
-    settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Restricted;
-    let inline_settings = settings;
-
-    assert_all_remote_refreshes_skipped_without_connecting(
-        &harness,
-        &server,
-        &remote_host,
-        &config,
-        inline_settings,
-        ExpectedRemoteProbeSkip {
-            policy: "restricted",
-            production_host: "true",
-            reason: "production-host-restricted",
-            remote_probe_enabled: "true",
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_connecting() {
+async fn loopback_remote_probe_disabled_skips_remote_probes_without_connecting() {
     let remote_root = tempdir().expect("create disabled loopback remote root");
     std_fs::create_dir_all(remote_root.path().join("srv").join("repo"))
         .expect("create disabled loopback repo directory");
@@ -40,10 +11,9 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
     let server = start_loopback_provider_server(remote_root.path().to_path_buf()).await;
     let harness = SmokeHarness::new();
     let config = loopback_policy_config(server.addr.port());
-    let remote_host = harness.create_remote_host_with_production(&config, false);
+    let remote_host = harness.create_remote_host(&config);
     let mut settings = harness.inline_settings();
     settings.remote_probe_enabled = false;
-    settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Normal;
     let inline_settings = settings;
 
     assert_all_remote_refreshes_skipped_without_connecting(
@@ -53,8 +23,6 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
         &config,
         inline_settings,
         ExpectedRemoteProbeSkip {
-            policy: "normal",
-            production_host: "false",
             reason: "remote-probe-disabled",
             remote_probe_enabled: "false",
         },
@@ -63,8 +31,6 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
 }
 
 struct ExpectedRemoteProbeSkip {
-    policy: &'static str,
-    production_host: &'static str,
     reason: &'static str,
     remote_probe_enabled: &'static str,
 }
@@ -201,21 +167,12 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             event.remote_host_id.as_deref(),
             Some(remote_host.id.as_str())
         );
-        assert_eq!(
-            event.metadata.get("productionHost").map(String::as_str),
-            Some(expected.production_host)
-        );
+        assert!(!event.metadata.contains_key("productionHost"));
         assert_eq!(
             event.metadata.get("remoteProbeEnabled").map(String::as_str),
             Some(expected.remote_probe_enabled)
         );
-        assert_eq!(
-            event
-                .metadata
-                .get("productionHostPolicy")
-                .map(String::as_str),
-            Some(expected.policy)
-        );
+        assert!(!event.metadata.contains_key("productionHostPolicy"));
         assert_eq!(
             event.metadata.get("maxEntries").map(String::as_str),
             Some("64")

@@ -1,4 +1,5 @@
-import { AlertTriangle } from "lucide-react";
+// @author kongweiguang
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import type {
@@ -10,7 +11,6 @@ interface TerminalBroadcastTargetSelectorProps {
   focusedPaneId: string;
   onTargetModeChange: (mode: BroadcastTargetMode) => void;
   onToggleCustomTarget: (paneId: string, selected: boolean) => void;
-  productionTargetCount: number;
   selectedTargetPaneIds: string[];
   targetCount: number;
   targetMode: BroadcastTargetMode;
@@ -26,15 +26,10 @@ const modeLabels: Record<BroadcastTargetMode, string> = {
 function buildTargetSummaryLabel(
   mode: BroadcastTargetMode,
   targetCount: number,
-  productionTargetCount: number,
 ) {
-  const base =
-    mode === "focused"
-      ? modeLabels.focused
-      : `${modeLabels[mode]} · ${targetCount}`;
-  return productionTargetCount > 0
-    ? `${base} · 生产 ${productionTargetCount}`
-    : base;
+  return mode === "focused"
+    ? modeLabels.focused
+    : `${modeLabels[mode]} · ${targetCount}`;
 }
 
 function modeButtonClassName(active: boolean) {
@@ -50,7 +45,6 @@ export function TerminalBroadcastTargetSelector({
   focusedPaneId,
   onTargetModeChange,
   onToggleCustomTarget,
-  productionTargetCount,
   selectedTargetPaneIds,
   targetCount,
   targetMode,
@@ -68,7 +62,6 @@ export function TerminalBroadcastTargetSelector({
   const targetSummaryLabel = buildTargetSummaryLabel(
     targetMode,
     targetCount,
-    productionTargetCount,
   );
 
   useEffect(() => {
@@ -116,16 +109,11 @@ export function TerminalBroadcastTargetSelector({
           "kerminal-focus-ring kerminal-pressable flex h-9 items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-2.5 text-xs font-medium text-zinc-700 shadow-sm shadow-black/5 transition-colors dark:text-zinc-200 dark:shadow-black/20",
           selectorOpen &&
             "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
-          productionTargetCount > 0 &&
-            "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-200",
         )}
         onClick={() => setSelectorOpen((open) => !open)}
         title={`发送目标：${targetSummaryLabel}`}
         type="button"
       >
-        {productionTargetCount > 0 ? (
-          <AlertTriangle className="h-3.5 w-3.5" />
-        ) : null}
         <span className="whitespace-nowrap">{targetSummaryLabel}</span>
       </button>
 
@@ -177,11 +165,6 @@ export function TerminalBroadcastTargetSelector({
           <div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
             <div className="mb-1.5 flex items-center justify-between px-1 text-xs text-zinc-500 dark:text-zinc-400">
               <span>分屏目标</span>
-              {productionTargetCount > 0 ? (
-                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-200">
-                  生产 {productionTargetCount}
-                </span>
-              ) : null}
             </div>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {targetOptions.length > 0 ? (
@@ -217,11 +200,6 @@ export function TerminalBroadcastTargetSelector({
                     <span className="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-500 dark:text-zinc-400">
                       {target.mode}
                     </span>
-                    {target.production ? (
-                      <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-200">
-                        生产
-                      </span>
-                    ) : null}
                   </label>
                 ))
               ) : (

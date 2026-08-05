@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 use serde::Deserialize;
 
@@ -14,8 +16,6 @@ pub struct HostUpsertWithCredentialRequest {
     port: Option<u16>,
     username: String,
     password: String,
-    #[serde(default)]
-    production: bool,
 }
 
 fn host_upsert_with_credential_request_from_arguments(
@@ -116,7 +116,6 @@ pub(super) fn execute_host_upsert_with_credential(
             credential_ref: None,
             credential_secret: Some(request.password),
             tags: existing.tags,
-            production: request.production,
             ssh_options: existing.ssh_options,
             sort_order: existing.sort_order,
         })
@@ -132,7 +131,6 @@ pub(super) fn execute_host_upsert_with_credential(
             credential_ref: None,
             credential_secret: Some(request.password),
             tags: Vec::new(),
-            production: request.production,
             ssh_options: Default::default(),
         })
     };
@@ -157,7 +155,6 @@ pub(super) fn execute_host_upsert_with_credential(
             "authType": host.auth_type,
             "secretRef": host.secret_ref,
             "credentialStatus": host.credential_status,
-            "production": host.production,
         })),
         ..ToolExecutionResult::default()
     }

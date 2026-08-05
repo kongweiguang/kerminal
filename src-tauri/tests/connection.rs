@@ -13,7 +13,7 @@ use kerminal_lib::{
         remote_host_from_create_request, saved_rdp_password, test_tcp_endpoint,
     },
     models::{
-        connection::RdpOpenRequest,
+        connection::{ConnectionTestRequest, RdpOpenRequest},
         remote_host::{
             build_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
             SshOptions,
@@ -40,6 +40,35 @@ fn temporary_rdp_artifact_is_removed_on_drop() {
         assert!(path.exists());
     }
     assert!(!path.exists());
+}
+
+#[test]
+fn connection_test_wire_accepts_flat_key_passphrase_without_debug_leak() {
+    let request: ConnectionTestRequest = serde_json::from_value(serde_json::json!({
+        "mode": "ssh",
+        "host": {
+            "name": "key host",
+            "host": "key.internal",
+            "port": 22,
+            "username": "deploy",
+            "protocol": "ssh",
+            "authType": "key",
+            "credentialRef": "/home/deploy/.ssh/id_ed25519",
+            "keyPassphraseSecret": "wire-key-passphrase",
+            "tags": [],
+            "sshOptions": SshOptions::default()
+        }
+    }))
+    .expect("deserialize connection test request");
+
+    let ConnectionTestRequest::Ssh { host } = &request else {
+        panic!("expected SSH connection test request");
+    };
+    assert_eq!(
+        host.key_passphrase_secret.as_deref(),
+        Some("wire-key-passphrase")
+    );
+    assert!(!format!("{request:?}").contains("wire-key-passphrase"));
 }
 
 #[test]
@@ -118,7 +147,6 @@ fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
         credential_ref: None,
         credential_secret: None,
         tags,
-        production: false,
         ssh_options: SshOptions::default(),
     }
 }
@@ -145,7 +173,6 @@ fn rdp_host(
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
         tags: vec!["rdp".to_owned()],
-        production: false,
         ssh_options: SshOptions::default(),
         sort_order: 10,
         created_at: "now".to_owned(),

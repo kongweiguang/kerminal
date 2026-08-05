@@ -286,7 +286,11 @@ impl AgentProviderSession {
         let provider = AgentProvider::from(agent_id);
         let (resume_supported, resume_command) = match provider {
             AgentProvider::Codex => (true, Some("codex resume --last".to_owned())),
-            AgentProvider::Claude => (true, None),
+            // Claude scopes its persisted conversations by working directory. Every
+            // managed session has a stable session_root, so `--continue` resumes the
+            // latest conversation created in this Kerminal session instead of opening
+            // a new transcript after an app restart or an explicit "继续上次" action.
+            AgentProvider::Claude => (true, Some("claude --continue".to_owned())),
             AgentProvider::Custom => (false, None),
         };
         Self {

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   ChevronDown,
   ChevronRight,
@@ -379,17 +381,20 @@ export function TerminalTabContextMenuItems({
       />
       {group?.grouped ? (
         <TerminalTabMenuItem
+          danger
           disabled={sameGroupOtherTabIds.length === 0}
           label="关闭同组其他标签"
           onClick={() => runMenuAction(() => onCloseTabs(sameGroupOtherTabIds))}
         />
       ) : null}
       <TerminalTabMenuItem
+        danger
         disabled={rightTabIds.length === 0}
         label="关闭右侧标签"
         onClick={() => runMenuAction(() => onCloseTabs(rightTabIds))}
       />
       <TerminalTabMenuItem
+        danger
         disabled={otherTabIds.length === 0}
         label="关闭其他标签"
         onClick={() => runMenuAction(() => onCloseTabs(otherTabIds))}
@@ -438,6 +443,7 @@ export function TerminalTabGroupContextMenuItems({
         onClick={() => runMenuAction(() => onCloseTabs(groupTabIds))}
       />
       <TerminalTabMenuItem
+        danger
         disabled={otherTabIds.length === 0}
         label="关闭其他分组"
         onClick={() => runMenuAction(() => onCloseTabs(otherTabIds))}

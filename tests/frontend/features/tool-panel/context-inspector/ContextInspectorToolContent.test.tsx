@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import "@testing-library/jest-dom/vitest";
 import {
   fireEvent,
@@ -36,14 +38,12 @@ function context(
       name: "Production API",
       kind: "ssh",
       status: "online",
-      production: true,
       groupId: "group-1",
     },
     target: {
       id: "host-1",
       kind: "ssh",
       label: "api.example.test",
-      production: true,
       hostLabel: "api.example.test",
     },
     location: {
@@ -140,7 +140,6 @@ describe("ContextInspectorToolContent", () => {
       "运行态暂时不可用，已保留其它上下文。",
     );
     expect(diagnostics[diagnostics.length - 1]).toBeVisible();
-    expect(screen.getAllByText("生产目标")).toHaveLength(2);
   });
 
   it("动作和可用跳转只转发稳定 id", async () => {

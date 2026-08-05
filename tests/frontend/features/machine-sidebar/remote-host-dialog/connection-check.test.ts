@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import { createDefaultSshOptions } from "../../../../../src/lib/remoteHostApi";
 import type { ConnectionCheckInput } from "../../../../../src/features/machine-sidebar/remote-host-dialog/connection-check";
@@ -10,6 +12,7 @@ function baseInput(
     authType: "agent",
     credentialRef: "",
     credentialSecret: "",
+    keyPassphraseSecret: "",
     editingLocalMachine: false,
     groupId: "",
     host: "127.0.0.1",
@@ -21,7 +24,6 @@ function baseInput(
     mode: "ssh",
     name: "Dev Host",
     port: "22",
-    production: false,
     rdpFullscreen: true,
     rdpHeight: "900",
     rdpNote: "",
@@ -55,7 +57,6 @@ describe("evaluateConnectionCheck", () => {
           host: "127.0.0.1",
           name: "Dev Host",
           port: 22,
-          production: false,
           protocol: "ssh",
           sshOptions: createDefaultSshOptions(),
           tags: [],
@@ -72,6 +73,29 @@ describe("evaluateConnectionCheck", () => {
     ).toEqual({
       error: "密码认证需要输入 SSH 密码。",
       ok: false,
+    });
+  });
+
+  it("passes an encrypted private key passphrase into an SFTP connection test", () => {
+    expect(
+      evaluateConnectionCheck(
+        baseInput({
+          authType: "key",
+          credentialRef: "/home/deploy/.ssh/id_ed25519",
+          keyPassphraseSecret: "sftp-key-passphrase",
+          mode: "sftp",
+          selectedProtocolLabel: "SFTP",
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      testRequest: {
+        host: {
+          keyPassphraseSecret: "sftp-key-passphrase",
+          protocol: "sftp",
+        },
+        mode: "sftp",
+      },
     });
   });
 
