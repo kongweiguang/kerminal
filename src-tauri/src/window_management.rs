@@ -460,17 +460,20 @@ fn show_main_window_after_startup_restore<R: Runtime>(
 #[cfg(not(test))]
 fn reveal_main_window<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
     window.show()?;
+    // unminimize 保持 best-effort：最小化态在交互前可由调用链补救，不应阻塞后续激活。
     if let Err(error) = window.unminimize() {
         tauri_plugin_log::log::warn!(
             target: "desktop.window",
             "failed to unminimize main window after restore: {error}"
         );
     }
-    if let Err(error) = window.set_focus() {
+    // set_focus 失败必须冒泡：macOS 未激活窗口可能吞掉首击，导致确认弹层的关闭/取消按钮
+    // 无法命中；聚焦失败向上传播，让调用方既有 activation retry 接管有界重试。
+    window.set_focus().map_err(|error| {
         tauri_plugin_log::log::warn!(
             target: "desktop.window",
             "failed to focus main window after restore: {error}"
         );
-    }
-    Ok(())
+        error
+    })
 }
