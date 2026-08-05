@@ -213,8 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 移除远程主机“生产”分类及命令建议的生产主机门禁；旧配置字段仍可迁移读取，并在写回时清理。
-            - 终端标签页与分组的关闭操作统一使用危险样式，保留原有关闭范围、确认和清理契约。
+            - 修复 macOS 主窗口处于非激活状态时，关闭标签确认弹窗的关闭或取消按钮首次点击无响应的问题。
+            - 主窗口聚焦失败时进入既有有界重试，降低恢复窗口后首次交互失效的概率。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
