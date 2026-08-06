@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,5 +186,75 @@ describe("ModalShell", () => {
 
     expect(input).toHaveFocus();
     expect(input).toHaveValue("secret-password");
+  });
+});
+
+describe("ModalShell compositor modes", () => {
+  beforeEach(() => {
+    windowChromeMocks.frameState = "normal";
+    windowChromeMocks.platform = "windows";
+    document.body.style.overflow = "";
+  });
+
+  it("默认 dialog 仍是 glass：overlay 使用 backdrop-blur，panel 走 floating-surface", () => {
+    const { unmount } = render(
+      <ModalShell onClose={vi.fn()} open title="玻璃默认">
+        <span>内容</span>
+      </ModalShell>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "玻璃默认" });
+    const overlay = dialog.parentElement;
+    expect(overlay).not.toBeNull();
+    const overlayEl = overlay as HTMLElement;
+
+    expect(overlayEl).toHaveAttribute("data-compositor", "glass");
+    expect(overlayEl).toHaveClass("backdrop-blur-md");
+    expect(overlayEl).not.toHaveClass("kerminal-solid-surface");
+    expect(dialog).toHaveClass("kerminal-floating-surface");
+    expect(dialog).not.toHaveClass("kerminal-solid-surface");
+    expect(dialog).not.toHaveClass("bg-[var(--surface-overlay)]");
+
+    unmount();
+  });
+
+  it("solid 合成模式：overlay 去掉 backdrop-blur，panel 使用 solid-surface + 主题变量", () => {
+    render(
+      <ModalShell backdrop="solid" onClose={vi.fn()} open title="合成安全">
+        <span>内容</span>
+      </ModalShell>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "合成安全" });
+    const overlay = dialog.parentElement;
+    expect(overlay).not.toBeNull();
+    const overlayEl = overlay as HTMLElement;
+
+    expect(overlayEl).toHaveAttribute("data-compositor", "solid");
+    expect(overlayEl).not.toHaveClass("backdrop-blur-md");
+    // 实色蒙层被显式设置，避免退回到默认 glass 的 backdrop-blur。
+    expect(overlayEl).toHaveClass("bg-zinc-950/30");
+    expect(dialog).not.toHaveClass("kerminal-floating-surface");
+    expect(dialog).toHaveClass("kerminal-solid-surface");
+    expect(dialog).toHaveClass("bg-[var(--surface-overlay)]");
+  });
+
+  it("solid 模式不影响聚焦、Tab trap、Esc 等事件语义", () => {
+    const onClose = vi.fn();
+
+    render(
+      <ModalShell backdrop="solid" onClose={onClose} open title="实色弹窗">
+        <button type="button">第一个</button>
+        <button type="button">最后一个</button>
+      </ModalShell>,
+    );
+
+    const last = screen.getByRole("button", { name: "最后一个" });
+    last.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+
+    // Esc 仍然走 onClose，未被 solid 模式短路
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

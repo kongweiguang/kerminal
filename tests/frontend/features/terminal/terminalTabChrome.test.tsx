@@ -9,6 +9,7 @@ import type {
 } from "../../../../src/features/workspace/types";
 import {
   buildTerminalTabGroups,
+  CloseTabsConfirmationDialog,
   TerminalTabButton,
   TerminalTabContextMenuItems,
   TerminalTabGroupHeader,
@@ -375,5 +376,44 @@ describe("buildTerminalTabGroups", () => {
       id: "host-prod",
       title: "172.16.41.60",
     });
+  });
+});
+
+describe("CloseTabsConfirmationDialog", () => {
+  it("在 macOS WKWebView + 活动 SSH xterm 下强制使用 solid 合成模式", () => {
+    // 该弹窗直接面向关闭确认/取消，最容易触发 WKWebView 合成冻结。
+    // 一旦走 .kerminal-floating-surface + backdrop-blur 必须立刻修复。
+    render(
+      <CloseTabsConfirmationDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        tabCount={2}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "确认关闭标签" });
+    const overlay = dialog.parentElement;
+    expect(overlay).not.toBeNull();
+    const overlayEl = overlay as HTMLElement;
+
+    expect(overlayEl).toHaveAttribute("data-compositor", "solid");
+    // 不要让 backdrop-blur 触发 Xcode 合成
+    expect(overlayEl).not.toHaveClass("backdrop-blur-md");
+    expect(dialog).not.toHaveClass("kerminal-floating-surface");
+    // 必须改用项目主题表面变量，确保浅色/深色/跟随系统都能读取
+    expect(dialog).toHaveClass("kerminal-solid-surface");
+    expect(dialog).toHaveClass("bg-[var(--surface-overlay)]");
+  });
+
+  it("在 tabCount=0 时不渲染弹窗，避免空弹窗也走 solid 面板", () => {
+    render(
+      <CloseTabsConfirmationDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        tabCount={0}
+      />,
+    );
+
+    expect(screen.queryByRole("dialog", { name: "确认关闭标签" })).toBeNull();
   });
 });

@@ -1,10 +1,24 @@
+// @author kongweiguang
+
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Button } from "./button";
 
+/**
+ * 背景合成模式：
+ *  - glass：默认，沿用现有半透明 + backdrop-blur 的浮动玻璃面；
+ *  - solid：完全使用实色 surface，禁用 overlay 的 backdrop-blur 与面板的
+ *    backdrop-filter，专门用于活动 SSH xterm + WKWebView 下的关闭/确认
+ *    弹窗，避免后台实时合成导致 WebView 主线程冻结。
+ *
+ * 切换不会影响焦点捕获、滚动锁、Tab trap、Esc 等事件语义，仅替换外观类。
+ */
+type ModalShellBackdrop = "glass" | "solid";
+
 interface ModalShellProps {
+  backdrop?: ModalShellBackdrop;
   bodyClassName?: string;
   children: ReactNode;
   description?: string;
@@ -89,6 +103,7 @@ export function WindowDragStrip() {
 }
 
 export function ModalShell({
+  backdrop = "glass",
   bodyClassName,
   children,
   description,
@@ -109,6 +124,9 @@ export function ModalShell({
   const closeRef = useRef(onClose);
   const fullscreen = layout === "fullscreen";
   const workspace = layout === "workspace";
+  // solid 模式同时替换 overlay 与 panel 的合成层，避免和活动 xterm 实时
+  // backdrop 叠加触发 macOS WKWebView 合成冻结；layout 优先级保持不变。
+  const solid = backdrop === "solid";
   const sizeClassNames = modalSizeClassNames[size];
   const resolvedMaxWidthClassName =
     maxWidthClassName ??
@@ -220,8 +238,11 @@ export function ModalShell({
 
   return createPortal(
     <div
+      // data-compositor 让外部测试无需依赖具体工具类出现顺序即可识别当前模式。
+      data-compositor={solid ? "solid" : "glass"}
       className={cn(
-        "kerminal-layer-dialog fixed inset-0 flex backdrop-blur-md",
+        "kerminal-layer-dialog fixed inset-0 flex",
+        !solid && "backdrop-blur-md",
         workspace
           ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-[rgb(9_9_11_/_0.52)] sm:p-6"
           : "bg-zinc-950/30 dark:bg-black/48",
@@ -243,7 +264,7 @@ export function ModalShell({
         aria-modal="true"
         className={cn(
           "kerminal-floating-enter relative z-10 flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
-          workspace
+          workspace || solid
             ? "kerminal-solid-surface rounded-[var(--radius-dialog)] border bg-[var(--surface-overlay)]"
             : "kerminal-floating-surface rounded-[var(--radius-dialog)] border",
           fullscreen

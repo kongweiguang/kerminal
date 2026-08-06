@@ -462,7 +462,11 @@ export function CloseTabsConfirmationDialog({
   tabCount: number;
 }) {
   return (
+    // solid 合成模式：在 macOS WKWebView 下叠加 .kerminal-floating-surface 的
+    // backdrop-filter 会让活动 SSH xterm 的实时渲染触发 WebView 合成冻结。
+    // 这里使用无 backdrop blur 的实色 panel，主代理复测取消/确认路径。
     <ModalShell
+      backdrop="solid"
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
