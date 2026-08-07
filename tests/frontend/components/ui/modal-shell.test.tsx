@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,5 +186,32 @@ describe("ModalShell", () => {
 
     expect(input).toHaveFocus();
     expect(input).toHaveValue("secret-password");
+  });
+
+  it("uses a solid compositor without changing keyboard behavior", () => {
+    const onClose = vi.fn();
+    render(
+      <ModalShell backdrop="solid" onClose={onClose} open title="实色弹框">
+        <button type="button">第一个</button>
+        <button type="button">最后一个</button>
+      </ModalShell>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "实色弹框" });
+    const overlay = dialog.parentElement;
+    expect(overlay).toHaveAttribute("data-compositor", "solid");
+    expect(overlay).not.toHaveClass("backdrop-blur-md");
+    expect(dialog).toHaveClass("kerminal-solid-surface");
+    expect(dialog).toHaveClass("bg-[var(--surface-overlay)]");
+    expect(dialog).not.toHaveClass("kerminal-floating-surface");
+
+    const first = screen.getByRole("button", { name: "关闭弹窗" });
+    const last = screen.getByRole("button", { name: "最后一个" });
+    last.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(first).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

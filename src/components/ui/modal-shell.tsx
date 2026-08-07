@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -5,6 +7,7 @@ import { cn } from "../../lib/cn";
 import { Button } from "./button";
 
 interface ModalShellProps {
+  backdrop?: "glass" | "solid";
   bodyClassName?: string;
   children: ReactNode;
   description?: string;
@@ -89,6 +92,7 @@ export function WindowDragStrip() {
 }
 
 export function ModalShell({
+  backdrop = "glass",
   bodyClassName,
   children,
   description,
@@ -109,6 +113,7 @@ export function ModalShell({
   const closeRef = useRef(onClose);
   const fullscreen = layout === "fullscreen";
   const workspace = layout === "workspace";
+  const solidBackdrop = backdrop === "solid";
   const sizeClassNames = modalSizeClassNames[size];
   const resolvedMaxWidthClassName =
     maxWidthClassName ??
@@ -220,8 +225,10 @@ export function ModalShell({
 
   return createPortal(
     <div
+      data-compositor={backdrop}
       className={cn(
-        "kerminal-layer-dialog fixed inset-0 flex backdrop-blur-md",
+        "kerminal-layer-dialog fixed inset-0 flex",
+        !solidBackdrop && "backdrop-blur-md",
         workspace
           ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-[rgb(9_9_11_/_0.52)] sm:p-6"
           : "bg-zinc-950/30 dark:bg-black/48",
@@ -243,7 +250,7 @@ export function ModalShell({
         aria-modal="true"
         className={cn(
           "kerminal-floating-enter relative z-10 flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
-          workspace
+          workspace || solidBackdrop
             ? "kerminal-solid-surface rounded-[var(--radius-dialog)] border bg-[var(--surface-overlay)]"
             : "kerminal-floating-surface rounded-[var(--radius-dialog)] border",
           fullscreen

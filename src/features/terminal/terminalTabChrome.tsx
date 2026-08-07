@@ -463,6 +463,7 @@ export function CloseTabsConfirmationDialog({
 }) {
   return (
     <ModalShell
+      backdrop="solid"
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">

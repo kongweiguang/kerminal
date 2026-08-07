@@ -213,8 +213,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复 macOS 主窗口处于非激活状态时，关闭标签确认弹窗的关闭或取消按钮首次点击无响应的问题。
-            - 主窗口聚焦失败时进入既有有界重试，降低恢复窗口后首次交互失效的概率。
+            - 修复 macOS 活动终端背景下关闭标签确认弹窗可能卡住或无法响应的问题，关闭确认弹窗改用无背景模糊的实色合成层。
+            - 保留 xterm 的正常资源释放路径，避免关闭终端时遗留内部监听器和运行时资源。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

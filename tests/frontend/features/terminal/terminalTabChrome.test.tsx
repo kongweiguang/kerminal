@@ -9,6 +9,7 @@ import type {
 } from "../../../../src/features/workspace/types";
 import {
   buildTerminalTabGroups,
+  CloseTabsConfirmationDialog,
   TerminalTabButton,
   TerminalTabContextMenuItems,
   TerminalTabGroupHeader,
@@ -375,5 +376,36 @@ describe("buildTerminalTabGroups", () => {
       id: "host-prod",
       title: "172.16.41.60",
     });
+  });
+});
+
+describe("CloseTabsConfirmationDialog", () => {
+  it("uses the compositor-safe surface for an active terminal backdrop", () => {
+    render(
+      <CloseTabsConfirmationDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        tabCount={2}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "确认关闭标签" });
+    const overlay = dialog.parentElement;
+    expect(overlay).toHaveAttribute("data-compositor", "solid");
+    expect(overlay).not.toHaveClass("backdrop-blur-md");
+    expect(dialog).toHaveClass("kerminal-solid-surface");
+    expect(dialog).not.toHaveClass("kerminal-floating-surface");
+  });
+
+  it("does not render when there are no pending tabs", () => {
+    render(
+      <CloseTabsConfirmationDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        tabCount={0}
+      />,
+    );
+
+    expect(screen.queryByRole("dialog", { name: "确认关闭标签" })).toBeNull();
   });
 });
