@@ -53,6 +53,7 @@ interface XtermWebglDisposableAddon {
 interface XtermWebglDisposeTarget {
   addon: XtermWebglDisposableAddon;
   canvases?: Iterable<HTMLCanvasElement>;
+  rendererCanvases?: Iterable<HTMLCanvasElement>;
 }
 
 /** 创建 compatibility adapter 的版本与能力配置。 */
@@ -65,8 +66,9 @@ export interface CreateXtermWebglCompatibilityAdapterOptions {
 /**
  * 供 renderer controller 后续接线的窄兼容接口。
  *
- * `dispose` 始终优先调用 addon 公开 API；版本私有逻辑只作为显式、
- * 精确版本命中的 best-effort 补充，任何异常都不会向调用方传播。
+ * `dispose` 始终优先调用 addon 公开 API，并对 controller 跟踪的 canvas 使用
+ * 版本无关的公开 context-loss/尺寸清零；版本私有逻辑只作为显式、精确版本
+ * 命中的 best-effort 补充，任何异常都不会向调用方传播。
  */
 export interface XtermWebglCompatibilityAdapter {
   readonly capabilities: Readonly<XtermWebglCompatibilityCapabilities>;
@@ -76,8 +78,9 @@ export interface XtermWebglCompatibilityAdapter {
 /**
  * 创建 xterm WebGL compatibility adapter。
  *
- * 未提供 capability gate 或版本不匹配时，adapter 只执行公开 dispose，
- * 避免依赖升级后继续触碰未经验证的私有字段或强制丢失 WebGL context。
+ * 未提供 capability gate 或版本不匹配时，adapter 仍执行公开 dispose 与
+ * tracked canvas 的公开 context release；只有私有 reference cleanup 继续受
+ * 精确版本 gate 保护，避免依赖升级后触碰未经验证的字段。
  */
 export function createXtermWebglCompatibilityAdapter({
   capabilityGate,
@@ -103,6 +106,8 @@ export function createXtermWebglCompatibilityAdapter({
     );
   }
   const capabilities = Object.freeze({
+    // 该 capability 仍只表示已审计的兼容激活；公开 canvas release 在下方
+    // 无条件执行，不把版本无关 API 与私有 gate 语义混在一起。
     forceContextLoss:
       exactVersionMatch && capabilityGate?.forceContextLoss === true,
     privateRendererCleanup:
@@ -111,7 +116,7 @@ export function createXtermWebglCompatibilityAdapter({
 
   return {
     capabilities,
-    dispose({ addon, canvases = [] }) {
+    dispose({ addon, canvases = [], rendererCanvases = [] }) {
       // 公开 API 是唯一默认释放路径；即使它抛错，也继续执行已验证的兜底清理。
       runBestEffort(
         () => addon.dispose(),
@@ -119,12 +124,15 @@ export function createXtermWebglCompatibilityAdapter({
         "[kerminal-terminal-renderer] WebGL renderer dispose failed",
       );
 
+      // 即使没有启用兼容 gate，也必须释放 controller 追踪的公开 canvas 资源；
+      // 只对 WebGL 主 canvas 调 context API，避免把 2D texture atlas 误报为失败。
+      releaseKnownCanvasContexts(rendererCanvases, logger);
+      resetKnownCanvasDimensions(canvases, logger);
       if (capabilities.forceContextLoss) {
         runtimeCompatibilityDiagnostics.recordActivation(
           "terminal.xterm-webview-patch",
           "tauri-webview",
         );
-        releaseKnownCanvasContexts(canvases, logger);
       }
       if (capabilities.privateRendererCleanup) {
         if (!capabilities.forceContextLoss) {
@@ -164,35 +172,65 @@ function releaseKnownCanvasContexts(
   }
 }
 
+/**
+ * 清零所有 tracked canvas 的 backing store；atlas 也必须覆盖，但不应尝试
+ * 对它们调用 WebGL context API，因为 xterm WebGL atlas 使用的是 2D canvas。
+ */
+function resetKnownCanvasDimensions(
+  canvases: Iterable<HTMLCanvasElement>,
+  logger: XtermWebglCompatibilityLogger,
+) {
+  const reset = new Set<HTMLCanvasElement>();
+  try {
+    for (const canvas of canvases) {
+      if (reset.has(canvas)) {
+        continue;
+      }
+      reset.add(canvas);
+      runBestEffort(
+        () => {
+          canvas.width = 0;
+          canvas.height = 0;
+        },
+        logger,
+        "[kerminal-terminal-renderer] WebGL canvas reset failed",
+        true,
+      );
+    }
+  } catch (error) {
+    runtimeCompatibilityDiagnostics.recordFailure(
+      "terminal.xterm-webview-patch",
+    );
+    warnSafely(
+      logger,
+      "[kerminal-terminal-renderer] WebGL canvas enumeration failed",
+      error,
+    );
+  }
+}
+
+/**
+ * 只对 rendererCanvases 调用公开的 WebGL context-loss 扩展；atlas 是 2D canvas，
+ * 因此必须由调用方先分类，避免每次 pane teardown 都产生兼容性误报。
+ */
 function releaseCanvasContext(
   canvas: HTMLCanvasElement,
   logger: XtermWebglCompatibilityLogger,
 ) {
   const gl = resolveWebglContext(canvas);
-  if (!gl) {
-    return;
+  if (gl) {
+    runBestEffort(
+      () => {
+        const extension = gl.getExtension("WEBGL_lose_context");
+        if (extension && !gl.isContextLost()) {
+          extension.loseContext();
+        }
+      },
+      logger,
+      "[kerminal-terminal-renderer] forced WebGL context loss failed",
+      true,
+    );
   }
-
-  runBestEffort(
-    () => {
-      const extension = gl.getExtension("WEBGL_lose_context");
-      if (extension && !gl.isContextLost()) {
-        extension.loseContext();
-      }
-    },
-    logger,
-    "[kerminal-terminal-renderer] forced WebGL context loss failed",
-    true,
-  );
-  runBestEffort(
-    () => {
-      canvas.width = 0;
-      canvas.height = 0;
-    },
-    logger,
-    "[kerminal-terminal-renderer] WebGL canvas reset failed",
-    true,
-  );
 }
 
 function resolveWebglContext(

@@ -59,6 +59,7 @@ import {
 } from "./terminalPaneRuntimeLifecycleRuntime";
 import type { TerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import { resolveSafeTerminalRendererType } from "./terminalRendererPlatform";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
@@ -148,11 +149,12 @@ export function XtermPane({
   const terminalSurfaceCoordinatorRef =
     useRef<((invalidate?: boolean) => void) | null>(null);
   const visibleRef = useRef(visible);
+  const effectiveRendererType = resolveSafeTerminalRendererType(terminalAppearance.rendererType);
   terminalRuntimeLifecycleControllerRef.current ??=
     createTerminalPaneRuntimeLifecycleRuntime({
       activeTab: visible,
       focused,
-      rendererType: terminalAppearance.rendererType,
+      rendererType: effectiveRendererType,
       visible,
     });
   const terminalRuntimeLifecycleRef =
@@ -493,9 +495,9 @@ export function XtermPane({
     terminal.options.scrollback = terminalAppearance.scrollback;
     terminal.options.theme = terminalTheme;
     terminalRuntimeLifecycleControllerRef.current?.markRendererType(
-      terminalAppearance.rendererType,
+      effectiveRendererType,
     );
-    terminalRendererRegistry.updateMode(terminalAppearance.rendererType);
+    terminalRendererRegistry.updateMode(effectiveRendererType);
     (terminal.options as { modifyOtherKeys?: number }).modifyOtherKeys =
       inputCompatibilityMode === "agentTui" ? 2 : 0;
     if (containerRef.current) {
@@ -509,6 +511,7 @@ export function XtermPane({
     }
   }, [
     inputCompatibilityMode,
+    effectiveRendererType,
     terminalAppearance,
     terminalFontWeight,
     terminalTheme,

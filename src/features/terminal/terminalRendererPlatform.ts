@@ -1,3 +1,11 @@
+// @author kongweiguang
+
+import type { TerminalRendererType } from "../settings/contracts/index";
+import {
+  resolveDesktopPlatform,
+  type DesktopPlatform,
+} from "../../lib/desktopPlatform";
+
 export type TerminalGpuPlatformClass =
   | "hardware-or-unknown"
   | "software"
@@ -24,6 +32,17 @@ export function shouldUseAutoGpuRenderer(
   platformClass = detectTerminalGpuPlatform(),
 ): boolean {
   return platformClass !== "software";
+}
+
+/**
+ * WebView2 151 与当前 xterm WebGL beta 在 pane 销毁后会持续保留 native renderer
+ * 内存；Windows 暂时统一降级 CPU，配置值不改写，便于上游修复验证后安全撤销。
+ */
+export function resolveSafeTerminalRendererType(
+  requested: TerminalRendererType,
+  desktopPlatform: DesktopPlatform = resolveDesktopPlatform(),
+): TerminalRendererType {
+  return desktopPlatform === "windows" ? "cpu" : requested;
 }
 
 export function classifyTerminalGpuRenderer(

@@ -30,14 +30,14 @@ describe("terminalDisposalCompatibility", () => {
       expect(terminal.dispose).toHaveBeenCalledOnce();
       expect(unregisterRenderer).toHaveBeenCalledOnce();
       expect(order).toEqual([
-        "terminal-dispose",
         "coordinator-cleanup",
+        "terminal-dispose",
         "dom-remove",
       ]);
     },
   );
 
-  it("lets real xterm dispose core, listeners, DOM, and loaded addons before the coordinator", () => {
+  it("releases the renderer coordinator before real xterm core, listeners, DOM, and addons", () => {
     type MediaListener = NonNullable<
       Parameters<MediaQueryList["addListener"]>[0]
     >;
@@ -83,7 +83,10 @@ describe("terminalDisposalCompatibility", () => {
       order.push("terminal-dispose");
       Terminal.prototype.dispose.call(terminal);
     });
-    const unregisterRenderer = vi.fn(() => order.push("coordinator-cleanup"));
+    const unregisterRenderer = vi.fn(() => {
+      order.push("coordinator-cleanup");
+      addon.dispose();
+    });
 
     disposeXtermTerminal(terminal, { unregisterRenderer });
 
@@ -91,9 +94,9 @@ describe("terminalDisposalCompatibility", () => {
     expect(addonDisposed).toHaveBeenCalledOnce();
     expect(unregisterRenderer).toHaveBeenCalledOnce();
     expect(order).toEqual([
-      "terminal-dispose",
-      "addon-dispose",
       "coordinator-cleanup",
+      "addon-dispose",
+      "terminal-dispose",
     ]);
     expect(mediaListeners).toHaveLength(1);
     expect(mediaListeners[0].removeListener).toHaveBeenCalledWith(
@@ -108,7 +111,7 @@ describe("terminalDisposalCompatibility", () => {
     container.remove();
   });
 
-  it("runs coordinator cleanup after terminal failure and rethrows its first error", () => {
+  it("continues coordinator and DOM cleanup after terminal failure", () => {
     const terminalError = new Error("terminal dispose failed");
     const remove = vi.fn();
     const unregisterRenderer = vi.fn();
@@ -188,7 +191,7 @@ describe("terminalDisposalCompatibility", () => {
     },
   );
 
-  it("preserves the first error when both terminal and coordinator cleanup fail", () => {
+  it("preserves the coordinator error when coordinator and terminal cleanup both fail", () => {
     const terminalError = new Error("terminal first");
     const coordinatorError = new Error("coordinator second");
     const unregisterRenderer = vi.fn(() => {
@@ -207,7 +210,7 @@ describe("terminalDisposalCompatibility", () => {
       ),
     );
 
-    expect(thrown).toEqual({ thrown: true, value: terminalError });
+    expect(thrown).toEqual({ thrown: true, value: coordinatorError });
     expect(unregisterRenderer).toHaveBeenCalledOnce();
   });
 
@@ -244,9 +247,9 @@ describe("terminalDisposalCompatibility", () => {
 
       expect(thrown).toEqual({ thrown: true, value: addonError });
       expect(order).toEqual([
+        "coordinator",
         "second-addon",
         "first-addon",
-        "coordinator",
       ]);
       expect(firstAddonDispose).toHaveBeenCalledOnce();
       expect(secondAddonDispose).toHaveBeenCalledOnce();
@@ -256,7 +259,7 @@ describe("terminalDisposalCompatibility", () => {
   );
 
   it.each([undefined, null])(
-    "keeps the first addon value when coordinator and DOM cleanup also throw %s",
+    "keeps the coordinator value when coordinator and DOM cleanup also throw %s",
     (addonError) => {
       const coordinatorError = new Error("coordinator second");
       const domError = new Error("dom third");
@@ -278,13 +281,13 @@ describe("terminalDisposalCompatibility", () => {
         ),
       );
 
-      expect(thrown).toEqual({ thrown: true, value: addonError });
+      expect(thrown).toEqual({ thrown: true, value: coordinatorError });
       expect(unregisterRenderer).toHaveBeenCalledOnce();
       expect(remove).toHaveBeenCalledOnce();
     },
   );
 
-  it("keeps terminal failure ahead of addon and coordinator failures", () => {
+  it("keeps coordinator failure ahead of terminal and addon failures", () => {
     const terminalError = new Error("terminal first");
     const coordinatorError = new Error("coordinator second");
     const errors = createXtermAddonDisposalErrorState();
@@ -307,7 +310,7 @@ describe("terminalDisposalCompatibility", () => {
       ),
     );
 
-    expect(thrown).toEqual({ thrown: true, value: terminalError });
+    expect(thrown).toEqual({ thrown: true, value: coordinatorError });
     expect(unregisterRenderer).toHaveBeenCalledOnce();
   });
 

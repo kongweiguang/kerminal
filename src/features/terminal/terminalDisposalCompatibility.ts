@@ -64,12 +64,12 @@ export function wrapXtermAddonForDisposal<T extends ITerminalAddon>(
 }
 
 /**
- * 先交还 xterm 对 core、DOM listener 和已加载 addon 的所有权，再撤销
- * renderer registry 的 lease；这样 controller 不会在 xterm 仍持有 addon 时
- * 释放相同资源。最后幂等移除残留根节点，覆盖 xterm 自身析构失败的半清理状态。
- * 三个步骤都采用 best-effort，避免任意一个析构异常阻断后续清理。
- * core 若在 AddonManager 之前失败，则反向重放已登记 wrapper，确保 fit/search
- * 仍释放；正常路径因 wrapper 幂等而保持 xterm 原生顺序。
+ * 先撤销 renderer registry 的 lease，使 WebGL addon 在 xterm core 与 DOM 仍
+ * 存活时执行公开 dispose；随后把 core、DOM listener 和剩余 addon 的所有权交还
+ * xterm，最后幂等移除残留根节点。这样 addon 的 CPU renderer 回切不会读已销毁
+ * core，且 xterm 仍保持原生 core→addons 顺序。
+ * 三个步骤都采用 best-effort，避免任意一个析构异常阻断后续清理；若 core 在
+ * AddonManager 之前失败，则反向重放已登记 wrapper，确保 fit/search 仍释放。
  *
  * `hasFirstError` 与错误值分开记录，因为 JavaScript 允许 `throw undefined`
  * 或 `throw null`；仅用错误值判断会错误地吞掉这两类析构失败。
@@ -83,10 +83,19 @@ export function disposeXtermTerminal(
   let firstError: unknown;
 
   try {
-    terminal.dispose();
+    coordinator.unregisterRenderer();
   } catch (error) {
     hasFirstError = true;
     firstError = error;
+  }
+
+  try {
+    terminal.dispose();
+  } catch (error) {
+    if (!hasFirstError) {
+      hasFirstError = true;
+      firstError = error;
+    }
   }
 
   for (const addon of [...(addonErrors?.ownedAddons ?? [])].reverse()) {
@@ -110,15 +119,6 @@ export function disposeXtermTerminal(
   if (!hasFirstError && addonErrors?.hasFirstError) {
     hasFirstError = true;
     firstError = addonErrors.firstError;
-  }
-
-  try {
-    coordinator.unregisterRenderer();
-  } catch (error) {
-    if (!hasFirstError) {
-      hasFirstError = true;
-      firstError = error;
-    }
   }
 
   try {
