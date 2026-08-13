@@ -1,135 +1,34 @@
 // @author kongweiguang
 
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ITerminalAddon } from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
-import {
-  disposeXtermTerminal,
-  shouldUseWebView2GcFallback,
-  XTERM_WEBVIEW2_DISPOSE_OOM_VERSION,
-  type XtermTerminalDisposalEnvironment,
-} from "../../../../src/features/terminal/terminalDisposalCompatibility";
-
-const macosEnvironment: XtermTerminalDisposalEnvironment = {
-  desktopPlatform: "macos",
-  xtermVersion: XTERM_WEBVIEW2_DISPOSE_OOM_VERSION,
-};
-
-const windowsFallbackEnvironment: XtermTerminalDisposalEnvironment = {
-  desktopPlatform: "windows",
-  xtermVersion: XTERM_WEBVIEW2_DISPOSE_OOM_VERSION,
-};
-
-const windowsSafeEnvironment: XtermTerminalDisposalEnvironment = {
-  desktopPlatform: "windows",
-  xtermVersion: "6.1.0-beta.300",
-};
+import { disposeXtermTerminal } from "../../../../src/features/terminal/terminalDisposalCompatibility";
 
 describe("terminalDisposalCompatibility", () => {
-  it("uses the complete public dispose sequence on macOS with the exact beta version", () => {
-    runPublicDisposeSequenceAssertions(macosEnvironment);
-  });
+  it.each(["browser", "linux", "macos", "windows"])(
+    "uses the same public disposal contract on %s",
+    () => {
+      const order: string[] = [];
+      const terminal = {
+        element: { remove: vi.fn(() => order.push("dom-remove")) },
+        dispose: vi.fn(() => order.push("terminal-dispose")),
+      };
+      const unregisterRenderer = vi.fn(() => order.push("coordinator-cleanup"));
 
-  it("uses the complete public dispose sequence on Windows with a non-problem version", () => {
-    runPublicDisposeSequenceAssertions(windowsSafeEnvironment);
-  });
+      const result = disposeXtermTerminal(terminal, { unregisterRenderer });
 
-  it("avoids terminal.dispose on the Windows WebView2 OOM version and lets the registry own the addon", () => {
-    const order: string[] = [];
-    const element = document.createElement("div");
-    document.body.append(element);
-    const removeSpy = vi.spyOn(element, "remove").mockImplementation(() => {
-      order.push("element-remove");
-      element.parentElement?.removeChild(element);
-    });
-    const rendererController = {
-      dispose: vi.fn(() => {
-        order.push("controller-regular-dispose");
-      }),
-    };
-    const terminal = {
-      dispose: vi.fn(() => {
-        order.push("terminal-public-dispose");
-      }),
-      element,
-    };
-    const unregisterRenderer = vi.fn(() => {
-      order.push("registry-unregister");
-      // 模拟 registry 对仍未 disposed 的 controller 执行普通 dispose（释放 addon）。
-      rendererController.dispose();
-    });
+      expect(result).toBeUndefined();
+      expect(terminal.dispose).toHaveBeenCalledOnce();
+      expect(unregisterRenderer).toHaveBeenCalledOnce();
+      expect(order).toEqual([
+        "terminal-dispose",
+        "coordinator-cleanup",
+        "dom-remove",
+      ]);
+    },
+  );
 
-    const mode = disposeXtermTerminal(
-      terminal,
-      { unregisterRenderer },
-      windowsFallbackEnvironment,
-    );
-
-    expect(mode).toBe("webview2-gc-fallback");
-    expect(rendererController.dispose).toHaveBeenCalledOnce();
-    expect(terminal.dispose).not.toHaveBeenCalled();
-    expect(unregisterRenderer).toHaveBeenCalledOnce();
-    expect(removeSpy).toHaveBeenCalledOnce();
-    expect(order).toEqual([
-      "registry-unregister",
-      "controller-regular-dispose",
-      "element-remove",
-    ]);
-    expect(document.body.contains(element)).toBe(false);
-  });
-
-  it("unregisters the renderer before an xterm dispose failure reaches the caller", () => {
-    const error = new Error("xterm dispose failed");
-    const unregisterRenderer = vi.fn();
-
-    expect(() =>
-      disposeXtermTerminal(
-        { dispose: () => { throw error; } },
-        { unregisterRenderer },
-        macosEnvironment,
-      ),
-    ).toThrow(error);
-    expect(unregisterRenderer).toHaveBeenCalledOnce();
-  });
-
-  it("still disposes the terminal when unregister fails and surfaces the first error", () => {
-    const unregisterError = new Error("registry unregister failed");
-    const terminalDispose = vi.fn();
-    const unregisterRenderer = vi.fn(() => {
-      throw unregisterError;
-    });
-
-    expect(() =>
-      disposeXtermTerminal(
-        { dispose: terminalDispose },
-        { unregisterRenderer },
-        macosEnvironment,
-      ),
-    ).toThrow(unregisterError);
-    expect(terminalDispose).toHaveBeenCalledOnce();
-  });
-
-  it("surfaces a fallback element-remove failure after unregister", () => {
-    const removeError = new Error("element remove failed");
-    const unregisterRenderer = vi.fn();
-    const terminal = {
-      dispose: vi.fn(),
-      element: {
-        remove: () => { throw removeError; },
-      } as unknown as HTMLElement,
-    };
-
-    expect(() =>
-      disposeXtermTerminal(
-        terminal,
-        { unregisterRenderer },
-        windowsFallbackEnvironment,
-      ),
-    ).toThrow(removeError);
-    expect(unregisterRenderer).toHaveBeenCalledOnce();
-    expect(terminal.dispose).not.toHaveBeenCalled();
-  });
-
-  it("releases real xterm window resize and DPR media listeners through public dispose", () => {
+  it("lets real xterm dispose core, listeners, DOM, and loaded addons before the coordinator", () => {
     type MediaListener = NonNullable<
       Parameters<MediaQueryList["addListener"]>[0]
     >;
@@ -158,18 +57,35 @@ describe("terminalDisposalCompatibility", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       measureText: vi.fn(() => ({ width: 10 })),
     } as unknown as CanvasRenderingContext2D);
+
     const terminal = new Terminal();
     const container = document.createElement("div");
     document.body.append(container);
     terminal.open(container);
+    const order: string[] = [];
+    const addonDisposed = vi.fn(() => order.push("addon-dispose"));
+    const addon: ITerminalAddon = {
+      activate: vi.fn(),
+      dispose: addonDisposed,
+    };
+    terminal.loadAddon(addon);
 
-    const mode = disposeXtermTerminal(
-      terminal,
-      { unregisterRenderer: vi.fn() },
-      macosEnvironment,
-    );
+    const terminalDispose = vi.spyOn(terminal, "dispose").mockImplementation(() => {
+      order.push("terminal-dispose");
+      Terminal.prototype.dispose.call(terminal);
+    });
+    const unregisterRenderer = vi.fn(() => order.push("coordinator-cleanup"));
 
-    expect(mode).toBe("public-dispose");
+    disposeXtermTerminal(terminal, { unregisterRenderer });
+
+    expect(terminalDispose).toHaveBeenCalledOnce();
+    expect(addonDisposed).toHaveBeenCalledOnce();
+    expect(unregisterRenderer).toHaveBeenCalledOnce();
+    expect(order).toEqual([
+      "terminal-dispose",
+      "addon-dispose",
+      "coordinator-cleanup",
+    ]);
     expect(mediaListeners).toHaveLength(1);
     expect(mediaListeners[0].removeListener).toHaveBeenCalledWith(
       mediaListeners[0].listener,
@@ -182,51 +98,96 @@ describe("terminalDisposalCompatibility", () => {
     expect(container.querySelector(".xterm")).toBeNull();
     container.remove();
   });
-});
 
-function runPublicDisposeSequenceAssertions(
-  environment: XtermTerminalDisposalEnvironment,
-) {
-  const order: string[] = [];
-  let addonDisposed = false;
-  const addonDispose = vi.fn(() => {
-    addonDisposed = true;
-    order.push("xterm-addon-dispose");
-  });
-  const rendererController = {
-    dispose: vi.fn(() => {
-      order.push("controller-regular-dispose");
-      addonDispose();
-    }),
-  };
-  const terminal = {
-    dispose: vi.fn(() => {
-      expect(addonDisposed).toBe(true);
-      order.push("terminal-public-dispose");
-    }),
-  };
-  const unregisterRenderer = vi.fn(() => {
-    order.push("registry-unregister");
-    // registry cleanup 对仍可用的 controller 执行普通 dispose，完整释放 WebGL addon。
-    rendererController.dispose();
+  it("runs coordinator cleanup after terminal failure and rethrows its first error", () => {
+    const terminalError = new Error("terminal dispose failed");
+    const remove = vi.fn();
+    const unregisterRenderer = vi.fn();
+
+    const thrown = captureThrown(() =>
+      disposeXtermTerminal(
+        {
+          element: { remove },
+          dispose: () => {
+            throw terminalError;
+          },
+        },
+        { unregisterRenderer },
+      ),
+    );
+
+    expect(thrown).toBe(terminalError);
+    expect(unregisterRenderer).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
   });
 
-  const mode = disposeXtermTerminal(
-    terminal,
-    { unregisterRenderer },
-    environment,
+  it("runs terminal cleanup after coordinator failure and rethrows the coordinator error", () => {
+    const coordinatorError = new Error("coordinator cleanup failed");
+    const terminalDispose = vi.fn();
+    const unregisterRenderer = vi.fn(() => {
+      throw coordinatorError;
+    });
+
+    const thrown = captureThrown(() =>
+      disposeXtermTerminal(
+        { dispose: terminalDispose, element: { remove: vi.fn() } },
+        { unregisterRenderer },
+      ),
+    );
+
+    expect(thrown).toBe(coordinatorError);
+    expect(terminalDispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, null])(
+    "does not swallow a first cleanup failure that throws %s",
+    (firstError) => {
+      const terminalDispose = vi.fn(() => {
+        throw firstError;
+      });
+      const unregisterRenderer = vi.fn();
+
+      const thrown = captureThrown(() =>
+        disposeXtermTerminal(
+          { dispose: terminalDispose, element: { remove: vi.fn() } },
+          { unregisterRenderer },
+        ),
+      );
+
+      expect(thrown).toBe(firstError);
+      expect(unregisterRenderer).toHaveBeenCalledOnce();
+    },
   );
 
-  expect(mode).toBe("public-dispose");
-  expect(shouldUseWebView2GcFallback(environment)).toBe(false);
-  expect(unregisterRenderer).toHaveBeenCalledOnce();
-  expect(rendererController.dispose).toHaveBeenCalledOnce();
-  expect(addonDispose).toHaveBeenCalledOnce();
-  expect(terminal.dispose).toHaveBeenCalledOnce();
-  expect(order).toEqual([
-    "registry-unregister",
-    "controller-regular-dispose",
-    "xterm-addon-dispose",
-    "terminal-public-dispose",
-  ]);
+  it("preserves the first error when both terminal and coordinator cleanup fail", () => {
+    const terminalError = new Error("terminal first");
+    const coordinatorError = new Error("coordinator second");
+    const unregisterRenderer = vi.fn(() => {
+      throw coordinatorError;
+    });
+
+    const thrown = captureThrown(() =>
+      disposeXtermTerminal(
+        {
+          element: { remove: vi.fn() },
+          dispose: () => {
+            throw terminalError;
+          },
+        },
+        { unregisterRenderer },
+      ),
+    );
+
+    expect(thrown).toBe(terminalError);
+    expect(unregisterRenderer).toHaveBeenCalledOnce();
+  });
+});
+
+function captureThrown(action: () => void): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }

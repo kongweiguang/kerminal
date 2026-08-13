@@ -523,41 +523,68 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   fitAndResize();
   surfaceEvents.install();
   return () => {
+    if (disposed) {
+      return;
+    }
     disposed = true;
-    sessionRuntime.dispose();
-    surfaceEvents.dispose();
-    rendererHealthWatchdog?.dispose();
+    let hasFirstError = false;
+    let firstError: unknown;
+    /**
+     * 卸载时每个 runtime 都是独立所有权；隔离单步异常可以保证 terminal core
+     * 以及 renderer registry 仍会执行，最后再把首个错误交给 React 生命周期。
+     */
+    const runCleanup = (cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!hasFirstError) {
+          hasFirstError = true;
+          firstError = error;
+        }
+      }
+    };
+
+    runCleanup(() => sessionRuntime.dispose());
+    runCleanup(() => surfaceEvents.dispose());
+    runCleanup(() => rendererHealthWatchdog?.dispose());
     rendererHealthWatchdog = null;
-    rendererSurfaceCoordinator?.dispose();
+    runCleanup(() => rendererSurfaceCoordinator?.dispose());
     rendererSurfaceCoordinator = null;
-    if (terminalSurfaceCoordinatorRef?.current) {
-      terminalSurfaceCoordinatorRef.current = null;
-    }
-    ghostSuggestions.dispose();
+    runCleanup(() => {
+      if (terminalSurfaceCoordinatorRef?.current) {
+        terminalSurfaceCoordinatorRef.current = null;
+      }
+    });
+    runCleanup(() => ghostSuggestions.dispose());
     suggestionMenuIntentRef.current = null;
-    commandBlockRuntime.clearCommandBlockViewSyncFrame();
-    artifactRuntime.close();
-    outputHistoryBuffer.dispose();
-    unregisterRuntimeDiagnostics();
-    runtimeEvents.dispose();
+    runCleanup(() => commandBlockRuntime.clearCommandBlockViewSyncFrame());
+    runCleanup(() => artifactRuntime.close());
+    runCleanup(() => outputHistoryBuffer.dispose());
+    runCleanup(() => unregisterRuntimeDiagnostics());
+    runCleanup(() => runtimeEvents.dispose());
     for (const disposable of shellIntegrationOscDisposables) {
-      disposable.dispose();
+      runCleanup(() => disposable.dispose());
     }
-    commandBlockClearHandlersDisposable.dispose();
-    terminalInlineSshAuthPrompt.finish(null);
-    paneResizeController.dispose();
+    runCleanup(() => commandBlockClearHandlersDisposable.dispose());
+    runCleanup(() => terminalInlineSshAuthPrompt.finish(null));
+    runCleanup(() => paneResizeController.dispose());
     shellIntegrationCommandBlockProtocolRef.current = false;
-    commandBlockRuntime.resetProtocolState();
-    outputWriter.dispose();
-    activityRuntime.dispose();
+    runCleanup(() => commandBlockRuntime.resetProtocolState());
+    runCleanup(() => outputWriter.dispose());
+    runCleanup(() => activityRuntime.dispose());
     if (activityRuntimeRef.current === activityRuntime) {
       activityRuntimeRef.current = null;
     }
-    try {
+
+    // xterm owns core/listener/addon teardown; only after it completes may the
+    // renderer registry revoke its controller lease.
+    runCleanup(() =>
       disposeXtermTerminal(terminal, {
         unregisterRenderer: unregisterTerminalRenderer,
-      });
-    } finally {
+      }),
+    );
+
+    runCleanup(() => {
       if (
         terminalRendererControllerRef.current === terminalRendererController
       ) {
@@ -571,6 +598,10 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       setGhostSuggestion(null);
       setLogState({ active: false, bytesWritten: 0 });
       setLogNotice(null);
+    });
+
+    if (hasFirstError) {
+      throw firstError;
     }
   };
 }

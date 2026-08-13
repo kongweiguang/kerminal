@@ -1,90 +1,56 @@
 // @author kongweiguang
 
-import packageManifest from "../../../package.json";
-import {
-  resolveDesktopPlatform,
-  type DesktopPlatform,
-} from "../../lib/desktopPlatform";
-
-export const XTERM_WEBVIEW2_DISPOSE_OOM_VERSION = "6.1.0-beta.288";
-
 interface DisposableXtermTerminal {
   dispose(): void;
-  element?: HTMLElement;
+  element?: { remove(): void };
 }
 
 interface XtermTerminalDisposalCoordinator {
   unregisterRenderer(): void;
 }
 
-export interface XtermTerminalDisposalEnvironment {
-  desktopPlatform: DesktopPlatform;
-  xtermVersion: string;
-}
-
-export type XtermTerminalDisposalMode =
-  | "public-dispose"
-  | "webview2-gc-fallback";
-
 /**
- * 按固定所有权顺序关闭 xterm runtime，并为已确认会让 WebView2 OOM 的精确
- * 版本组合保留保守的 GC 回退。
+ * 先交还 xterm 对 core、DOM listener 和已加载 addon 的所有权，再撤销
+ * renderer registry 的 lease；这样 controller 不会在 xterm 仍持有 addon 时
+ * 释放相同资源。最后幂等移除残留根节点，覆盖 xterm 自身析构失败的半清理状态。
+ * 三个步骤都采用 best-effort，避免任意一个析构异常阻断后续清理。
  *
- * 正常路径（macOS、Linux、browser 以及其它 xterm 版本）：先 unregisterRenderer，
- * 由 registry 对仍可用的 controller 执行普通 dispose 并完整释放 WebGL addon；
- * 随后 terminal.dispose 释放 xterm core 与其余 addon。顺序固定为
- * registry/controller dispose（addon 释放）-> xterm dispose。
- *
- * 问题组合（Windows + XTERM_WEBVIEW2_DISPOSE_OOM_VERSION）：绝不调用
- * terminal.dispose。同样先 unregisterRenderer，让 registry 释放 addon，再主动
- * 移除 terminal DOM，让剩余 xterm 对象随已断开的子树和引用一起回收。顺序固定为
- * registry/controller dispose -> element remove。
- *
- * 任一步骤抛错都会继续完成剩余清理（best-effort），并把第一个异常重新抛出，
- * 保证调用方不会因为资源析构失败而留下 registry 或 React refs。
+ * `hasFirstError` 与错误值分开记录，因为 JavaScript 允许 `throw undefined`
+ * 或 `throw null`；仅用错误值判断会错误地吞掉这两类析构失败。
  */
 export function disposeXtermTerminal(
   terminal: DisposableXtermTerminal,
   coordinator: XtermTerminalDisposalCoordinator,
-  environment: XtermTerminalDisposalEnvironment = runtimeEnvironment(),
-): XtermTerminalDisposalMode {
-  const mode = shouldUseWebView2GcFallback(environment)
-    ? "webview2-gc-fallback"
-    : "public-dispose";
+): void {
+  let hasFirstError = false;
   let firstError: unknown;
+
+  try {
+    terminal.dispose();
+  } catch (error) {
+    hasFirstError = true;
+    firstError = error;
+  }
+
   try {
     coordinator.unregisterRenderer();
   } catch (error) {
-    firstError ??= error;
-  }
-  try {
-    if (mode === "webview2-gc-fallback") {
-      terminal.element?.remove();
-    } else {
-      terminal.dispose();
+    if (!hasFirstError) {
+      hasFirstError = true;
+      firstError = error;
     }
-  } catch (error) {
-    firstError ??= error;
   }
-  if (firstError !== undefined) {
+
+  try {
+    terminal.element?.remove();
+  } catch (error) {
+    if (!hasFirstError) {
+      hasFirstError = true;
+      firstError = error;
+    }
+  }
+
+  if (hasFirstError) {
     throw firstError;
   }
-  return mode;
-}
-
-export function shouldUseWebView2GcFallback({
-  desktopPlatform,
-  xtermVersion,
-}: XtermTerminalDisposalEnvironment): boolean {
-  return (
-    desktopPlatform === "windows" &&
-    xtermVersion === XTERM_WEBVIEW2_DISPOSE_OOM_VERSION
-  );
-}
-
-function runtimeEnvironment(): XtermTerminalDisposalEnvironment {
-  return {
-    desktopPlatform: resolveDesktopPlatform(),
-    xtermVersion: packageManifest.dependencies["@xterm/xterm"],
-  };
 }

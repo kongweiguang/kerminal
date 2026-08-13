@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -460,6 +462,41 @@ describe("terminalRenderer", () => {
         activeTimerCount: 0,
         lifecycle: expect.objectContaining({ state: "disposed" }),
       }),
+    );
+  });
+
+  it("keeps controller disposal idempotent when compatibility cleanup fails", async () => {
+    const logger = { warn: vi.fn() };
+    const compatibilityError = new Error("compatibility cleanup failed");
+    const compatibilityAdapter = {
+      capabilities: {
+        forceContextLoss: false,
+        privateRendererCleanup: false,
+      },
+      dispose: vi.fn(() => {
+        throw compatibilityError;
+      }),
+    };
+    const controller = createTerminalRendererController({
+      compatibilityAdapter,
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      logger,
+      paneId: "pane-controller-cleanup-failure",
+      rendererType: "auto",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+
+    expect(() => controller.dispose()).not.toThrow();
+    controller.dispose();
+
+    expect(compatibilityAdapter.dispose).toHaveBeenCalledOnce();
+    expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("compatibility dispose failed"),
+      compatibilityError,
     );
   });
 
