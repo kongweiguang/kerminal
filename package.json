@@ -1,7 +1,7 @@
 {
   "name": "kerminal",
   "private": true,
-  "version": "0.3.20",
+  "version": "0.3.21",
   "type": "module",
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.33.0",
@@ -117,5 +117,12 @@
     "typescript-eslint": "^8.63.0",
     "vite": "^7.0.4",
     "vitest": "^4.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "dompurify": "3.4.13",
+      "nanoid": "3.3.17",
+      "postcss": "8.5.23"
+    }
   }
 }

@@ -698,6 +698,10 @@ function findLastMountedRuntimeSlot(slots: TerminalPaneRuntimeSlot[]) {
   return undefined;
 }
 
+/**
+ * 从全部 terminal tabs 建立唯一 runtime 列表，让切换 tab 只迁移 portal host，
+ * 不因视图切换重建底层会话；active 状态只来自当前 tab。
+ */
 function resolveTerminalRuntimePanes(
   tabs: TerminalTab[],
   activeTab: TerminalTab | undefined,

@@ -2,7 +2,7 @@
 
 [package]
 name = "kerminal"
-version = "0.3.20"
+version = "0.3.21"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -59,7 +59,7 @@ tauri-plugin-deep-link = "2.4.9"
 rfd = { version = "0.16.0", default-features = false }
 async-trait = "0.1"
 futures = "0.3"
-russh = { version = "0.61.2", default-features = false, features = ["flate2", "ring", "rsa"] }
+russh = { version = "0.62.5", default-features = false, features = ["flate2", "ring", "rsa"] }
 russh-sftp = { package = "bssh-russh-sftp", version = "2.3.0" }
 serialport = "4"
 tokio = { version = "1.52.3", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }

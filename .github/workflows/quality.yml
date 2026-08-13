@@ -80,6 +80,22 @@ jobs:
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Reject moderate-or-higher production dependency advisories
+        run: pnpm audit --prod --audit-level moderate --registry=https://registry.npmjs.org
+
+      - name: Install RustSec audit tool
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      # rkyv 0.7 is only optional lockfile metadata from rust_decimal and is absent from every
+      # target dependency graph. russh needs RSA SSH key compatibility, while RUSTSEC-2023-0071
+      # has no patched rsa release and concerns private-key decryption rather than SSH signing.
+      # Keeping the exceptions explicit means every other current or future advisory still fails CI.
+      - name: Reject unreviewed RustSec vulnerabilities
+        run: >-
+          cargo audit --file src-tauri/Cargo.lock
+          --ignore RUSTSEC-2026-0235
+          --ignore RUSTSEC-2023-0071
+
       - name: Prepare source-size ratchet reference
         shell: bash
         env:
@@ -161,9 +177,55 @@ jobs:
           tests/frontend/features/terminal/terminalRuntimeSlots.test.ts
           tests/frontend/features/terminal/useTerminalRuntimePaneRetirement.test.tsx
           tests/frontend/features/terminal/TerminalPaneCard.test.tsx
+          tests/frontend/features/terminal/TerminalWorkspace.runtimeOverlay.test.tsx
+          tests/frontend/features/terminal/xterm-pane/XtermPane.lifecycle.test.tsx
+
+      - name: Run bounded terminal disposal soak
+        run: pnpm run verify:terminal-renderer-soak -- --duration-minutes 0.05
 
       - name: Build frontend
         env:
           # macOS ARM 的默认 V8 堆上限不足以完成当前 Monaco/xterm bundle，避免 CI 在构建阶段误报 OOM。
           NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm run build
+
+  native-platform-check:
+    name: Native check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout validation ref
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Windows native build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nasm strawberryperl -y --no-progress
+
+      - name: Install macOS native build dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          shared-key: native-check-${{ matrix.os }}
+
+      # Rust/Tauri dependencies contain platform-specific branches that the Linux quality
+      # job cannot compile; checking both desktop targets before tagging keeps release failures reversible.
+      - name: Check native application and tests
+        working-directory: src-tauri
+        run: cargo check --all-targets --all-features

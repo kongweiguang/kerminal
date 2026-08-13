@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 export interface TerminalRendererFeatureGates {
   adaptiveOutputScheduler: boolean;
   healthWatchdog: boolean;

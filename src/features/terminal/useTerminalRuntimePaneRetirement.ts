@@ -140,7 +140,6 @@ export function useTerminalRuntimePaneRetirement(
       ),
   );
   const retainedPaneByIdRef = useRef(retainedPaneById);
-  retainedPaneByIdRef.current = retainedPaneById;
   const pendingRetirementsRef = useRef(
     new Map<string, PendingTerminalRuntimePaneRetirement>(),
   );
@@ -149,7 +148,6 @@ export function useTerminalRuntimePaneRetirement(
     currentPanes.map((runtimePane) => runtimePane.pane.id),
   );
   const currentPaneIdsRef = useRef(currentPaneIds);
-  currentPaneIdsRef.current = currentPaneIds;
   const currentPaneIdSnapshot = JSON.stringify([...currentPaneIds]);
 
   const retiringPanes = [...retainedPaneById.values()].flatMap((runtimePane) =>
@@ -159,43 +157,36 @@ export function useTerminalRuntimePaneRetirement(
   );
 
   useLayoutEffect(() => {
-    const snapshotChanged = currentPanes.some(
-      (runtimePane) =>
-        !terminalRuntimeRetirementSnapshotEqual(
-          retainedPaneByIdRef.current.get(runtimePane.pane.id),
+    let nextRetainedPaneById = retainedPaneById;
+    for (const runtimePane of currentPanes) {
+      const paneId = runtimePane.pane.id;
+      if (
+        terminalRuntimeRetirementSnapshotEqual(
+          retainedPaneById.get(paneId),
           runtimePane,
-        ),
-    );
-    if (!snapshotChanged) {
-      return;
+        )
+      ) {
+        continue;
+      }
+      if (nextRetainedPaneById === retainedPaneById) {
+        nextRetainedPaneById = new Map(retainedPaneById);
+      }
+      nextRetainedPaneById.set(paneId, runtimePane);
     }
 
-    setRetainedPaneById((retained) => {
-      let next = retained;
-      for (const runtimePane of currentPanes) {
-        const paneId = runtimePane.pane.id;
-        if (
-          terminalRuntimeRetirementSnapshotEqual(
-            retained.get(paneId),
-            runtimePane,
-          )
-        ) {
-          continue;
-        }
-        if (next === retained) {
-          next = new Map(retained);
-        }
-        next.set(paneId, runtimePane);
-      }
-      return next;
-    });
-  }, [currentPanes]);
+    // 已调度 callback 只能读取已提交快照；否则中止 render 会让未出现的 pane 看似存活。
+    retainedPaneByIdRef.current = nextRetainedPaneById;
+    currentPaneIdsRef.current = new Set(
+      currentPanes.map((runtimePane) => runtimePane.pane.id),
+    );
+    if (nextRetainedPaneById !== retainedPaneById) {
+      setRetainedPaneById(nextRetainedPaneById);
+    }
+  }, [currentPanes, retainedPaneById]);
 
   useEffect(() => {
     const pendingRetirements = pendingRetirementsRef.current;
-    const nextCurrentPaneIds = new Set(
-      JSON.parse(currentPaneIdSnapshot) as string[],
-    );
+    const nextCurrentPaneIds = currentPaneIdsRef.current;
     const environmentChanged = environmentRef.current !== environment;
     if (environmentChanged) {
       // 调度器切换时旧环境可能不会再派发 callback，先取消其全部任务再迁移。

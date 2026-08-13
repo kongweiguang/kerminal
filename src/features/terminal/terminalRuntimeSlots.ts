@@ -24,6 +24,10 @@ interface UpdateTerminalRuntimeSlotOptions {
   retainUnmounted: boolean;
 }
 
+/**
+ * 以 pane 为边界更新 runtime host；卸载后的退休 slot 必须降为 inactive，
+ * 否则 portal 可能在关闭帧继续把 renderer 当作可见资源驱动。
+ */
 export function updateTerminalRuntimeSlot(
   current: TerminalRuntimeSlots,
   {
@@ -68,6 +72,9 @@ export function updateTerminalRuntimeSlot(
   ]);
 }
 
+/**
+ * 只保留 retirement hook 仍承诺保活的 pane，避免已结束的一帧退休留下孤立 DOM host。
+ */
 export function pruneTerminalRuntimeSlots(
   current: TerminalRuntimeSlots,
   retainedPaneIds: ReadonlySet<string>,
@@ -86,6 +93,9 @@ export function pruneTerminalRuntimeSlots(
   return next;
 }
 
+/**
+ * 在保持引用稳定的前提下原子替换单个 pane 的 slots，降低 portal 无效迁移和重渲染。
+ */
 function replaceTerminalRuntimeSlots(
   current: TerminalRuntimeSlots,
   paneId: string,

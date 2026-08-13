@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TERMINAL_RENDERER_FEATURE_GATES,
@@ -49,6 +51,7 @@ describe("terminalRendererFeatureGates", () => {
         env: {
           VITE_TERMINAL_RENDERER_HEALTH_WATCHDOG: "0",
           VITE_TERMINAL_RENDERER_LIFECYCLE_V2: "false",
+          VITE_TERMINAL_RENDERER_PRIVATE_CLEANUP_COMPAT: "true",
         },
         storage,
       }),
@@ -57,7 +60,7 @@ describe("terminalRendererFeatureGates", () => {
       healthWatchdog: false,
       lifecycleV2: true,
       performanceTelemetry: true,
-      privateCleanupCompat: false,
+      privateCleanupCompat: true,
     });
   });
 });

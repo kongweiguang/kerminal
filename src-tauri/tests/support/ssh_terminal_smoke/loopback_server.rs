@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 #[derive(Clone)]
 struct LoopbackInteractiveSshServer;
 
@@ -32,13 +34,16 @@ impl russh::server::Handler for LoopbackInteractiveSshSession {
         }
     }
 
+    /// 显式接受会话通道，使 loopback fixture 与 russh 0.62 的真实服务端握手语义一致。
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         self.channels.insert(channel.id(), channel);
-        Ok(true)
+        reply.accept().await;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

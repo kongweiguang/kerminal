@@ -41,16 +41,13 @@ const result = await run(
 process.stdout.write(result.stdout);
 process.stderr.write(result.stderr);
 const reportLine = result.stdout
+  .concat("\n", result.stderr)
   .split(/\r?\n/)
   .find((line) => line.includes("TERMINAL_RENDERER_SOAK_REPORT="));
-const generatedReport =
-  result.exitCode === 0 && reportLine
-    ? JSON.parse(reportLine.split("TERMINAL_RENDERER_SOAK_REPORT=")[1])
-    : {
-        actualDurationMs: Date.now() - startedAt,
-        cycles: 0,
-        pass: false,
-      };
+const generatedReport = readSoakReport(
+  reportLine,
+  Date.now() - startedAt,
+);
 const report = {
   ...generatedReport,
   requestedDurationMinutes: durationMinutes,
@@ -90,6 +87,31 @@ function readPositiveNumber(value, fallback, label) {
   return parsed;
 }
 
+/**
+ * 即使 Vitest 在报告输出后的断言阶段失败，也保留已生成的 cycles/resource
+ * 证据；最终 pass 仍由子进程退出码和报告自身共同判定，避免误报成功。
+ */
+function readSoakReport(reportLine, elapsedMs) {
+  const fallback = {
+    actualDurationMs: elapsedMs,
+    cycles: 0,
+    pass: false,
+  };
+  if (!reportLine) {
+    return fallback;
+  }
+  const payload = reportLine.split("TERMINAL_RENDERER_SOAK_REPORT=")[1];
+  if (!payload) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(payload);
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function run(command, commandArgs, env) {
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
@@ -99,6 +121,15 @@ function run(command, commandArgs, env) {
     });
     let stdout = "";
     let stderr = "";
+    const signalHandlers = new Map(
+      ["SIGINT", "SIGTERM"].map((signal) => [
+        signal,
+        () => terminateChildTree(child, signal),
+      ]),
+    );
+    for (const [signal, handler] of signalHandlers) {
+      process.once(signal, handler);
+    }
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
     });
@@ -106,7 +137,27 @@ function run(command, commandArgs, env) {
       stderr += String(chunk);
     });
     child.on("close", (exitCode) => {
+      for (const [signal, handler] of signalHandlers) {
+        process.removeListener(signal, handler);
+      }
       resolve({ exitCode: exitCode ?? 1, stderr, stdout });
     });
   });
+}
+
+/**
+ * soak 会再启动 Vitest worker；收到中断时终止整棵子进程树，避免长稳测试在
+ * 调用 shell 退出后继续占用内存并污染下一轮发布验证。
+ */
+function terminateChildTree(child, signal) {
+  if (!child.pid || child.exitCode !== null) {
+    return;
+  }
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      windowsHide: true,
+    });
+    return;
+  }
+  child.kill(signal);
 }
