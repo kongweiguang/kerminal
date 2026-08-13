@@ -263,4 +263,33 @@ describe("TerminalPaneCard", () => {
       expect.any(Object),
     );
   });
+
+  it("reports the exact runtime slot element on mount and unmount", () => {
+    const onRuntimeSlotChange = vi.fn();
+    const { unmount } = renderPaneCard(baseTerminalPane, {
+      onRuntimeSlotChange,
+      runtimeMount: "slot",
+      runtimeSlotActive: true,
+    });
+    const slot = document.querySelector<HTMLElement>(
+      '[data-terminal-pane-runtime-slot="pane-local"]',
+    );
+
+    expect(slot).toBeTruthy();
+    expect(onRuntimeSlotChange).toHaveBeenLastCalledWith(
+      "pane-local",
+      slot,
+      true,
+      true,
+    );
+
+    unmount();
+
+    expect(onRuntimeSlotChange).toHaveBeenLastCalledWith(
+      "pane-local",
+      slot,
+      true,
+      false,
+    );
+  });
 });

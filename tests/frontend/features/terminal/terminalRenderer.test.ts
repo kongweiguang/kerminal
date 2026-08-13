@@ -418,6 +418,50 @@ describe("terminalRenderer", () => {
     );
   });
 
+  it("keeps ordinary controller disposal responsible for the active addon", async () => {
+    const controller = createTerminalRendererController({
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      paneId: "pane-controller-dispose",
+      rendererType: "auto",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+    const addon = FakeWebglAddon.instances[0];
+
+    controller.dispose();
+    controller.dispose();
+
+    expect(addon.dispose).toHaveBeenCalledOnce();
+    expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
+  });
+
+  it("cancels a pending attach when disposing", () => {
+    const scheduler = new ManualTimerScheduler();
+    const controller = createTerminalRendererController({
+      attachTimeoutMs: 100,
+      cancelRetry: scheduler.cancel,
+      loadWebglAddon: () => new Promise(() => undefined),
+      paneId: "pane-pending-dispose",
+      rendererType: "auto",
+      scheduleRetry: scheduler.schedule,
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    expect(scheduler.pendingCount()).toBe(1);
+
+    controller.dispose();
+
+    expect(scheduler.pendingCount()).toBe(0);
+    expect(controller.getDiagnostics()).toEqual(
+      expect.objectContaining({
+        activeTimerCount: 0,
+        lifecycle: expect.objectContaining({ state: "disposed" }),
+      }),
+    );
+  });
 
 });
 

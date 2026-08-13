@@ -50,20 +50,19 @@ import {
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import { XtermPane } from "./XtermPane";
 import type { ConnectionState } from "./XtermPane.helpers";
+import {
+  pruneTerminalRuntimeSlots,
+  updateTerminalRuntimeSlot,
+  type TerminalPaneRuntimeSlot,
+  type TerminalRuntimeSlotChangeHandler,
+} from "./terminalRuntimeSlots";
+import {
+  useTerminalRuntimePaneRetirement,
+  type TerminalRuntimePane,
+} from "./useTerminalRuntimePaneRetirement";
 
 const terminalPaneCardAttribute = "data-terminal-pane-card";
 const PANE_MOVE_DRAG_THRESHOLD_PX = 6;
-
-interface TerminalRuntimePane {
-  active: boolean;
-  pane: TerminalPane;
-  tabId: string;
-}
-
-interface TerminalPaneRuntimeSlot {
-  active: boolean;
-  element: HTMLElement;
-}
 
 interface TerminalPaneMoveDragState {
   active: boolean;
@@ -158,47 +157,42 @@ export function TerminalWorkspaceContent({
   const [paneMoveTarget, setPaneMoveTarget] =
     useState<TerminalPaneMoveDropTarget | null>(null);
   const paneMovePointerOwnerRef = useRef<HTMLButtonElement | null>(null);
-  const runtimePanes = useMemo(
+  const currentRuntimePanes = useMemo(
     () => resolveTerminalRuntimePanes(tabs, activeTab, panesById),
     [activeTab, panesById, tabs],
   );
+  const runtimePanes = useTerminalRuntimePaneRetirement(currentRuntimePanes);
+  const currentRuntimePaneIdsRef = useRef<ReadonlySet<string>>(new Set());
+  currentRuntimePaneIdsRef.current = new Set(
+    currentRuntimePanes.map((runtimePane) => runtimePane.pane.id),
+  );
+  const runtimePaneIdSnapshot = JSON.stringify(
+    runtimePanes.map((runtimePane) => runtimePane.pane.id),
+  );
+  useEffect(() => {
+    const retainedPaneIds = new Set(
+      JSON.parse(runtimePaneIdSnapshot) as string[],
+    );
+    setRuntimeSlots((current) =>
+      pruneTerminalRuntimeSlots(current, retainedPaneIds),
+    );
+  }, [runtimePaneIdSnapshot]);
   const activePaneIds = useMemo(
     () => (isTerminalSessionTab(activeTab) ? collectPaneIds(activeTab.layout) : []),
     [activeTab],
   );
-  const registerRuntimeSlot = useCallback(
-    (paneId: string, element: HTMLElement | null, active: boolean) => {
-      setRuntimeSlots((current) => {
-        if (!element) {
-          return current;
-        }
-        const existingSlots = current[paneId] ?? [];
-        const slotsWithoutElement = existingSlots.filter(
-          (slot) => slot.element !== element,
-        );
-        const nextSlots = [...slotsWithoutElement, { active, element }];
-        if (nextSlots.length === existingSlots.length) {
-          const unchanged =
-            nextSlots.length === 0 ||
-            nextSlots.every((slot, index) => {
-              const currentSlot = existingSlots[index];
-              return (
-                currentSlot?.element === slot.element &&
-                currentSlot.active === slot.active
-              );
-            });
-          if (unchanged) {
-            return current;
-          }
-        }
-        const next = { ...current };
-        if (nextSlots.length > 0) {
-          next[paneId] = nextSlots;
-        } else {
-          delete next[paneId];
-        }
-        return next;
-      });
+  const registerRuntimeSlot = useCallback<TerminalRuntimeSlotChangeHandler>(
+    (paneId, element, active, mounted) => {
+      setRuntimeSlots((current) =>
+        updateTerminalRuntimeSlot(current, {
+          active,
+          element,
+          mounted,
+          paneId,
+          retainUnmounted:
+            !mounted && !currentRuntimePaneIdsRef.current.has(paneId),
+        }),
+      );
     },
     [],
   );

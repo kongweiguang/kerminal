@@ -186,7 +186,7 @@ export function createTerminalRendererController({
     emitStateChange();
   };
 
-  const disposeRendererResources = (renderer: ActiveWebglRenderer) => {
+  const disposeRendererSubscriptions = (renderer: ActiveWebglRenderer) => {
     for (const disposable of renderer.disposables) {
       try {
         disposable.dispose();
@@ -194,6 +194,11 @@ export function createTerminalRendererController({
         logger.warn("[kerminal-terminal-renderer] dispose event failed", error);
       }
     }
+    renderer.disposables.length = 0;
+  };
+
+  const disposeRendererResources = (renderer: ActiveWebglRenderer) => {
+    disposeRendererSubscriptions(renderer);
     // xterm 会让相同配置的终端共享 atlas；释放单个 pane 时清空它会让其它
     // renderer 保留失效的纹理坐标，表现为选中或 resize 前持续乱码。
     compat.dispose({

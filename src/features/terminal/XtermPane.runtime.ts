@@ -548,23 +548,29 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     paneResizeController.dispose();
     shellIntegrationCommandBlockProtocolRef.current = false;
     commandBlockRuntime.resetProtocolState();
-    unregisterTerminalRenderer();
-    if (terminalRendererControllerRef.current === terminalRendererController) {
-      terminalRendererControllerRef.current = null;
-    }
     outputWriter.dispose();
     activityRuntime.dispose();
     if (activityRuntimeRef.current === activityRuntime) {
       activityRuntimeRef.current = null;
     }
-    disposeXtermTerminal(terminal);
-    terminalRef.current = null;
-    fitAddonRef.current = null;
-    searchAddonRef.current = null;
-    cwdTrackingBufferRef.current = "";
-    ghostSuggestionRef.current = null;
-    setGhostSuggestion(null);
-    setLogState({ active: false, bytesWritten: 0 });
-    setLogNotice(null);
+    try {
+      disposeXtermTerminal(terminal, {
+        unregisterRenderer: unregisterTerminalRenderer,
+      });
+    } finally {
+      if (
+        terminalRendererControllerRef.current === terminalRendererController
+      ) {
+        terminalRendererControllerRef.current = null;
+      }
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+      searchAddonRef.current = null;
+      cwdTrackingBufferRef.current = "";
+      ghostSuggestionRef.current = null;
+      setGhostSuggestion(null);
+      setLogState({ active: false, bytesWritten: 0 });
+      setLogNotice(null);
+    }
   };
 }
