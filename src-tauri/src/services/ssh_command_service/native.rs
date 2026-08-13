@@ -153,6 +153,7 @@ impl client::Handler for NativeCommandClientHandler {
         }
     }
 
+    /// 仅确认登记过的转发目标，保持 russh 0.62 的显式握手同时避免未授权通道进入代理。
     fn server_channel_open_forwarded_tcpip(
         &mut self,
         channel: Channel<client::Msg>,
@@ -160,6 +161,7 @@ impl client::Handler for NativeCommandClientHandler {
         connected_port: u32,
         _originator_address: &str,
         _originator_port: u32,
+        reply: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
         let target = self
@@ -167,6 +169,8 @@ impl client::Handler for NativeCommandClientHandler {
             .resolve(connected_address, connected_port);
         async move {
             if let Some(target) = target {
+                // 仅接受已登记的转发，未登记目标通过丢弃 handle 安全拒绝。
+                reply.accept().await;
                 tokio::spawn(async move {
                     let _ = proxy_forwarded_tcpip_to_target(channel, target).await;
                 });

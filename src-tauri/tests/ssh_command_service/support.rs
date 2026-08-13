@@ -70,12 +70,15 @@ impl russh::server::Handler for LoopbackSshCommandSession {
         }
     }
 
+    /// 显式接受会话通道，使 loopback fixture 与 russh 0.62 的真实服务端握手语义一致。
     async fn channel_open_session(
         &mut self,
         _channel: Channel<Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
     }
 
     async fn exec_request(
@@ -144,6 +147,7 @@ impl russh::server::Handler for LoopbackSshJumpSession {
         }
     }
 
+    /// 仅接受已验证的 jump 目标，避免测试代理意外转发到未登记地址。
     async fn channel_open_direct_tcpip(
         &mut self,
         channel: Channel<Msg>,
@@ -151,16 +155,20 @@ impl russh::server::Handler for LoopbackSshJumpSession {
         port_to_connect: u32,
         _originator_address: &str,
         _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         if host_to_connect != self.target_addr.ip().to_string()
             || port_to_connect != u32::from(self.target_addr.port())
         {
-            return Ok(false);
+            drop(reply);
+            return Ok(());
         }
 
         self.direct_tcpip_requests.fetch_add(1, Ordering::SeqCst);
         let target_addr = self.target_addr;
+        // 先接受再代理，避免 russh 0.62 将未确认通道按丢弃处理。
+        reply.accept().await;
         tokio::spawn(async move {
             if let Ok(mut target_stream) = tokio::net::TcpStream::connect(target_addr).await {
                 let mut channel_stream = channel.into_stream();
@@ -168,7 +176,7 @@ impl russh::server::Handler for LoopbackSshJumpSession {
             }
         });
 
-        Ok(true)
+        Ok(())
     }
 }
 

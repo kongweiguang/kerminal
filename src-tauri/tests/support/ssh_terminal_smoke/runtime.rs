@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 pub fn connect_and_capture_loopback_output(
     state: &AppState,
     host_id: &str,
@@ -269,6 +271,7 @@ impl russh::server::Handler for LoopbackTerminalJumpSession {
         }
     }
 
+    /// 显式确认并校验转发目标，确保 jump fixture 不会为未登记目标建立代理。
     async fn channel_open_direct_tcpip(
         &mut self,
         channel: Channel<Msg>,
@@ -276,16 +279,21 @@ impl russh::server::Handler for LoopbackTerminalJumpSession {
         port_to_connect: u32,
         _originator_address: &str,
         _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         if host_to_connect != self.target_addr.ip().to_string()
             || port_to_connect != u32::from(self.target_addr.port())
         {
-            return Ok(false);
+            // 丢弃 handle 会拒绝异常目标，并且不会为其建立代理连接。
+            drop(reply);
+            return Ok(());
         }
 
         self.direct_tcpip_requests.fetch_add(1, Ordering::SeqCst);
         let target_addr = self.target_addr;
+        // 先确认通道，避免 russh 0.62 在代理启动前将其按未确认请求丢弃。
+        reply.accept().await;
         tokio::spawn(async move {
             if let Ok(mut target_stream) = tokio::net::TcpStream::connect(target_addr).await {
                 let mut channel_stream = channel.into_stream();
@@ -294,7 +302,7 @@ impl russh::server::Handler for LoopbackTerminalJumpSession {
             }
         });
 
-        Ok(true)
+        Ok(())
     }
 
     async fn tcpip_forward(

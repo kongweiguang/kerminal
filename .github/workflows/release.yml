@@ -213,8 +213,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复 macOS 活动终端背景下关闭标签确认弹窗可能卡住或无法响应的问题，关闭确认弹窗改用无背景模糊的实色合成层。
-            - 保留 xterm 的正常资源释放路径，避免关闭终端时遗留内部监听器和运行时资源。
+            - 修复关闭、重开和快速切换终端窗格时的退休帧可见性与并发生命周期问题。
+            - 完整释放 xterm core、addon、renderer、DOM 与监听器，避免重复开关窗格后资源累积。
+            - 升级 SSH、XML 解析与前端构建链安全依赖，并增加 Windows、macOS、Linux 生命周期、依赖审计与原生编译门禁。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

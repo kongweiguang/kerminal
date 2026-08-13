@@ -1,6 +1,7 @@
 // @author kongweiguang
 
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
+import { Suspense } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   createTerminalRuntimePaneRetirementEnvironment,
@@ -281,6 +282,69 @@ describe("useTerminalRuntimePaneRetirement", () => {
     unmount();
 
     expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an aborted reopen from poisoning a committed retirement snapshot", () => {
+    let runAfterPaint: (() => void) | undefined;
+    const environment: TerminalRuntimePaneRetirementEnvironment = {
+      scheduleAfterPaint(callback) {
+        runAfterPaint = callback;
+        return vi.fn();
+      },
+    };
+    let resolveSuspension: (() => void) | undefined;
+    const suspension = new Promise<void>((resolve) => {
+      resolveSuspension = resolve;
+    });
+
+    /**
+     * 用会在 commit 前挂起的 render 驱动已提交 callback，确保 speculative
+     * pane 不会污染 lifecycle refs 并形成永久退休项。
+     */
+    function RetirementProbe({
+      panes,
+      suspend,
+    }: {
+      panes: TerminalRuntimePane[];
+      suspend: boolean;
+    }) {
+      const runtimePanes = useTerminalRuntimePaneRetirement(panes, environment);
+      if (suspend) {
+        throw suspension;
+      }
+      return <output data-testid="runtime-pane-count">{runtimePanes.length}</output>;
+    }
+
+    const view = render(
+      <Suspense fallback={<span data-testid="suspended" />}>
+        <RetirementProbe panes={[runtimePane]} suspend={false} />
+      </Suspense>,
+    );
+
+    view.rerender(
+      <Suspense fallback={<span data-testid="suspended" />}>
+        <RetirementProbe panes={[]} suspend={false} />
+      </Suspense>,
+    );
+    expect(runAfterPaint).toBeTypeOf("function");
+
+    view.rerender(
+      <Suspense fallback={<span data-testid="suspended" />}>
+        <RetirementProbe panes={[runtimePane]} suspend />
+      </Suspense>,
+    );
+    expect(view.getByTestId("suspended")).toBeInTheDocument();
+
+    act(() => runAfterPaint?.());
+    act(() => resolveSuspension?.());
+    view.rerender(
+      <Suspense fallback={<span data-testid="suspended" />}>
+        <RetirementProbe panes={[]} suspend={false} />
+      </Suspense>,
+    );
+
+    expect(view.getByTestId("runtime-pane-count")).toHaveTextContent("0");
+    view.unmount();
   });
 });
 

@@ -81,6 +81,7 @@ export function TerminalPaneCard({
     model.renderKind === "runtime"
       ? pane.lines
       : (resolvePaneLines?.(pane.id) ?? pane.lines);
+  /** 分屏前先把来源 pane 设为焦点，确保新布局继承用户刚操作的终端上下文。 */
   const splitPane = (
     direction: TerminalSplitDirection,
     options?: TerminalSplitPaneOptions,
@@ -90,6 +91,10 @@ export function TerminalPaneCard({
     onSplitPane?.(direction, splitOptions);
   };
   const runtimeSlotElementRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * callback ref 同时撤销旧 host 并登记新 host，避免 React 替换节点时 registry
+   * 在同一 pane 下保留两个都声称 active 的 slot。
+   */
   const runtimeSlotRef = useCallback(
     (element: HTMLDivElement | null) => {
       const previousElement = runtimeSlotElementRef.current;

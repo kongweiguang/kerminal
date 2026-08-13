@@ -44,7 +44,13 @@ const config = {
     "@tauri-apps/plugin-window-state",
   ],
   // 这些命令由验证脚本通过 spawnSync 真实调用，不属于 npm 依赖。
-  ignoreBinaries: ["rustc", "ssh-keygen.exe", "ssh.exe", "wsl.exe"],
+  ignoreBinaries: [
+    "rustc",
+    "ssh-keygen.exe",
+    "ssh.exe",
+    "taskkill",
+    "wsl.exe",
+  ],
   treatConfigHintsAsErrors: true,
   treatTagHintsAsErrors: true,
 };
