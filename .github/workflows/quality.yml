@@ -163,4 +163,7 @@ jobs:
           tests/frontend/features/terminal/TerminalPaneCard.test.tsx
 
       - name: Build frontend
+        env:
+          # macOS ARM 的默认 V8 堆上限不足以完成当前 Monaco/xterm bundle，避免 CI 在构建阶段误报 OOM。
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm run build
