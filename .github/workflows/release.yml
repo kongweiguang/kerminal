@@ -115,6 +115,8 @@ jobs:
       RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
     strategy:
       fail-fast: false
+      # Tauri action 会读取并整体重写同一个 latest.json；串行上传可避免不同平台互相覆盖更新入口。
+      max-parallel: 1
       matrix:
         include:
           - name: Windows x64
