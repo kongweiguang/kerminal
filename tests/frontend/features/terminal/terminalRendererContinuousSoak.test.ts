@@ -654,7 +654,10 @@ function installSoakBrowserStubs() {
   );
   Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
     configurable: true,
-    value: () => createSoakCanvasContextStub(),
+    // xterm CPU 路径只需要 2D context；其余类型返回 null，避免 fake GPU 边界
+    // 把非 GL stub 误记为兼容性失败。
+    value: (type: string) =>
+      type === "2d" ? createSoakCanvasContextStub() : null,
   });
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
     configurable: true,

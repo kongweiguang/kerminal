@@ -23,7 +23,7 @@ describe("terminalRendererCompatibility", () => {
     );
   });
 
-  it("uses public dispose by default without touching private compatibility paths", () => {
+  it("uses public dispose and releases tracked canvases without private paths", () => {
     const canvas = document.createElement("canvas");
     const getContext = vi.fn();
     Object.defineProperty(canvas, "getContext", { value: getContext });
@@ -36,17 +36,58 @@ describe("terminalRendererCompatibility", () => {
       versions: VERIFIED_VERSIONS,
     });
 
-    adapter.dispose({ addon, canvases: [canvas] });
+    adapter.dispose({ addon, canvases: [canvas], rendererCanvases: [canvas] });
 
     expect(adapter.capabilities).toEqual({
       forceContextLoss: false,
       privateRendererCleanup: false,
     });
     expect(addon.dispose).toHaveBeenCalledOnce();
-    expect(getContext).not.toHaveBeenCalled();
+    expect(getContext).toHaveBeenCalledWith("webgl2");
+    expect(canvas.width).toBe(0);
+    expect(canvas.height).toBe(0);
     expect(renderer._canvas).toBeDefined();
     expect(renderer._charAtlas).toBeDefined();
     expect(renderer._gl).toBeDefined();
+  });
+
+  it("does not probe a 2D texture atlas while releasing the WebGL renderer canvas", () => {
+    const atlasCanvas = document.createElement("canvas");
+    const atlasGetContext = vi.fn(() => {
+      throw new Error("2D atlas must not be probed as WebGL");
+    });
+    Object.defineProperty(atlasCanvas, "getContext", {
+      value: atlasGetContext,
+    });
+    const rendererGetContext = vi.fn((type: string) =>
+      type === "webgl2"
+        ? {
+            getExtension: () => ({ loseContext: vi.fn() }),
+            isContextLost: () => false,
+          }
+        : null,
+    );
+    const rendererCanvas = document.createElement("canvas");
+    Object.defineProperty(rendererCanvas, "getContext", {
+      value: rendererGetContext,
+    });
+    const addon = { dispose: vi.fn() };
+    const adapter = createXtermWebglCompatibilityAdapter({
+      versions: ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
+    });
+
+    adapter.dispose({
+      addon,
+      canvases: [atlasCanvas, rendererCanvas],
+      rendererCanvases: [rendererCanvas],
+    });
+
+    expect(atlasGetContext).not.toHaveBeenCalled();
+    expect(rendererGetContext).toHaveBeenCalledWith("webgl2");
+    expect(atlasCanvas.width).toBe(0);
+    expect(atlasCanvas.height).toBe(0);
+    expect(rendererCanvas.width).toBe(0);
+    expect(rendererCanvas.height).toBe(0);
   });
 
   it("enables forced context loss and private cleanup only for the verified version pair", () => {
@@ -69,7 +110,11 @@ describe("terminalRendererCompatibility", () => {
       versions: VERIFIED_VERSIONS,
     });
 
-    adapter.dispose({ addon, canvases: [canvas, canvas] });
+    adapter.dispose({
+      addon,
+      canvases: [canvas, canvas],
+      rendererCanvases: [canvas],
+    });
 
     expect(adapter.capabilities).toEqual({
       forceContextLoss: true,
@@ -121,14 +166,16 @@ describe("terminalRendererCompatibility", () => {
         versions,
       });
 
-      adapter.dispose({ addon, canvases: [canvas] });
+      adapter.dispose({ addon, canvases: [canvas], rendererCanvases: [canvas] });
 
       expect(adapter.capabilities).toEqual({
         forceContextLoss: false,
         privateRendererCleanup: false,
       });
       expect(addon.dispose).toHaveBeenCalledOnce();
-      expect(getContext).not.toHaveBeenCalled();
+      expect(getContext).toHaveBeenCalledWith("webgl2");
+      expect(canvas.width).toBe(0);
+      expect(canvas.height).toBe(0);
       expect(renderer._canvas).toBeDefined();
       expect(renderer._charAtlas).toBeDefined();
       expect(renderer._gl).toBeDefined();
@@ -154,14 +201,16 @@ describe("terminalRendererCompatibility", () => {
       versions: ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
     });
 
-    adapter.dispose({ addon, canvases: [canvas] });
+    adapter.dispose({ addon, canvases: [canvas], rendererCanvases: [canvas] });
 
     expect(adapter.capabilities).toEqual({
       forceContextLoss: false,
       privateRendererCleanup: false,
     });
     expect(addon.dispose).toHaveBeenCalledOnce();
-    expect(getContext).not.toHaveBeenCalled();
+    expect(getContext).toHaveBeenCalledWith("webgl2");
+    expect(canvas.width).toBe(0);
+    expect(canvas.height).toBe(0);
     expect(renderer._canvas).toBeDefined();
     expect(renderer._charAtlas).toBeDefined();
     expect(logger.warn).toHaveBeenCalledWith(
@@ -193,7 +242,13 @@ describe("terminalRendererCompatibility", () => {
       versions: VERIFIED_VERSIONS,
     });
 
-    expect(() => adapter.dispose({ addon, canvases: [canvas] })).not.toThrow();
+    expect(() =>
+      adapter.dispose({
+        addon,
+        canvases: [canvas],
+        rendererCanvases: [canvas],
+      }),
+    ).not.toThrow();
 
     expect(addon.dispose).toHaveBeenCalledOnce();
     expect(loseContext).toHaveBeenCalledOnce();
@@ -237,7 +292,13 @@ describe("terminalRendererCompatibility", () => {
       versions: VERIFIED_VERSIONS,
     });
 
-    expect(() => adapter.dispose({ addon, canvases: [canvas] })).not.toThrow();
+    expect(() =>
+      adapter.dispose({
+        addon,
+        canvases: [canvas],
+        rendererCanvases: [canvas],
+      }),
+    ).not.toThrow();
 
     expect(addon.dispose).toHaveBeenCalledOnce();
     expect(renderer._canvas).toBe(canvas);

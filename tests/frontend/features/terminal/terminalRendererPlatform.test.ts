@@ -1,6 +1,9 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   classifyTerminalGpuRenderer,
+  resolveSafeTerminalRendererType,
   shouldUseAutoGpuRenderer,
 } from "../../../../src/features/terminal/terminalRendererPlatform";
 
@@ -28,4 +31,22 @@ describe("terminalRendererPlatform", () => {
       ),
     ).toBe("hardware-or-unknown");
   });
+
+  it.each(["auto", "gpu"] as const)(
+    "forces requested %s renderer to CPU on Windows",
+    (requested) => {
+      expect(resolveSafeTerminalRendererType(requested, "windows")).toBe(
+        "cpu",
+      );
+    },
+  );
+
+  it.each(["macos", "linux", "browser"] as const)(
+    "preserves renderer preference outside Windows on %s",
+    (platform) => {
+      expect(resolveSafeTerminalRendererType("gpu", platform)).toBe("gpu");
+      expect(resolveSafeTerminalRendererType("auto", platform)).toBe("auto");
+      expect(resolveSafeTerminalRendererType("cpu", platform)).toBe("cpu");
+    },
+  );
 });

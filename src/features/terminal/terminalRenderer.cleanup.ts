@@ -31,6 +31,8 @@ export function disposeWebglRendererResources(
       compatibility.dispose({
         addon: renderer.addon,
         canvases: renderer.canvases,
+        // rendererCanvases 排除 xterm 的 2D texture atlas，避免误调用 WebGL API。
+        rendererCanvases: renderer.rendererCanvases,
       }),
   );
 }

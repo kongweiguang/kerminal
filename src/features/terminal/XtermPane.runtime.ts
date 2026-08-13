@@ -45,6 +45,7 @@ import {
 } from "./terminalDisposalCompatibility";
 import { createXtermPaneSessionRuntime } from "./XtermPane.sessionRuntime";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
+import { resolveSafeTerminalRendererType } from "./terminalRendererPlatform";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const TERMINAL_RENDERER_FEATURE_GATES = resolveRuntimeTerminalRendererFeatureGates();
 export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
@@ -283,6 +284,9 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   let rendererBackend = "cpu";
   let lastRecordedRendererFallbackReason: TerminalRendererFallbackReason | undefined;
   const rendererTelemetry = createTerminalRendererPerformanceTelemetry();
+  const effectiveRendererType = resolveSafeTerminalRendererType(
+    terminalAppearance.rendererType,
+  );
   const terminalRendererController = createTerminalRendererController({
     compatibilityGate: {
       forceContextLoss:
@@ -306,14 +310,14 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       }
     },
     paneId,
-    rendererType: terminalAppearance.rendererType,
+    rendererType: effectiveRendererType,
     telemetry: TERMINAL_RENDERER_FEATURE_GATES.performanceTelemetry
       ? rendererTelemetry
       : undefined,
     terminal,
   });
   terminalRendererControllerRef.current = terminalRendererController;
-  terminalRendererRegistry.updateMode(terminalAppearance.rendererType);
+  terminalRendererRegistry.updateMode(effectiveRendererType);
   const unregisterTerminalRenderer = terminalRendererRegistry.registerPane({
     controller: terminalRendererController,
     focused: focusedRef.current,
@@ -585,8 +589,9 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       activityRuntimeRef.current = null;
     }
 
-    // xterm owns core/listener/addon teardown; only after it completes may the
-    // renderer registry revoke its controller lease.
+    // 先让 renderer controller 在 core 与 DOM 仍存活时释放 WebGL/context，
+    // 再由 xterm 回收 core、listener 和剩余 addons，避免 WebView2 保留脱离 DOM
+    // 的 GPU backing store。
     runCleanup(() =>
       disposeXtermTerminal(terminal, {
         unregisterRenderer: unregisterTerminalRenderer,

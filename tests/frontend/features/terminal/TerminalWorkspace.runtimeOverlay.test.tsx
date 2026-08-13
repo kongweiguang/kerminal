@@ -88,6 +88,116 @@ const hiddenRuntimeTab: TerminalTab = {
 };
 
 describe("TerminalWorkspace runtime overlay", () => {
+  it("closing one of multiple tabs retires only its runtime and keeps the active session mounted", async () => {
+    let sessionIndex = 0;
+    resizableMockState.groups = [];
+    mocks.api.createSshTerminalSession.mockImplementation(
+      async (request, onOutput) => {
+        sessionIndex += 1;
+        const sessionId = `ssh-session-tab-${sessionIndex}`;
+        onOutput({
+          data: `hello from ${sessionId}`,
+          kind: "data",
+          sessionId,
+        });
+        return {
+          cols: request.cols,
+          id: sessionId,
+          rows: request.rows,
+          shell: "ssh",
+          status: "running",
+        };
+      },
+    );
+
+    const firstPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-tab-first",
+      machineId: "host-first",
+      mode: "ssh",
+      remoteHostId: "host-first",
+      title: "第一台 SSH",
+    };
+    const secondPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-tab-second",
+      machineId: "host-second",
+      mode: "ssh",
+      remoteHostId: "host-second",
+      title: "第二台 SSH",
+    };
+    const firstTab: TerminalTab = {
+      id: "tab-first",
+      layout: { paneId: firstPane.id, type: "pane" },
+      machineId: firstPane.machineId,
+      title: firstPane.title,
+    };
+    const secondTab: TerminalTab = {
+      id: "tab-second",
+      layout: { paneId: secondPane.id, type: "pane" },
+      machineId: secondPane.machineId,
+      title: secondPane.title,
+    };
+
+    function ControlledWorkspace() {
+      const [panes, setPanes] = useState<TerminalPane[]>([
+        firstPane,
+        secondPane,
+      ]);
+      const [tabs, setTabs] = useState<TerminalTab[]>([firstTab, secondTab]);
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: secondTab.id,
+            focusedPaneId: secondPane.id,
+            onCloseTab: (tabId) => {
+              const closedTab = tabs.find((tab) => tab.id === tabId);
+              const closedPaneId =
+                closedTab && "layout" in closedTab
+                  ? closedTab.layout.type === "pane"
+                    ? closedTab.layout.paneId
+                    : undefined
+                  : undefined;
+              setTabs((current) => current.filter((tab) => tab.id !== tabId));
+              if (closedPaneId) {
+                setPanes((current) =>
+                  current.filter((pane) => pane.id !== closedPaneId),
+                );
+              }
+            },
+            panes,
+            tabs,
+            terminalAppearance: {
+              ...workspaceProps().terminalAppearance,
+              confirmCloseTab: false,
+            },
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(2);
+    });
+    mocks.api.createSshTerminalSession.mockClear();
+    mocks.api.closeTerminal.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 第一台 SSH tab" }));
+
+    await waitFor(() => {
+      expect(mocks.api.closeTerminal).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-tab-1");
+    expect(mocks.api.createSshTerminalSession).not.toHaveBeenCalled();
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalledWith("ssh-session-tab-2");
+    expect(
+      document.querySelector('[data-terminal-pane-runtime-host="pane-tab-second"]'),
+    ).not.toBeNull();
+  });
+
   it("keeps real XtermPane sessions alive when pane move only changes layout", async () => {
     await expectRuntimeSessionsSurvivePaneMove({
       expectedIndicatorText: "交换位置 · 右侧 runtime",
