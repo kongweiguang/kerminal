@@ -40,11 +40,14 @@ export function updateTerminalRuntimeSlot(
       return current;
     }
     if (retainUnmounted) {
+      // 退休 slot 已脱离布局，强制标记为非活动，避免下一次解析把它当作当前可见宿主。
       return replaceTerminalRuntimeSlots(
         current,
         paneId,
         existingSlots.map((slot) =>
-          slot.element === element ? { active, element, mounted: false } : slot,
+          slot.element === element
+            ? { active: false, element, mounted: false }
+            : slot,
         ),
       );
     }

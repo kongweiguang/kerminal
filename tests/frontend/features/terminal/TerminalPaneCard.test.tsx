@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -290,6 +292,39 @@ describe("TerminalPaneCard", () => {
       slot,
       true,
       false,
+    );
+  });
+
+  it("updates the runtime slot to inactive when its tab is hidden", () => {
+    const onRuntimeSlotChange = vi.fn();
+    const { rerender } = renderPaneCard(baseTerminalPane, {
+      onRuntimeSlotChange,
+      runtimeMount: "slot",
+      runtimeSlotActive: true,
+    });
+    const slot = document.querySelector<HTMLElement>(
+      '[data-terminal-pane-runtime-slot="pane-local"]',
+    );
+
+    rerender(
+      <TerminalPaneCard
+        focused={false}
+        onClosePane={vi.fn()}
+        onFocusPane={vi.fn()}
+        onRuntimeSlotChange={onRuntimeSlotChange}
+        pane={baseTerminalPane}
+        resolvedTheme="dark"
+        runtimeMount="slot"
+        runtimeSlotActive={false}
+        terminalAppearance={defaultAppSettings.terminal}
+      />,
+    );
+
+    expect(onRuntimeSlotChange).toHaveBeenLastCalledWith(
+      "pane-local",
+      slot,
+      false,
+      true,
     );
   });
 });

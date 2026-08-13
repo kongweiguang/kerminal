@@ -48,7 +48,8 @@ describe("useTerminalRuntimePaneRetirement", () => {
     rerender({ panes: [] });
 
     expect(result.current).toEqual([{ ...runtimePane, active: false }]);
-    expect(cancel).toHaveBeenCalledOnce();
+    // 调度只在 pane 进入退休态时创建；初始打开态不会先挂一个全局 callback。
+    expect(cancel).not.toHaveBeenCalled();
 
     act(() => runAfterPaint?.());
 
@@ -86,7 +87,7 @@ describe("useTerminalRuntimePaneRetirement", () => {
     expect(result.current).toEqual([nextRuntimePane]);
   });
 
-  it("does not postpone retirement scheduling when pane details change", () => {
+  it("does not schedule retirement when pane details change", () => {
     const scheduleAfterPaint = vi.fn(() => vi.fn());
     const environment: TerminalRuntimePaneRetirementEnvironment = {
       scheduleAfterPaint,
@@ -106,7 +107,7 @@ describe("useTerminalRuntimePaneRetirement", () => {
       ],
     });
 
-    expect(scheduleAfterPaint).toHaveBeenCalledOnce();
+    expect(scheduleAfterPaint).not.toHaveBeenCalled();
   });
 
   it("does not add a synchronous render for output-history updates", () => {
@@ -187,6 +188,99 @@ describe("useTerminalRuntimePaneRetirement", () => {
 
     act(() => runAfterPaint?.());
     expect(result.current).toEqual([]);
+  });
+
+  it("cancels a stale retirement when the same pane id reopens", () => {
+    const callbacks: Array<() => void> = [];
+    const cancels: Array<ReturnType<typeof vi.fn>> = [];
+    const environment: TerminalRuntimePaneRetirementEnvironment = {
+      scheduleAfterPaint(callback) {
+        callbacks.push(callback);
+        const cancel = vi.fn();
+        cancels.push(cancel);
+        return cancel;
+      },
+    };
+    const reopenedRuntimePane: TerminalRuntimePane = {
+      ...runtimePane,
+      pane: { ...runtimePane.pane, title: "重新打开的 SSH" },
+    };
+    const { rerender, result } = renderHook(
+      ({ panes }) => useTerminalRuntimePaneRetirement(panes, environment),
+      { initialProps: { panes: [runtimePane] } },
+    );
+
+    rerender({ panes: [] });
+    const staleRetirement = callbacks[callbacks.length - 1];
+    expect(staleRetirement).toBeTypeOf("function");
+
+    rerender({ panes: [reopenedRuntimePane] });
+    act(() => staleRetirement?.());
+
+    expect(result.current).toEqual([reopenedRuntimePane]);
+    expect(cancels.some((cancel) => cancel.mock.calls.length > 0)).toBe(true);
+  });
+
+  it("does not accumulate pending callbacks across one hundred close and reopen cycles", () => {
+    const callbacks = new Map<number, () => void>();
+    const activeHandles = new Set<number>();
+    let nextHandle = 0;
+    const environment: TerminalRuntimePaneRetirementEnvironment = {
+      scheduleAfterPaint(callback) {
+        const handle = ++nextHandle;
+        callbacks.set(handle, callback);
+        activeHandles.add(handle);
+        return () => {
+          activeHandles.delete(handle);
+          callbacks.delete(handle);
+        };
+      },
+    };
+    const { rerender, result } = renderHook(
+      ({ panes }) => useTerminalRuntimePaneRetirement(panes, environment),
+      { initialProps: { panes: [] as TerminalRuntimePane[] } },
+    );
+
+    for (let index = 0; index < 100; index += 1) {
+      const cyclePane: TerminalRuntimePane = {
+        ...runtimePane,
+        pane: {
+          ...runtimePane.pane,
+          id: "pane-churn",
+          title: `churn-${index}`,
+        },
+      };
+      rerender({ panes: [cyclePane] });
+      rerender({ panes: [] });
+
+      const pendingHandles = [...activeHandles];
+      const retirementHandle = pendingHandles[pendingHandles.length - 1];
+      expect(retirementHandle).toBeDefined();
+      const callback = callbacks.get(retirementHandle!);
+      activeHandles.delete(retirementHandle!);
+      callbacks.delete(retirementHandle!);
+      act(() => callback?.());
+    }
+
+    expect(result.current).toEqual([]);
+    expect(activeHandles.size).toBe(0);
+    expect(callbacks.size).toBe(0);
+  });
+
+  it("cancels a pending retirement when the hook unmounts", () => {
+    const cancel = vi.fn();
+    const environment: TerminalRuntimePaneRetirementEnvironment = {
+      scheduleAfterPaint: () => cancel,
+    };
+    const { rerender, unmount } = renderHook(
+      ({ panes }) => useTerminalRuntimePaneRetirement(panes, environment),
+      { initialProps: { panes: [runtimePane] } },
+    );
+
+    rerender({ panes: [] });
+    unmount();
+
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
 

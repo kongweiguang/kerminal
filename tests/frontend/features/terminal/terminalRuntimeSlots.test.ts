@@ -41,7 +41,7 @@ describe("terminalRuntimeSlots", () => {
     });
     expect(retained).not.toBe(slots);
     expect(retained["pane-closing"]).toEqual([
-      { active: true, element, mounted: false },
+      { active: false, element, mounted: false },
     ]);
 
     slots = pruneTerminalRuntimeSlots(retained, new Set());

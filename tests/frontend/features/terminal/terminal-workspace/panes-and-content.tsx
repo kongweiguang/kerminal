@@ -1,7 +1,10 @@
+// @author kongweiguang
+
 import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
@@ -139,6 +142,36 @@ export function registerPaneAndContentTests() {
       baseTerminalPane.id,
       nextPane.id,
     ]);
+  });
+
+  it("hides an active pane during its retirement frame before the runtime unmounts", async () => {
+    const { rerender, unmount } = render(
+      <TerminalWorkspace {...workspaceProps()} />,
+    );
+
+    expect(xtermPaneMockState.visibleByPaneId.get(baseTerminalPane.id)).toBe(
+      true,
+    );
+
+    rerender(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "",
+          focusedPaneId: "",
+          panes: [],
+          tabs: [],
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        xtermPaneMockState.visibleByPaneId.get(baseTerminalPane.id),
+      ).toBe(false);
+    });
+
+    unmount();
+    expect(xtermPaneMockState.unmountedPaneIds).toContain(baseTerminalPane.id);
   });
 
   it("restores persisted split sizes and reports resize changes", () => {

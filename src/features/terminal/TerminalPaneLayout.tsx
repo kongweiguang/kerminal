@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   ResizableHandle,
   ResizablePanel,

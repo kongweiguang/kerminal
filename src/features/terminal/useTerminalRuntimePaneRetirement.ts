@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TerminalPane } from "../workspace/contracts/index";
 
 export interface TerminalRuntimePane {
@@ -119,42 +119,50 @@ function noopCancelAnimationFrame(): void {
   // rAF 分支只有在调用方注入 requestAnimationFrame 后才可达，未注入时无需取消防帧。
 }
 
+interface PendingTerminalRuntimePaneRetirement {
+  cancel: () => void;
+  token: symbol;
+}
+
 /**
- * 让已从 workspace 状态删除的 runtime 多存活一帧，使标签视觉关闭不被资源析构阻塞。
+ * 让已从 workspace 状态删除的 runtime 多存活一帧，使标签视觉关闭不被资源析构阻塞；
+ * 每个 pane 单独持有取消句柄，才能在同 ID 快速重开时阻止旧 callback 误删新 runtime。
  */
 export function useTerminalRuntimePaneRetirement(
   currentPanes: TerminalRuntimePane[],
   environment: TerminalRuntimePaneRetirementEnvironment =
     browserRetirementEnvironment,
 ): TerminalRuntimePane[] {
-  const [retainedPaneIds, setRetainedPaneIds] = useState(() =>
-    currentPanes.map((runtimePane) => runtimePane.pane.id),
-  );
   const [retainedPaneById, setRetainedPaneById] = useState(
     () =>
       new Map(
         currentPanes.map((runtimePane) => [runtimePane.pane.id, runtimePane]),
       ),
   );
-  const currentPaneIdSnapshot = JSON.stringify(
-    currentPanes.map((runtimePane) => runtimePane.pane.id),
+  const retainedPaneByIdRef = useRef(retainedPaneById);
+  retainedPaneByIdRef.current = retainedPaneById;
+  const pendingRetirementsRef = useRef(
+    new Map<string, PendingTerminalRuntimePaneRetirement>(),
   );
+  const environmentRef = useRef(environment);
   const currentPaneIds = new Set(
     currentPanes.map((runtimePane) => runtimePane.pane.id),
   );
-  const retiringPanes = retainedPaneIds.flatMap((paneId) => {
-    if (currentPaneIds.has(paneId)) {
-      return [];
-    }
-    const runtimePane = retainedPaneById.get(paneId);
-    return runtimePane ? [{ ...runtimePane, active: false }] : [];
-  });
+  const currentPaneIdsRef = useRef(currentPaneIds);
+  currentPaneIdsRef.current = currentPaneIds;
+  const currentPaneIdSnapshot = JSON.stringify([...currentPaneIds]);
+
+  const retiringPanes = [...retainedPaneById.values()].flatMap((runtimePane) =>
+    currentPaneIds.has(runtimePane.pane.id)
+      ? []
+      : [{ ...runtimePane, active: false }],
+  );
 
   useLayoutEffect(() => {
     const snapshotChanged = currentPanes.some(
       (runtimePane) =>
         !terminalRuntimeRetirementSnapshotEqual(
-          retainedPaneById.get(runtimePane.pane.id),
+          retainedPaneByIdRef.current.get(runtimePane.pane.id),
           runtimePane,
         ),
     );
@@ -181,44 +189,86 @@ export function useTerminalRuntimePaneRetirement(
       }
       return next;
     });
-    // 同步登记新出现的 pane id，保证它在关闭后的下一帧仍能被识别为 retiring，
-    // 而不是在第一次 after-paint 回调前就永久消失。
-    setRetainedPaneIds((retained) => {
-      let next = retained;
-      for (const runtimePane of currentPanes) {
-        const paneId = runtimePane.pane.id;
-        if (retained.includes(paneId)) {
-          continue;
-        }
-        if (next === retained) {
-          next = [...retained];
-        }
-        next.push(paneId);
-      }
-      return next;
-    });
-  }, [currentPanes, retainedPaneById]);
+  }, [currentPanes]);
 
   useEffect(() => {
-    const nextPaneIds = JSON.parse(currentPaneIdSnapshot) as string[];
-    return environment.scheduleAfterPaint(() => {
-      const nextPaneIdSet = new Set(nextPaneIds);
-      setRetainedPaneById((retained) => {
-        let next = retained;
-        for (const paneId of retained.keys()) {
-          if (nextPaneIdSet.has(paneId)) {
-            continue;
-          }
-          if (next === retained) {
-            next = new Map(retained);
-          }
-          next.delete(paneId);
+    const pendingRetirements = pendingRetirementsRef.current;
+    const nextCurrentPaneIds = new Set(
+      JSON.parse(currentPaneIdSnapshot) as string[],
+    );
+    const environmentChanged = environmentRef.current !== environment;
+    if (environmentChanged) {
+      // 调度器切换时旧环境可能不会再派发 callback，先取消其全部任务再迁移。
+      for (const pending of pendingRetirements.values()) {
+        pending.cancel();
+      }
+      pendingRetirements.clear();
+      environmentRef.current = environment;
+    }
+
+    const schedule = (paneId: string) => {
+      const token = Symbol(paneId);
+      const pending: PendingTerminalRuntimePaneRetirement = {
+        cancel: () => undefined,
+        token,
+      };
+      pendingRetirements.set(paneId, pending);
+      const cancel = environment.scheduleAfterPaint(() => {
+        if (pendingRetirements.get(paneId)?.token !== token) {
+          return;
         }
-        return next;
+        pendingRetirements.delete(paneId);
+        if (currentPaneIdsRef.current.has(paneId)) {
+          return;
+        }
+
+        setRetainedPaneById((retained) => {
+          if (!retained.has(paneId)) {
+            return retained;
+          }
+          const next = new Map(retained);
+          next.delete(paneId);
+          return next;
+        });
       });
-      setRetainedPaneIds(nextPaneIds);
-    });
-  }, [currentPaneIdSnapshot, environment]);
+      if (pendingRetirements.get(paneId)?.token === token) {
+        pending.cancel = cancel;
+      } else {
+        // 防止测试调度器或宿主同步执行 callback 时遗留一个不可取消句柄。
+        cancel();
+      }
+    };
+
+    // 只取消重新出现的 pane；其它 pane 的任务继续独立等待，避免全局 ID 快照
+    // 变化导致所有 runtime 同时重排退休时间。
+    for (const paneId of nextCurrentPaneIds) {
+      const pending = pendingRetirements.get(paneId);
+      if (pending) {
+        pending.cancel();
+        pendingRetirements.delete(paneId);
+      }
+    }
+
+    // 只为当前已不在 workspace 的 retained pane 调度退休，保证每个 pane 只有一个
+    // callback；同 ID reopen 会在上面的循环中取消旧 callback 后重新成为当前 pane。
+    for (const paneId of retainedPaneByIdRef.current.keys()) {
+      if (nextCurrentPaneIds.has(paneId) || pendingRetirements.has(paneId)) {
+        continue;
+      }
+      schedule(paneId);
+    }
+  }, [currentPaneIdSnapshot, environment, retainedPaneById]);
+
+  useEffect(() => {
+    const pendingRetirements = pendingRetirementsRef.current;
+    return () => {
+      // 组件卸载时取消所有未完成的退休任务，避免 callback 在新 workspace 中写入旧状态。
+      for (const pending of pendingRetirements.values()) {
+        pending.cancel();
+      }
+      pendingRetirements.clear();
+    };
+  }, []);
 
   return [...currentPanes, ...retiringPanes];
 }
