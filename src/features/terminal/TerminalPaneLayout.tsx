@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   ResizableHandle,
   ResizablePanel,
@@ -17,6 +19,7 @@ import type {
 } from "../workspace/contracts/index";
 import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
 import { TerminalPaneCard } from "./TerminalPaneCard";
+import type { TerminalRuntimeSlotChangeHandler } from "./terminalRuntimeSlots";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import type { ConnectionState } from "./XtermPane.helpers";
 
@@ -54,11 +57,7 @@ interface TerminalPaneLayoutProps {
   runtimeMount?: "inline" | "slot";
   runtimeSlotsActive?: boolean;
   terminalAppearance: TerminalAppearance;
-  onRuntimeSlotChange?: (
-    paneId: string,
-    element: HTMLElement | null,
-    active: boolean,
-  ) => void;
+  onRuntimeSlotChange?: TerminalRuntimeSlotChangeHandler;
 }
 
 type NormalizedTerminalSplitLayout = Extract<

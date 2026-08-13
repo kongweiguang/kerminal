@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { describe, expect, it } from "vitest";
 import { createTerminalOutputWriter } from "../../../../src/features/terminal/terminalOutputWriter";
@@ -106,6 +108,11 @@ const PANES_PER_CYCLE = 6;
       }
 
       registry.dispose();
+      // soak 子进程显式开放 GC，先回收已释放 runtime 的暂态对象，再判断真正存活的引用。
+      const collectGarbage = (
+        globalThis as typeof globalThis & { gc?: () => void }
+      ).gc;
+      collectGarbage?.();
       const heapEnded = process.memoryUsage().heapUsed;
       const heapLimit = Math.max(
         Math.floor(heapStarted * MAX_HEAP_GROWTH_RATIO),

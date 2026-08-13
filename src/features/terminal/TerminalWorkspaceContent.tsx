@@ -50,20 +50,19 @@ import {
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import { XtermPane } from "./XtermPane";
 import type { ConnectionState } from "./XtermPane.helpers";
+import {
+  pruneTerminalRuntimeSlots,
+  updateTerminalRuntimeSlot,
+  type TerminalPaneRuntimeSlot,
+  type TerminalRuntimeSlotChangeHandler,
+} from "./terminalRuntimeSlots";
+import {
+  useTerminalRuntimePaneRetirement,
+  type TerminalRuntimePane,
+} from "./useTerminalRuntimePaneRetirement";
 
 const terminalPaneCardAttribute = "data-terminal-pane-card";
 const PANE_MOVE_DRAG_THRESHOLD_PX = 6;
-
-interface TerminalRuntimePane {
-  active: boolean;
-  pane: TerminalPane;
-  tabId: string;
-}
-
-interface TerminalPaneRuntimeSlot {
-  active: boolean;
-  element: HTMLElement;
-}
 
 interface TerminalPaneMoveDragState {
   active: boolean;
@@ -158,47 +157,42 @@ export function TerminalWorkspaceContent({
   const [paneMoveTarget, setPaneMoveTarget] =
     useState<TerminalPaneMoveDropTarget | null>(null);
   const paneMovePointerOwnerRef = useRef<HTMLButtonElement | null>(null);
-  const runtimePanes = useMemo(
+  const currentRuntimePanes = useMemo(
     () => resolveTerminalRuntimePanes(tabs, activeTab, panesById),
     [activeTab, panesById, tabs],
   );
+  const runtimePanes = useTerminalRuntimePaneRetirement(currentRuntimePanes);
+  const currentRuntimePaneIdsRef = useRef<ReadonlySet<string>>(new Set());
+  currentRuntimePaneIdsRef.current = new Set(
+    currentRuntimePanes.map((runtimePane) => runtimePane.pane.id),
+  );
+  const runtimePaneIdSnapshot = JSON.stringify(
+    runtimePanes.map((runtimePane) => runtimePane.pane.id),
+  );
+  useEffect(() => {
+    const retainedPaneIds = new Set(
+      JSON.parse(runtimePaneIdSnapshot) as string[],
+    );
+    setRuntimeSlots((current) =>
+      pruneTerminalRuntimeSlots(current, retainedPaneIds),
+    );
+  }, [runtimePaneIdSnapshot]);
   const activePaneIds = useMemo(
     () => (isTerminalSessionTab(activeTab) ? collectPaneIds(activeTab.layout) : []),
     [activeTab],
   );
-  const registerRuntimeSlot = useCallback(
-    (paneId: string, element: HTMLElement | null, active: boolean) => {
-      setRuntimeSlots((current) => {
-        if (!element) {
-          return current;
-        }
-        const existingSlots = current[paneId] ?? [];
-        const slotsWithoutElement = existingSlots.filter(
-          (slot) => slot.element !== element,
-        );
-        const nextSlots = [...slotsWithoutElement, { active, element }];
-        if (nextSlots.length === existingSlots.length) {
-          const unchanged =
-            nextSlots.length === 0 ||
-            nextSlots.every((slot, index) => {
-              const currentSlot = existingSlots[index];
-              return (
-                currentSlot?.element === slot.element &&
-                currentSlot.active === slot.active
-              );
-            });
-          if (unchanged) {
-            return current;
-          }
-        }
-        const next = { ...current };
-        if (nextSlots.length > 0) {
-          next[paneId] = nextSlots;
-        } else {
-          delete next[paneId];
-        }
-        return next;
-      });
+  const registerRuntimeSlot = useCallback<TerminalRuntimeSlotChangeHandler>(
+    (paneId, element, active, mounted) => {
+      setRuntimeSlots((current) =>
+        updateTerminalRuntimeSlot(current, {
+          active,
+          element,
+          mounted,
+          paneId,
+          retainUnmounted:
+            !mounted && !currentRuntimePaneIdsRef.current.has(paneId),
+        }),
+      );
     },
     [],
   );
@@ -448,6 +442,7 @@ export function TerminalWorkspaceContent({
 
         return (
           <TerminalRuntimePortal
+            active={active}
             focused={active && pane.id === focusedPaneId}
             key={pane.id}
             onFocusPane={onFocusPane}
@@ -533,6 +528,7 @@ export function TerminalWorkspaceContent({
 }
 
 interface TerminalRuntimePortalProps {
+  active: boolean;
   focused: boolean;
   onFocusPane: (paneId: string) => void;
   onOpenLogs?: () => void;
@@ -557,7 +553,12 @@ interface TerminalRuntimePortalProps {
   terminalAppearance: TerminalAppearance;
 }
 
+/**
+ * 将一个稳定的 xterm runtime 复用到当前 slot；visible 同时检查 workspace 活动态和
+ * slot 生命周期，避免 detached retirement host 继续驱动 renderer 或 suggestion。
+ */
 function TerminalRuntimePortal({
+  active,
   focused,
   onFocusPane,
   onOpenLogs,
@@ -643,7 +644,7 @@ function TerminalRuntimePortal({
         tabId={tabId}
         terminalAppearance={terminalAppearance}
         title={pane.title}
-        visible={slot.active}
+        visible={active && slot.mounted && slot.active}
       />
     </TerminalPaneErrorBoundary>,
     host,
@@ -651,6 +652,10 @@ function TerminalRuntimePortal({
   );
 }
 
+/**
+ * 选择 portal 宿主时优先使用仍挂载的 slot，避免活动 pane 短暂回退到已退休的
+ * 脱离节点；非活动 pane 才允许最后退回退休 slot，以便保留 runtime 到清理帧。
+ */
 function resolveRuntimeSlot(
   slots: TerminalPaneRuntimeSlot[] | undefined,
   active: boolean,
@@ -659,17 +664,34 @@ function resolveRuntimeSlot(
     return undefined;
   }
   if (active) {
-    return findLastRuntimeSlot(slots, true) ?? slots[slots.length - 1];
+    return (
+      findLastRuntimeSlot(slots, true, true) ??
+      findLastMountedRuntimeSlot(slots)
+    );
   }
-  return findLastRuntimeSlot(slots, false) ?? slots[slots.length - 1];
+  return findLastRuntimeSlot(slots, false, true) ?? slots[slots.length - 1];
 }
 
 function findLastRuntimeSlot(
   slots: TerminalPaneRuntimeSlot[],
   active: boolean,
+  mountedOnly = false,
 ) {
   for (let index = slots.length - 1; index >= 0; index -= 1) {
-    if (slots[index].active === active) {
+    if (
+      slots[index].active === active &&
+      (!mountedOnly || slots[index].mounted)
+    ) {
+      return slots[index];
+    }
+  }
+  return undefined;
+}
+
+/** 仅在活动 slot 缺失时寻找仍可承载 portal 的任意挂载节点。 */
+function findLastMountedRuntimeSlot(slots: TerminalPaneRuntimeSlot[]) {
+  for (let index = slots.length - 1; index >= 0; index -= 1) {
+    if (slots[index].mounted) {
       return slots[index];
     }
   }

@@ -112,3 +112,58 @@ jobs:
             .updeng/docs/verification/eslint.json
             .updeng/docs/verification/dead-code.json
           retention-days: 14
+
+  frontend-platform-focus:
+    name: Frontend focus (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout validation ref
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck application and tests
+        run: pnpm run typecheck
+
+      - name: Typecheck test project
+        run: pnpm run typecheck:test
+
+      - name: Run terminal lifecycle regression tests
+        run: >-
+          pnpm exec vitest run
+          tests/frontend/features/terminal/terminalDisposalCompatibility.test.ts
+          tests/frontend/features/terminal/terminalRenderer.test.ts
+          tests/frontend/features/terminal/terminalRuntimeSlots.test.ts
+          tests/frontend/features/terminal/useTerminalRuntimePaneRetirement.test.tsx
+          tests/frontend/features/terminal/TerminalPaneCard.test.tsx
+
+      - name: Build frontend
+        env:
+          # macOS ARM 的默认 V8 堆上限不足以完成当前 Monaco/xterm bundle，避免 CI 在构建阶段误报 OOM。
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: pnpm run build

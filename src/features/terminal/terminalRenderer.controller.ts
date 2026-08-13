@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { TerminalRendererType } from "../settings/contracts/index";
 import {
   createXtermWebglCompatibilityAdapter,
@@ -42,6 +44,10 @@ import {
   type ActiveWebglRenderer,
   type WebglAddonLike,
 } from "./terminalRenderer.webglResources";
+import {
+  disposeWebglRendererResources,
+  runRendererCleanup,
+} from "./terminalRenderer.cleanup";
 
 type TimerHandle = TerminalRendererTimerHandle;
 type GpuOperationKind = "attach" | "recovery";
@@ -127,7 +133,6 @@ export function createTerminalRendererController({
   let recoveryStartedAt: number | undefined;
   let retryCount = 0;
   let retryHandle: TimerHandle | null = null;
-
   const state = (): TerminalRendererState => ({
     backend: activeWebgl ? "gpu" : "cpu",
     canvasCount: activeWebgl?.canvases.size ?? 0,
@@ -147,7 +152,6 @@ export function createTerminalRendererController({
     syncTelemetryResources();
     onStateChange?.(state());
   };
-
   const clearAttachTimeout = () => {
     if (attachTimeoutHandle === null) {
       return;
@@ -163,7 +167,6 @@ export function createTerminalRendererController({
     cancelRetry(retryHandle);
     retryHandle = null;
   };
-
   const clearTimers = () => {
     clearAttachTimeout();
     clearRetry();
@@ -185,23 +188,13 @@ export function createTerminalRendererController({
     fallbackReason = reason;
     emitStateChange();
   };
-
   const disposeRendererResources = (renderer: ActiveWebglRenderer) => {
-    for (const disposable of renderer.disposables) {
-      try {
-        disposable.dispose();
-      } catch (error) {
-        logger.warn("[kerminal-terminal-renderer] dispose event failed", error);
-      }
-    }
     // xterm 会让相同配置的终端共享 atlas；释放单个 pane 时清空它会让其它
     // renderer 保留失效的纹理坐标，表现为选中或 resize 前持续乱码。
-    compat.dispose({
-      addon: renderer.addon,
-      canvases: renderer.canvases,
-    });
+    disposeWebglRendererResources(renderer, compat, logger);
   };
 
+  /** 先清空 active 引用，再隔离统计/通知失败，保证重复卸载不触碰同一 addon。 */
   const disposeActiveWebgl = () => {
     const active = activeWebgl;
     if (!active) {
@@ -209,10 +202,13 @@ export function createTerminalRendererController({
     }
     activeWebgl = null;
     disposeRendererResources(active);
-    telemetry.increment("rendererSwapCount");
-    emitStateChange();
+    runRendererCleanup(
+      logger,
+      "[kerminal-terminal-renderer] renderer swap telemetry failed",
+      () => telemetry.increment("rendererSwapCount"),
+    );
+    notifyStateSafely();
   };
-
   const disposeCandidate = (renderer: ActiveWebglRenderer) => {
     disposeRendererResources(renderer);
   };
@@ -729,9 +725,8 @@ export function createTerminalRendererController({
     clearTimers();
     lifecycle.dispose();
     disposeActiveWebgl();
-    emitStateChange();
+    notifyStateSafely();
   };
-
   const getDiagnostics = (): TerminalRendererDiagnostics => ({
     activeTimerCount:
       Number(attachTimeoutHandle !== null) + Number(retryHandle !== null),
@@ -761,6 +756,14 @@ export function createTerminalRendererController({
     suspend,
     updateMode,
   };
+
+  function notifyStateSafely() {
+    runRendererCleanup(
+      logger,
+      "[kerminal-terminal-renderer] renderer disposal state notification failed",
+      emitStateChange,
+    );
+  }
 }
 
 async function defaultLoadWebglAddon() {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @author kongweiguang
 
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -25,6 +26,7 @@ const startedAt = Date.now();
 const result = await run(
   process.execPath,
   [
+    "--expose-gc",
     "node_modules/vitest/vitest.mjs",
     "run",
     "--run",

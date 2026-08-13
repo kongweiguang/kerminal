@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { type ReactNode } from "react";
 import { vi } from "vitest";
 import { terminalChromeRuntimeStore } from "../../../../../src/features/terminal/terminalChromeRuntimeStore";
@@ -7,6 +9,7 @@ const hoistedXtermPaneMockState = vi.hoisted(() => ({
   renderCount: 0,
   shouldThrow: false,
   unmountedPaneIds: [] as string[],
+  visibleByPaneId: new Map<string, boolean>(),
 }));
 export const xtermPaneMockState = hoistedXtermPaneMockState;
 
@@ -58,14 +61,17 @@ vi.mock("../../../../../src/features/terminal/XtermPane", async () => {
       onSplitPane,
       paneId,
       title,
+      visible = true,
     }: {
       onConnectionStateChange?: (state: "closed") => void;
       onOpenLogs?: () => void;
       onSplitPane?: (direction: "horizontal" | "vertical") => void;
       paneId: string;
       title: string;
+      visible?: boolean;
     }) => {
       xtermPaneMockState.renderCount += 1;
+      xtermPaneMockState.visibleByPaneId.set(paneId, visible);
       React.useEffect(() => {
         xtermPaneMockState.mountedPaneIds.push(paneId);
         return () => {
@@ -137,6 +143,7 @@ export function resetTerminalWorkspaceTestState() {
   xtermPaneMockState.renderCount = 0;
   xtermPaneMockState.shouldThrow = false;
   xtermPaneMockState.unmountedPaneIds = [];
+  xtermPaneMockState.visibleByPaneId.clear();
   resizableMockState.groups = [];
   desktopClipboardMocks.writeDesktopClipboardText.mockReset();
   desktopClipboardMocks.writeDesktopClipboardText.mockResolvedValue({

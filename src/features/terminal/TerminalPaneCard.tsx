@@ -1,6 +1,10 @@
 // @author kongweiguang
 
-import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { GripVertical, Terminal, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -17,6 +21,7 @@ import { XtermPane } from "./XtermPane";
 import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
 import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+import type { TerminalRuntimeSlotChangeHandler } from "./terminalRuntimeSlots";
 import type { ConnectionState } from "./XtermPane.helpers";
 
 interface TerminalPaneCardProps {
@@ -41,11 +46,7 @@ interface TerminalPaneCardProps {
     paneId: string,
     outputHistory: string | undefined,
   ) => void;
-  onRuntimeSlotChange?: (
-    paneId: string,
-    element: HTMLElement | null,
-    active: boolean,
-  ) => void;
+  onRuntimeSlotChange?: TerminalRuntimeSlotChangeHandler;
   onSplitPane?: (
     direction: TerminalSplitDirection,
     options?: TerminalSplitPaneOptions,
@@ -88,9 +89,22 @@ export function TerminalPaneCard({
     onFocusPane(pane.id);
     onSplitPane?.(direction, splitOptions);
   };
+  const runtimeSlotElementRef = useRef<HTMLDivElement | null>(null);
   const runtimeSlotRef = useCallback(
     (element: HTMLDivElement | null) => {
-      onRuntimeSlotChange?.(pane.id, element, runtimeSlotActive);
+      const previousElement = runtimeSlotElementRef.current;
+      if (previousElement && previousElement !== element) {
+        onRuntimeSlotChange?.(
+          pane.id,
+          previousElement,
+          runtimeSlotActive,
+          false,
+        );
+      }
+      runtimeSlotElementRef.current = element;
+      if (element) {
+        onRuntimeSlotChange?.(pane.id, element, runtimeSlotActive, true);
+      }
     },
     [onRuntimeSlotChange, pane.id, runtimeSlotActive],
   );

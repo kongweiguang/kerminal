@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -418,6 +420,85 @@ describe("terminalRenderer", () => {
     );
   });
 
+  it("keeps ordinary controller disposal responsible for the active addon", async () => {
+    const controller = createTerminalRendererController({
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      paneId: "pane-controller-dispose",
+      rendererType: "auto",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+    const addon = FakeWebglAddon.instances[0];
+
+    controller.dispose();
+    controller.dispose();
+
+    expect(addon.dispose).toHaveBeenCalledOnce();
+    expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
+  });
+
+  it("cancels a pending attach when disposing", () => {
+    const scheduler = new ManualTimerScheduler();
+    const controller = createTerminalRendererController({
+      attachTimeoutMs: 100,
+      cancelRetry: scheduler.cancel,
+      loadWebglAddon: () => new Promise(() => undefined),
+      paneId: "pane-pending-dispose",
+      rendererType: "auto",
+      scheduleRetry: scheduler.schedule,
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    expect(scheduler.pendingCount()).toBe(1);
+
+    controller.dispose();
+
+    expect(scheduler.pendingCount()).toBe(0);
+    expect(controller.getDiagnostics()).toEqual(
+      expect.objectContaining({
+        activeTimerCount: 0,
+        lifecycle: expect.objectContaining({ state: "disposed" }),
+      }),
+    );
+  });
+
+  it("keeps controller disposal idempotent when compatibility cleanup fails", async () => {
+    const logger = { warn: vi.fn() };
+    const compatibilityError = new Error("compatibility cleanup failed");
+    const compatibilityAdapter = {
+      capabilities: {
+        forceContextLoss: false,
+        privateRendererCleanup: false,
+      },
+      dispose: vi.fn(() => {
+        throw compatibilityError;
+      }),
+    };
+    const controller = createTerminalRendererController({
+      compatibilityAdapter,
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      logger,
+      paneId: "pane-controller-cleanup-failure",
+      rendererType: "auto",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+
+    expect(() => controller.dispose()).not.toThrow();
+    controller.dispose();
+
+    expect(compatibilityAdapter.dispose).toHaveBeenCalledOnce();
+    expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("compatibility dispose failed"),
+      compatibilityError,
+    );
+  });
 
 });
 
