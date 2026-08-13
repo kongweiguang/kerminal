@@ -439,6 +439,34 @@ describe("terminalRenderer", () => {
     expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
   });
 
+  it("does not enable private cleanup for unverified build dependencies", async () => {
+    const logger = { warn: vi.fn() };
+    const controller = createTerminalRendererController({
+      compatibilityGate: {
+        forceContextLoss: true,
+        privateRendererCleanup: true,
+      },
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      logger,
+      paneId: "pane-unverified-compatibility",
+      rendererType: "gpu",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+    const addon = FakeWebglAddon.instances[0];
+
+    controller.dispose();
+
+    expect(addon._renderer._canvas).toBeDefined();
+    expect(addon._renderer._charAtlas).toBeDefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("unverified versions"),
+      undefined,
+    );
+  });
+
   it("cancels a pending attach when disposing", () => {
     const scheduler = new ManualTimerScheduler();
     const controller = createTerminalRendererController({

@@ -1,12 +1,27 @@
-/** 已验证可使用 xterm WebGL 私有兼容清理的精确依赖版本。 */
+// @author kongweiguang
+
+import addonWebglPackage from "@xterm/addon-webgl/package.json";
+import xtermPackage from "@xterm/xterm/package.json";
 import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
+/** 已验证可使用 xterm WebGL 私有兼容清理的精确依赖版本。 */
 export const VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS = Object.freeze({
   webglAddon: "0.19.0",
   xterm: "6.0.0",
 });
 
-/** controller 提供的实际 xterm 与 WebGL addon 版本。 */
+/**
+ * 当前构建实际解析到的 xterm 与 WebGL addon 版本。
+ *
+ * 版本从构建依赖的 package.json 注入，避免把“已验证版本”误当作运行时
+ * 依赖版本；依赖升级后，私有兼容路径会因为精确匹配失败而保持关闭。
+ */
+export const ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS = Object.freeze({
+  webglAddon: addonWebglPackage.version,
+  xterm: xtermPackage.version,
+});
+
+/** compatibility adapter 接收的实际 xterm 与 WebGL addon 版本。 */
 export interface XtermWebglCompatibilityVersions {
   webglAddon: string;
   xterm: string;
@@ -73,6 +88,20 @@ export function createXtermWebglCompatibilityAdapter({
     versions.xterm === VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS.xterm &&
     versions.webglAddon ===
       VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS.webglAddon;
+  if (
+    !exactVersionMatch &&
+    (capabilityGate?.forceContextLoss === true ||
+      capabilityGate?.privateRendererCleanup === true)
+  ) {
+    runtimeCompatibilityDiagnostics.recordFailure(
+      "terminal.xterm-webview-patch",
+    );
+    warnSafely(
+      logger,
+      `[kerminal-terminal-renderer] private WebGL compatibility disabled for unverified versions (xterm ${versions.xterm}, addon-webgl ${versions.webglAddon}; verified xterm ${VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS.xterm}, addon-webgl ${VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS.webglAddon}).`,
+      undefined,
+    );
+  }
   const capabilities = Object.freeze({
     forceContextLoss:
       exactVersionMatch && capabilityGate?.forceContextLoss === true,

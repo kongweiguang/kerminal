@@ -1,8 +1,17 @@
 // @author kongweiguang
 
 import { Terminal, type ITerminalAddon } from "@xterm/xterm";
-import { describe, expect, it, vi } from "vitest";
-import { disposeXtermTerminal } from "../../../../src/features/terminal/terminalDisposalCompatibility";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createXtermAddonDisposalErrorState,
+  disposeXtermTerminal,
+  wrapXtermAddonForDisposal,
+} from "../../../../src/features/terminal/terminalDisposalCompatibility";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  document.body.innerHTML = "";
+});
 
 describe("terminalDisposalCompatibility", () => {
   it.each(["browser", "linux", "macos", "windows"])(
@@ -116,7 +125,7 @@ describe("terminalDisposalCompatibility", () => {
       ),
     );
 
-    expect(thrown).toBe(terminalError);
+    expect(thrown).toEqual({ thrown: true, value: terminalError });
     expect(unregisterRenderer).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledOnce();
   });
@@ -135,9 +144,29 @@ describe("terminalDisposalCompatibility", () => {
       ),
     );
 
-    expect(thrown).toBe(coordinatorError);
+    expect(thrown).toEqual({ thrown: true, value: coordinatorError });
     expect(terminalDispose).toHaveBeenCalledOnce();
   });
+
+  it.each([undefined, null])(
+    "does not swallow a coordinator cleanup value that throws %s",
+    (coordinatorError) => {
+      const terminalDispose = vi.fn();
+      const unregisterRenderer = vi.fn(() => {
+        throw coordinatorError;
+      });
+
+      const thrown = captureThrown(() =>
+        disposeXtermTerminal(
+          { dispose: terminalDispose, element: { remove: vi.fn() } },
+          { unregisterRenderer },
+        ),
+      );
+
+      expect(thrown).toEqual({ thrown: true, value: coordinatorError });
+      expect(terminalDispose).toHaveBeenCalledOnce();
+    },
+  );
 
   it.each([undefined, null])(
     "does not swallow a first cleanup failure that throws %s",
@@ -154,7 +183,7 @@ describe("terminalDisposalCompatibility", () => {
         ),
       );
 
-      expect(thrown).toBe(firstError);
+      expect(thrown).toEqual({ thrown: true, value: firstError });
       expect(unregisterRenderer).toHaveBeenCalledOnce();
     },
   );
@@ -178,16 +207,195 @@ describe("terminalDisposalCompatibility", () => {
       ),
     );
 
-    expect(thrown).toBe(terminalError);
+    expect(thrown).toEqual({ thrown: true, value: terminalError });
     expect(unregisterRenderer).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, null, new Error("addon dispose failed")])(
+    "isolates an addon disposal failure with value %s and still releases later addons",
+    (addonError) => {
+      installXtermBrowserStubs();
+      const container = document.createElement("div");
+      document.body.append(container);
+      const terminal = new Terminal();
+      terminal.open(container);
+      const errors = createXtermAddonDisposalErrorState();
+      const order: string[] = [];
+      const firstAddonDispose = vi.fn(() => order.push("first-addon"));
+      const secondAddonDispose = vi.fn(() => {
+        order.push("second-addon");
+        throw addonError;
+      });
+      const firstAddon: ITerminalAddon = {
+        activate: vi.fn(),
+        dispose: firstAddonDispose,
+      };
+      const secondAddon: ITerminalAddon = {
+        activate: vi.fn(),
+        dispose: secondAddonDispose,
+      };
+      terminal.loadAddon(wrapXtermAddonForDisposal(firstAddon, errors));
+      terminal.loadAddon(wrapXtermAddonForDisposal(secondAddon, errors));
+      const unregisterRenderer = vi.fn(() => order.push("coordinator"));
+
+      const thrown = captureThrown(() =>
+        disposeXtermTerminal(terminal, { unregisterRenderer }, errors),
+      );
+
+      expect(thrown).toEqual({ thrown: true, value: addonError });
+      expect(order).toEqual([
+        "second-addon",
+        "first-addon",
+        "coordinator",
+      ]);
+      expect(firstAddonDispose).toHaveBeenCalledOnce();
+      expect(secondAddonDispose).toHaveBeenCalledOnce();
+      expect(unregisterRenderer).toHaveBeenCalledOnce();
+      container.remove();
+    },
+  );
+
+  it.each([undefined, null])(
+    "keeps the first addon value when coordinator and DOM cleanup also throw %s",
+    (addonError) => {
+      const coordinatorError = new Error("coordinator second");
+      const domError = new Error("dom third");
+      const errors = createXtermAddonDisposalErrorState();
+      errors.hasFirstError = true;
+      errors.firstError = addonError;
+      const remove = vi.fn(() => {
+        throw domError;
+      });
+      const unregisterRenderer = vi.fn(() => {
+        throw coordinatorError;
+      });
+
+      const thrown = captureThrown(() =>
+        disposeXtermTerminal(
+          { dispose: vi.fn(), element: { remove } },
+          { unregisterRenderer },
+          errors,
+        ),
+      );
+
+      expect(thrown).toEqual({ thrown: true, value: addonError });
+      expect(unregisterRenderer).toHaveBeenCalledOnce();
+      expect(remove).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("keeps terminal failure ahead of addon and coordinator failures", () => {
+    const terminalError = new Error("terminal first");
+    const coordinatorError = new Error("coordinator second");
+    const errors = createXtermAddonDisposalErrorState();
+    errors.hasFirstError = true;
+    errors.firstError = new Error("addon later");
+    const unregisterRenderer = vi.fn(() => {
+      throw coordinatorError;
+    });
+
+    const thrown = captureThrown(() =>
+      disposeXtermTerminal(
+        {
+          dispose: () => {
+            throw terminalError;
+          },
+          element: { remove: vi.fn() },
+        },
+        { unregisterRenderer },
+        errors,
+      ),
+    );
+
+    expect(thrown).toEqual({ thrown: true, value: terminalError });
+    expect(unregisterRenderer).toHaveBeenCalledOnce();
+  });
+
+  it("replays owned addons when core disposal throws before AddonManager", () => {
+    const coreError = new Error("core dispose failed");
+    const addonDispose = vi.fn();
+    const addon: ITerminalAddon = { activate: vi.fn(), dispose: addonDispose };
+    const errors = createXtermAddonDisposalErrorState();
+    wrapXtermAddonForDisposal(addon, errors);
+    const unregisterRenderer = vi.fn();
+
+    const thrown = captureThrown(() =>
+      disposeXtermTerminal(
+        { dispose: () => { throw coreError; }, element: { remove: vi.fn() } },
+        { unregisterRenderer },
+        errors,
+      ),
+    );
+
+    expect(thrown).toEqual({ thrown: true, value: coreError });
+    expect(addonDispose).toHaveBeenCalledOnce();
+    expect(unregisterRenderer).toHaveBeenCalledOnce();
+  });
+
+  it("makes an addon ownership wrapper idempotent", () => {
+    const errors = createXtermAddonDisposalErrorState();
+    const addonDispose = vi.fn(() => {
+      throw new Error("one addon failure");
+    });
+    const addon: ITerminalAddon = {
+      activate: vi.fn(),
+      dispose: addonDispose,
+    };
+    const wrapped = wrapXtermAddonForDisposal(addon, errors);
+
+    wrapped.dispose();
+    wrapped.dispose();
+
+    expect(addonDispose).toHaveBeenCalledOnce();
+    expect(errors.hasFirstError).toBe(true);
+    expect(errors.firstError).toBeInstanceOf(Error);
+  });
+
+  it("treats an addon without an optional dispose callback as an idempotent no-op", () => {
+    const errors = createXtermAddonDisposalErrorState();
+    const addon = { activate: vi.fn() } as unknown as ITerminalAddon;
+    const wrapped = wrapXtermAddonForDisposal(addon, errors);
+
+    wrapped.dispose?.();
+    wrapped.dispose?.();
+
+    expect(errors.hasFirstError).toBe(false);
+    expect(errors.ownedAddons).toEqual([addon]);
   });
 });
 
-function captureThrown(action: () => void): unknown {
+/** 用显式标记区分“没有抛出”和合法的 `throw undefined`/`throw null`。 */
+function captureThrown(action: () => void): {
+  thrown: boolean;
+  value: unknown;
+} {
   try {
     action();
   } catch (error) {
-    return error;
+    return { thrown: true, value: error };
   }
-  return undefined;
+  return { thrown: false, value: undefined };
+}
+
+/**
+ * xterm 在 jsdom 中仍会走真实的 canvas/media 依赖；只在测试边界补足浏览器
+ * 原语，避免把生产 disposal 顺序替换成假 Terminal 或手工 remove。
+ */
+function installXtermBrowserStubs() {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    measureText: vi.fn(() => ({ width: 10 })),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    const removeListener = vi.fn();
+    return {
+      addEventListener: vi.fn(),
+      addListener: vi.fn(),
+      dispatchEvent: () => false,
+      matches: false,
+      media: query,
+      onchange: null,
+      removeEventListener: vi.fn(),
+      removeListener,
+    } as MediaQueryList;
+  });
 }

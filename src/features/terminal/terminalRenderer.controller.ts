@@ -2,8 +2,8 @@
 
 import type { TerminalRendererType } from "../settings/contracts/index";
 import {
+  ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
   createXtermWebglCompatibilityAdapter,
-  VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
 } from "./terminalRendererCompatibility";
 import {
   createTerminalRendererLifecycle,
@@ -114,7 +114,7 @@ export function createTerminalRendererController({
     createXtermWebglCompatibilityAdapter({
       capabilityGate: compatibilityGate,
       logger,
-      versions: VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
+      versions: ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
     });
   const resolvedRetryDelays = normalizeRetryDelays(retryDelaysMs);
   const resolvedGpuPlatformClass =

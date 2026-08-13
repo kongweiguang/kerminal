@@ -38,7 +38,11 @@ import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 import { createTerminalSurfaceEventController } from "./terminalSurfaceEventController";
-import { disposeXtermTerminal } from "./terminalDisposalCompatibility";
+import {
+  createXtermAddonDisposalErrorState,
+  disposeXtermTerminal,
+  wrapXtermAddonForDisposal,
+} from "./terminalDisposalCompatibility";
 import { createXtermPaneSessionRuntime } from "./XtermPane.sessionRuntime";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
@@ -134,6 +138,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   });
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon({ highlightLimit: 1000 });
+  const addonDisposalErrors = createXtermAddonDisposalErrorState();
   fitAddonRef.current = fitAddon;
   searchAddonRef.current = searchAddon;
   const reduceShellIntegrationRuntimeState = (event: Parameters<typeof reduceTerminalShellIntegrationState>[1]) => {
@@ -239,8 +244,12 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     null;
   let rendererHealthWatchdog: TerminalRendererHealthWatchdog | null = null;
 
-  terminal.loadAddon(fitAddon);
-  terminal.loadAddon(searchAddon);
+  // xterm 的 DisposableStore 不隔离 addon 异常；包裹已知 addon 后仍由原生
+  // store 负责顺序和 ownership，错误则延迟到顶层 disposal 统一重抛。
+  terminal.loadAddon(wrapXtermAddonForDisposal(fitAddon, addonDisposalErrors));
+  terminal.loadAddon(
+    wrapXtermAddonForDisposal(searchAddon, addonDisposalErrors),
+  );
   const terminalInlineSshAuthPrompt = createTerminalInlineSshAuthPrompt({
     markUserInteraction: () => terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction(),
     terminal,
@@ -581,7 +590,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     runCleanup(() =>
       disposeXtermTerminal(terminal, {
         unregisterRenderer: unregisterTerminalRenderer,
-      }),
+      }, addonDisposalErrors),
     );
 
     runCleanup(() => {
