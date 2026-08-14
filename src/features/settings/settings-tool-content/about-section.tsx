@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useRef, useState, type ReactNode } from "react";
 import {
   Download,
@@ -35,7 +37,7 @@ import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 
 const githubRepositoryUrl = "https://github.com/kongweiguang/kerminal";
 const appVersion = `v${packageJson.version}`;
-const licenseName = packageJson.license ?? "AGPL-3.0-only";
+const licenseName = packageJson.license ?? "GPL-3.0-or-later";
 const aboutPanelClassName =
   "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const aboutListClassName =
