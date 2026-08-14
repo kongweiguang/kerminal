@@ -215,9 +215,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复关闭、重开和快速切换终端窗格时的退休帧可见性与并发生命周期问题。
-            - 完整释放 xterm core、addon、renderer、DOM 与监听器，避免重复开关窗格后资源累积。
-            - 升级 SSH、XML 解析与前端构建链安全依赖，并增加 Windows、macOS、Linux 生命周期、依赖审计与原生编译门禁。
+            - 修复同一主机打开多个终端标签后，关闭其中一个可能导致 Windows WebView2 卡死或崩溃的问题。
+            - xterm、Fit、Search 与 WebGL addon 改用经过验证的稳定版本组合，避免 beta renderer 生命周期回归。
+            - 保留 Windows 的保守 CPU renderer，并增强同主机兄弟终端隔离和资源释放回归测试。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
