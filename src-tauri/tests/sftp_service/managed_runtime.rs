@@ -1,3 +1,7 @@
+//! SFTP 与受管 SSH runtime 的跨能力集成测试。
+//!
+//! @author kongweiguang
+
 use std::{
     sync::{atomic::Ordering, mpsc, Arc},
     time::Duration,
@@ -32,6 +36,7 @@ use kerminal_lib::{
             ManagedSshSessionManager, SshAuthSecretKind, SshChannelKind,
             MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG, MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
         },
+        ssh_terminal_service::INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX,
     },
     state::AppState,
 };
@@ -39,8 +44,9 @@ use managed_ssh_runtime_support::FakeManagedSshRuntime;
 use tempfile::tempdir;
 use tokio::{fs, runtime::Runtime};
 
+/// 锁定 terminal 与 SFTP 的 transport 隔离，同时证明 session-only 凭据仍可在两条连接上复用。
 #[test]
-fn ssh_terminal_and_sftp_share_one_session_only_managed_transport() {
+fn ssh_terminal_and_sftp_use_isolated_session_only_managed_transports() {
     let runtime = Runtime::new().expect("create test runtime");
     let server_root = tempdir().expect("server root");
     runtime.block_on(async {
@@ -106,7 +112,7 @@ fn ssh_terminal_and_sftp_share_one_session_only_managed_transport() {
                 path: "/".to_owned(),
             },
         ))
-        .expect("list through the same managed SSH session after terminal login");
+        .expect("list through the isolated capability session after terminal login");
     assert!(listing
         .entries
         .iter()
@@ -127,7 +133,13 @@ fn ssh_terminal_and_sftp_share_one_session_only_managed_transport() {
     let interactive = snapshot
         .sessions
         .iter()
-        .find(|session| session.key.runtime_flags.is_empty())
+        .find(|session| {
+            session
+                .key
+                .runtime_flags
+                .iter()
+                .any(|flag| flag.starts_with(INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX))
+        })
         .expect("interactive terminal lane");
     let browser = snapshot
         .sessions
@@ -155,8 +167,9 @@ fn ssh_terminal_and_sftp_share_one_session_only_managed_transport() {
         .expect("close terminal shell");
 }
 
+/// 外部启动目标也必须隔离 terminal 与 SFTP，避免关闭可见标签影响仍在使用的文件能力。
 #[test]
-fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
+fn external_launch_clients_terminal_and_sftp_use_isolated_transports() {
     let runtime = Runtime::new().expect("create test runtime");
     for client in ExternalClientFixture::all() {
         let server_root = tempdir().expect("server root");
@@ -261,7 +274,7 @@ fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
             ))
             .unwrap_or_else(|error| {
                 panic!(
-                    "{} should list external target through the terminal managed SSH transport: {error}",
+                    "{} should list external target through the isolated capability transport: {error}",
                     client.label()
                 )
             });
@@ -302,7 +315,7 @@ fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
                     directory: true,
                 },
             ))
-            .expect("delete external directory through the terminal managed SSH transport");
+            .expect("delete external directory through the capability transport");
         assert!(
             !server_root.path().join("external-dir").exists(),
             "{} external managed exec helper should remove the remote directory",
@@ -348,7 +361,13 @@ fn external_launch_clients_terminal_and_sftp_share_interactive_transport() {
         let interactive = snapshot
             .sessions
             .iter()
-            .find(|session| session.key.runtime_flags.is_empty())
+            .find(|session| {
+                session
+                    .key
+                    .runtime_flags
+                    .iter()
+                    .any(|flag| flag.starts_with(INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX))
+            })
             .expect("external terminal interactive lane");
         assert_eq!(
             interactive.channel_counts.get(&SshChannelKind::Shell),

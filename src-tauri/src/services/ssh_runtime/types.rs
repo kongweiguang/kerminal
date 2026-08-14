@@ -230,3 +230,5 @@ pub const MANAGED_SSH_REMOTE_DYNAMIC_FORWARD_UNSUPPORTED: &str =
     "managed SSH runtime backend does not support remote dynamic port forwarding yet";
 pub const MANAGED_SSH_CAPABILITY_RUNTIME_FLAG: &str = "capability";
 pub const MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG: &str = "bulk-transfer";
+/// 唯一所有者使用该标记让连接在最后一个 handle/channel 释放后立刻回收，避免不可复用的会话常驻。
+pub const MANAGED_SSH_EPHEMERAL_RUNTIME_FLAG: &str = "ephemeral";

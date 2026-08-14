@@ -188,6 +188,7 @@ pub struct FakeShellRuntime {
 pub struct FakeShellRuntimeState {
     closes: AtomicUsize,
     connects: AtomicUsize,
+    disconnects: AtomicUsize,
     events: Mutex<VecDeque<SshRuntimeShellEvent>>,
     last_keepalive_seconds: Mutex<Option<u64>>,
     last_key: Mutex<Option<SshSessionKey>>,
@@ -210,6 +211,11 @@ impl FakeShellRuntime {
 
     pub fn connect_count(&self) -> usize {
         self.state.connects.load(Ordering::SeqCst)
+    }
+
+    /// 独占连接测试需要观察底层 transport 是否真的释放，而不能只依据 shell UI 已关闭。
+    pub fn disconnect_count(&self) -> usize {
+        self.state.disconnects.load(Ordering::SeqCst)
     }
 
     pub fn last_key(&self) -> Option<SshSessionKey> {
@@ -279,7 +285,10 @@ impl SshRuntimeConnection for FakeShellConnection {
         }))
     }
 
-    fn disconnect(&self, _reason: &str) {}
+    /// 记录连接级释放次数，防止测试把 channel close 误当成完整 transport 回收。
+    fn disconnect(&self, _reason: &str) {
+        self.state.disconnects.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 struct FakeShellSession {

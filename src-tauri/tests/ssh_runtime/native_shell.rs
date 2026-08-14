@@ -1,4 +1,6 @@
 //! SSH runtime 原生 shell 集成测试。
+//!
+//! @author kongweiguang
 
 use super::fixtures::*;
 use super::*;
@@ -116,5 +118,63 @@ fn native_shell_channel_write_is_not_blocked_by_pending_read() {
             .snapshot()
             .expect("snapshot after native shell drop");
         assert_eq!(snapshot.active_channels, 0);
+    });
+}
+
+/// 关闭同一 SSH transport 上的一个 shell 后继续读写兄弟 shell，防止 Tab 关闭误伤存活会话。
+#[test]
+fn closing_one_native_shell_keeps_sibling_shell_connected() {
+    let server = LoopbackTerminalServer::start();
+    let home = tempdir().expect("create native sibling shell temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    fs::create_dir_all(&paths.root).expect("create kerminal root");
+    trust_loopback_host_key(&paths, "127.0.0.1", server.addr.port(), &server.host_key)
+        .expect("trust loopback host key");
+
+    let manager = ManagedSshSessionManager::with_backend(Arc::new(NativeSshRuntimeBackend::new()));
+    let request = SshRuntimeConnectRequest::native(
+        loopback_session_key(server.addr.port()),
+        loopback_runtime_host(server.addr.port()),
+        paths.root.join("known_hosts"),
+        5,
+    );
+
+    let runtime = tokio::runtime::Runtime::new().expect("create native sibling shell runtime");
+    runtime.block_on(async {
+        let first_session = manager
+            .acquire_session_with_request(request.clone())
+            .expect("acquire first native session lease");
+        let second_session = manager
+            .acquire_session_with_request(request)
+            .expect("acquire second native session lease");
+        let mut first_shell = first_session
+            .open_shell(SshRuntimeShellRequest::new("xterm-256color", 96, 28))
+            .await
+            .expect("open first native shell");
+        let mut second_shell = second_session
+            .open_shell(SshRuntimeShellRequest::new("xterm-256color", 96, 28))
+            .await
+            .expect("open second native shell");
+
+        assert!(read_shell_until(&first_shell, LOOPBACK_READY_MARKER)
+            .await
+            .contains(LOOPBACK_READY_MARKER));
+        assert!(read_shell_until(&second_shell, LOOPBACK_READY_MARKER)
+            .await
+            .contains(LOOPBACK_READY_MARKER));
+        second_shell.close().await.expect("close sibling shell");
+
+        first_shell
+            .write(format!("echo {COMMAND_MARKER}\r").into_bytes())
+            .await
+            .expect("write surviving native shell");
+        let output = read_shell_until(&first_shell, COMMAND_MARKER).await;
+        assert!(output.contains(COMMAND_MARKER), "{output:?}");
+
+        let snapshot = manager.snapshot().expect("snapshot after sibling close");
+        assert_eq!(snapshot.active_sessions, 1);
+        assert_eq!(snapshot.active_channels, 1);
+        assert_eq!(snapshot.sessions[0].ref_count, 2);
+        first_shell.close().await.expect("close surviving shell");
     });
 }

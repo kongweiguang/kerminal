@@ -1,4 +1,6 @@
 //! SSH runtime 会话、通道与队列集成测试。
+//!
+//! @author kongweiguang
 
 use super::fixtures::*;
 use super::*;
@@ -39,6 +41,23 @@ fn manager_reuses_session_for_same_key_tracks_ref_counts_and_keeps_idle() {
 
     assert_eq!(manager.close_idle_sessions().expect("closed idle"), 1);
     assert_eq!(manager.active_session_count().expect("count"), 0);
+    assert_eq!(backend.disconnect_count(), 1);
+}
+
+/// 显式短生命周期 lease 即使没有打开 channel，也必须在最后 handle 释放时断开，避免唯一键连接永久滞留。
+#[test]
+fn ephemeral_session_disconnects_when_last_handle_is_released() {
+    let backend = Arc::new(FakeBackend::default());
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let key = sample_key()
+        .with_runtime_flag(kerminal_lib::services::ssh_runtime::MANAGED_SSH_EPHEMERAL_RUNTIME_FLAG);
+
+    let session = manager.acquire_session(key).expect("ephemeral session");
+    assert_eq!(manager.active_session_count().expect("session count"), 1);
+
+    drop(session);
+
+    assert_eq!(manager.active_session_count().expect("session count"), 0);
     assert_eq!(backend.disconnect_count(), 1);
 }
 

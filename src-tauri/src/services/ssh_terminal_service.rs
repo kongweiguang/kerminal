@@ -34,6 +34,7 @@ use crate::{
             },
             session_key::ssh_session_key_for_route,
             ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeShellRequest,
+            MANAGED_SSH_EPHEMERAL_RUNTIME_FLAG,
         },
         terminal_manager::{
             TerminalManagedShellCreateRequest, TerminalManagedShellRuntime, TerminalManager,
@@ -41,6 +42,7 @@ use crate::{
     },
 };
 use std::{collections::HashMap, path::Path};
+use uuid::Uuid;
 
 mod identity;
 
@@ -51,6 +53,8 @@ use identity::{
 
 const LEGACY_FALLBACK_SHELL_UNWIRED: &str = "managed-shell-backend-unwired";
 const LEGACY_FALLBACK_SHELL_UNSUPPORTED: &str = "managed-shell-unsupported";
+/// 诊断与回归测试通过稳定前缀识别终端独占连接，但随机后缀避免不同标签落到同一连接池键。
+pub const INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX: &str = "interactive-terminal:";
 
 /// SSH 远程终端业务入口。
 #[derive(Debug, Default)]
@@ -235,6 +239,8 @@ impl SshTerminalService {
             known_hosts_path,
             terminal_connect_timeout_seconds(&runtime_host),
         )
+        .with_runtime_flag(MANAGED_SSH_EPHEMERAL_RUNTIME_FLAG)
+        .with_runtime_flag(interactive_terminal_runtime_flag())
         .with_keepalive_seconds(terminal_keepalive_seconds(&runtime_host))
         .with_host_key_policy(runtime_host_key_policy_for_host_id(&runtime_host.id))
         .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(&route_auth)?);
@@ -279,6 +285,14 @@ impl SshTerminalService {
             shell: TerminalManagedShellRuntime { shell, runtime },
         }))
     }
+}
+
+/// 为每个可见终端生成独立运行时所有权，避免一个标签的 channel/transport 故障传播到兄弟标签。
+fn interactive_terminal_runtime_flag() -> String {
+    format!(
+        "{INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX}{}",
+        Uuid::new_v4()
+    )
 }
 
 fn terminal_host_label(host: &RemoteHost) -> String {

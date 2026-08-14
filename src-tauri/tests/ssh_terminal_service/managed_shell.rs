@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::support::*;
 
 #[test]
@@ -54,6 +56,96 @@ fn create_session_prefers_managed_shell_runtime_for_default_ssh_terminal() {
     wait_until(Duration::from_secs(2), || backend.write_count() == 1);
     terminals.close(&summary.id).expect("close shell");
     wait_until(Duration::from_secs(2), || backend.close_count() == 1);
+}
+
+/// 用同主机双标签锁定独立 transport 契约，避免关闭兄弟标签时活动终端被迫重连。
+#[test]
+fn same_host_terminal_tabs_use_independent_transports() {
+    let (_home, state) = test_state();
+    let host_id = create_test_remote_host_with_secret(
+        &state,
+        RemoteHostAuthType::Password,
+        None,
+        Some(TEST_PASSWORD.to_owned()),
+    );
+    let backend = Arc::new(FakeShellRuntime::default());
+    let auth_broker = SshAuthBroker::new();
+    let managed_runtime = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let service = SshTerminalService::with_ssh_runtime(
+        managed_runtime.clone(),
+        auth_broker.clone(),
+        ExternalSessionMaterializer::new(ExternalLaunchIntake::new(), auth_broker),
+    );
+    let terminals = TerminalManager::new();
+    let request = SshTerminalCreateRequest {
+        host_id,
+        cwd: None,
+        remote_command: None,
+        cols: 80,
+        rows: 24,
+    };
+
+    let active = service
+        .create_session(
+            state.remote_hosts(),
+            state.paths(),
+            &terminals,
+            request.clone(),
+            |_| true,
+        )
+        .expect("create active same-host terminal");
+    let sibling = service
+        .create_session(
+            state.remote_hosts(),
+            state.paths(),
+            &terminals,
+            request,
+            |_| true,
+        )
+        .expect("create sibling same-host terminal");
+
+    assert_eq!(
+        backend.connect_count(),
+        2,
+        "每个交互式终端标签必须独占 transport，避免关闭兄弟 channel 时污染仍活动的标签"
+    );
+    terminals
+        .write(&active.id, "before-close\r")
+        .expect("write active terminal before sibling close");
+    terminals
+        .close(&sibling.id)
+        .expect("close sibling same-host terminal");
+    wait_until(Duration::from_secs(2), || backend.close_count() == 1);
+    wait_until(Duration::from_secs(2), || backend.disconnect_count() == 1);
+    let snapshot = managed_runtime
+        .snapshot()
+        .expect("snapshot after sibling close");
+    assert_eq!(snapshot.active_sessions, 1);
+    assert_eq!(snapshot.active_channels, 1);
+    terminals
+        .write(&active.id, "after-close\r")
+        .expect("write active terminal after sibling close");
+    wait_until(Duration::from_secs(2), || backend.write_count() == 2);
+
+    assert_eq!(
+        backend.connect_count(),
+        2,
+        "关闭兄弟标签不能触发活动标签重连"
+    );
+    assert_eq!(
+        backend.written_inputs(),
+        vec![b"before-close\r".to_vec(), b"after-close\r".to_vec()]
+    );
+    terminals.close(&active.id).expect("close active terminal");
+    wait_until(Duration::from_secs(2), || backend.close_count() == 2);
+    wait_until(Duration::from_secs(2), || backend.disconnect_count() == 2);
+    assert_eq!(
+        managed_runtime
+            .active_session_count()
+            .expect("session count"),
+        0,
+        "关闭最后一个交互式标签后不能遗留不可复用的独占 transport"
+    );
 }
 
 #[test]

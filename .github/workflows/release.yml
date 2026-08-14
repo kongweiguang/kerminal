@@ -215,9 +215,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复同一主机打开多个终端标签后，关闭其中一个可能导致 Windows WebView2 卡死或崩溃的问题。
-            - xterm、Fit、Search 与 WebGL addon 改用经过验证的稳定版本组合，避免 beta renderer 生命周期回归。
-            - 保留 Windows 的保守 CPU renderer，并增强同主机兄弟终端隔离和资源释放回归测试。
+            - 修复同一主机打开多个终端标签时，关闭非活动标签会导致活动标签重新连接的问题。
+            - 每个交互式终端使用独立的受管 SSH transport，并在最后一个 channel 关闭后立即回收连接。
+            - 保留命令、SFTP 等后台能力的连接池复用语义，新增同主机兄弟终端隔离与连接释放回归测试。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

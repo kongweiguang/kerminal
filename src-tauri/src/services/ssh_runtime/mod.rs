@@ -326,13 +326,11 @@ impl ManagedSshSessionManager {
         }
         entry.ref_count = entry.ref_count.saturating_sub(1);
         entry.last_used_at = unix_timestamp();
-        if entry.ref_count == 0
-            && entry.active_channels == 0
-            && entry.state == ManagedSshSessionState::Failed
-        {
+        if should_disconnect_idle_session(key, entry) {
             if let Some(entry) = sessions.remove(key) {
                 entry.connection.disconnect("last handle released");
             }
+            remove_channel_open_semaphore(inner, key);
             remove_exec_semaphore(inner, key);
         }
     }
@@ -717,6 +715,17 @@ fn evict_failed_session_entry(
     remove_exec_semaphore(inner, key);
 }
 
+/// 失败连接已不可复用，短生命周期连接也没有后续消费者；两者空闲时立即回收，同时保留普通连接池复用语义。
+fn should_disconnect_idle_session(key: &SshSessionKey, entry: &ManagedSshSessionEntry) -> bool {
+    entry.ref_count == 0
+        && entry.active_channels == 0
+        && (entry.state == ManagedSshSessionState::Failed
+            || key
+                .runtime_flags
+                .iter()
+                .any(|flag| flag == MANAGED_SSH_EPHEMERAL_RUNTIME_FLAG))
+}
+
 fn release_channel(
     inner: &Arc<ManagedSshSessionManagerInner>,
     key: &SshSessionKey,
@@ -738,10 +747,7 @@ fn release_channel(
         entry.last_error = Some(error);
         entry.state = ManagedSshSessionState::Failed;
     }
-    if entry.ref_count == 0
-        && entry.active_channels == 0
-        && entry.state == ManagedSshSessionState::Failed
-    {
+    if should_disconnect_idle_session(key, entry) {
         if let Some(entry) = sessions.remove(key) {
             entry.connection.disconnect("last channel released");
         }
