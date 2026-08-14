@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
 import {
@@ -9,7 +11,9 @@ import {
   gpuCardHelper,
   gpuMemoryLabel,
   networkTrafficFromSnapshot,
+  npuMemoryLabel,
   serverGpuSummaryValue,
+  shouldShowNpuCard,
 } from "../../../../src/features/tool-panel/serverInfoMetricsModel";
 
 function snapshot(
@@ -140,6 +144,20 @@ describe("serverInfoMetricsModel", () => {
     expect(gpuCardHelper(snapshot({ gpuProbeStatus: "no_probe_command" }), [])).toBe(
       "0 张显卡",
     );
+    expect(
+      npuMemoryLabel({
+        hbmTotalBytes: 32 * 1024,
+        hbmUsedBytes: 2659,
+        id: 2,
+        name: "910B4",
+      }),
+    ).toBe("HBM 2.6 KB / 32.0 KB");
+    expect(
+      shouldShowNpuCard(
+        snapshot({ npuProbeStatus: "npu_smi", npus: [{ id: 2, name: "910B4" }] }),
+      ),
+    ).toBe(true);
+    expect(shouldShowNpuCard(snapshot())).toBe(false);
   });
 
   it("keeps all per-core samples for 64-core hosts", () => {

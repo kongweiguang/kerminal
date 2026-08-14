@@ -107,6 +107,8 @@ fn build_plan_uses_parameterized_openssh_args_without_old_credential_refs() {
     assert!(!plan.script.contains("if ($2 == \"lo\") next"));
     assert!(plan.script.contains("disk_%d_mount"));
     assert!(plan.script.contains("nvidia-smi"));
+    assert!(plan.script.contains("npu-smi info"));
+    assert!(plan.script.contains("npu_probe_status=npu_smi"));
     assert!(plan.script.contains("nvidia-smi -L"));
     assert!(plan.script.contains("gpu_probe_status=nvidia_smi_list"));
     assert!(plan.script.contains("lspci"));
@@ -206,6 +208,7 @@ fn fast_collection_script_excludes_slow_and_static_commands() {
     assert!(!request.command.contains("df -Pk"));
     assert!(!request.command.contains("ps -eo"));
     assert!(!request.command.contains("nvidia-smi"));
+    assert!(!request.command.contains("npu-smi"));
     assert!(!request.command.contains("lspci"));
     assert!(!request.command.contains("/etc/os-release"));
     assert!(!request.command.contains("/proc/cpuinfo"));
@@ -410,6 +413,47 @@ gpu_0_vendor=NVIDIA
 
     assert_eq!(snapshot.gpu_probe_status.as_deref(), Some("nvidia_smi"));
     assert!(snapshot.gpus.is_empty());
+}
+
+#[test]
+fn parser_handles_ascend_npu_snapshot_with_hbm_metrics() {
+    let snapshot = parse_server_info_output(
+        &remote_host(RemoteHostAuthType::Agent),
+        r#"
+hostname=ascend-node
+npu_probe_status=npu_smi
+npu_0_id=2
+npu_0_chip_id=0
+npu_0_name=910B4
+npu_0_health=OK
+npu_0_bus_id=0000:06:00.0
+npu_0_utilization_percent=0
+npu_0_hbm_used_bytes=2788163584
+npu_0_hbm_total_bytes=34359738368
+npu_0_power_watts=84.0
+npu_0_temperature_celsius=44
+npu_1_id=3
+npu_1_chip_id=0
+npu_1_name=910B4
+npu_1_health=OK
+npu_1_bus_id=0000:07:00.0
+npu_1_utilization_percent=0
+npu_1_hbm_used_bytes=2788163584
+npu_1_hbm_total_bytes=34359738368
+npu_1_power_watts=81.3
+npu_1_temperature_celsius=44
+"#,
+        "100".to_owned(),
+    );
+
+    assert_eq!(snapshot.npu_probe_status.as_deref(), Some("npu_smi"));
+    assert_eq!(snapshot.npus.len(), 2);
+    assert_eq!(snapshot.npus[0].id, 2);
+    assert_eq!(snapshot.npus[0].name, "910B4");
+    assert_eq!(snapshot.npus[0].health.as_deref(), Some("OK"));
+    assert_eq!(snapshot.npus[0].bus_id.as_deref(), Some("0000:06:00.0"));
+    assert_eq!(snapshot.npus[0].hbm_total_bytes, Some(34_359_738_368));
+    assert_eq!(snapshot.npus[1].power_watts, Some(81.3));
 }
 
 #[tokio::test]

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { RemoteTargetRef } from "./targetModel";
 
@@ -42,6 +44,8 @@ export interface ServerInfoSnapshot {
   topProcesses?: ServerProcessInfo[] | null;
   gpuProbeStatus?: string | null;
   gpus?: ServerGpuInfo[] | null;
+  npuProbeStatus?: string | null;
+  npus?: ServerNpuInfo[] | null;
   capturedAt: string;
 }
 
@@ -74,6 +78,21 @@ export interface ServerGpuInfo {
   memoryTotalBytes?: number | null;
   memoryUsedBytes?: number | null;
   utilizationPercent?: number | null;
+  temperatureCelsius?: number | null;
+}
+
+export interface ServerNpuInfo {
+  id: number;
+  chipId?: number | null;
+  name: string;
+  health?: string | null;
+  busId?: string | null;
+  utilizationPercent?: number | null;
+  memoryTotalBytes?: number | null;
+  memoryUsedBytes?: number | null;
+  hbmTotalBytes?: number | null;
+  hbmUsedBytes?: number | null;
+  powerWatts?: number | null;
   temperatureCelsius?: number | null;
 }
 
@@ -136,6 +155,21 @@ function browserPreviewSnapshot(
       },
     ],
     gpuProbeStatus: "nvidia_smi",
+    npus: [
+      {
+        busId: "0000:06:00.0",
+        chipId: 0,
+        hbmTotalBytes: 32 * 1024 * 1024 * 1024,
+        hbmUsedBytes: 2659 * 1024 * 1024,
+        health: "OK",
+        id: 2,
+        name: "910B4",
+        powerWatts: 84,
+        temperatureCelsius: 44,
+        utilizationPercent: 0,
+      },
+    ],
+    npuProbeStatus: "npu_smi",
     host:
       target?.kind === "dockerContainer"
         ? `${target.runtime ?? "docker"}:${target.containerId.slice(0, 12)}`
