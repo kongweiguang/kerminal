@@ -90,6 +90,10 @@ pub struct ServerInfoSnapshot {
     pub gpu_probe_status: Option<String>,
     /// 远程主机可识别显卡摘要。
     pub gpus: Vec<ServerGpuInfo>,
+    /// NPU 探测状态，用于区分未安装工具、探测失败和未发现设备。
+    pub npu_probe_status: Option<String>,
+    /// 远程主机可识别的 AI 加速卡摘要。
+    pub npus: Vec<ServerNpuInfo>,
     /// 采集时间，Unix 秒字符串。
     pub captured_at: String,
 }
@@ -155,5 +159,35 @@ pub struct ServerGpuInfo {
     /// GPU 使用率百分比。
     pub utilization_percent: Option<f64>,
     /// GPU 温度，摄氏度。
+    pub temperature_celsius: Option<f64>,
+}
+
+/// SSH 远程主机 NPU 摘要。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerNpuInfo {
+    /// npu-smi 报告的设备 id；保留原始数值以对应运维命令参数。
+    pub id: u32,
+    /// 单卡内芯片 id。
+    pub chip_id: Option<u32>,
+    /// 芯片型号，例如 Ascend 910B4。
+    pub name: String,
+    /// 健康状态，例如 OK、Warning 或 Critical。
+    pub health: Option<String>,
+    /// PCIe Bus Id。
+    pub bus_id: Option<String>,
+    /// AI Core 使用率百分比。
+    pub utilization_percent: Option<f64>,
+    /// 通用设备内存总量，单位字节。
+    pub memory_total_bytes: Option<u64>,
+    /// 通用设备内存已用量，单位字节。
+    pub memory_used_bytes: Option<u64>,
+    /// HBM 总量，单位字节。
+    pub hbm_total_bytes: Option<u64>,
+    /// HBM 已用量，单位字节。
+    pub hbm_used_bytes: Option<u64>,
+    /// 功率，单位 W。
+    pub power_watts: Option<f64>,
+    /// 温度，摄氏度。
     pub temperature_celsius: Option<f64>,
 }

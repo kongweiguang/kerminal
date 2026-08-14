@@ -1,4 +1,6 @@
 //! Server information output parsing.
+//!
+//! @author kongweiguang
 
 use std::collections::HashMap;
 
@@ -6,7 +8,7 @@ use crate::models::{
     remote_host::RemoteHost,
     server_info::{
         ServerDiskInfo, ServerGpuInfo, ServerInfoSnapshot, ServerNetworkInterfaceInfo,
-        ServerProcessInfo,
+        ServerNpuInfo, ServerProcessInfo,
     },
 };
 
@@ -70,6 +72,8 @@ pub fn parse_server_info_output(
         top_processes: parse_server_processes(&values),
         gpu_probe_status: optional_text(&values, "gpu_probe_status"),
         gpus: parse_server_gpus(&values),
+        npu_probe_status: optional_text(&values, "npu_probe_status"),
+        npus: parse_server_npus(&values),
         captured_at,
     }
 }
@@ -348,4 +352,43 @@ fn is_gpu_probe_error_name(name: &str) -> bool {
     normalized.starts_with("nvidia-smi has failed")
         || normalized.starts_with("failed to initialize nvml")
         || normalized == "no devices were found"
+}
+
+/// 仅从已标准化的 key=value 行组装 NPU，避免 Rust 端绑定厂商表格的空格布局。
+fn parse_server_npus(values: &HashMap<String, String>) -> Vec<ServerNpuInfo> {
+    let mut indices = values
+        .keys()
+        .filter_map(|key| {
+            let rest = key.strip_prefix("npu_")?;
+            let (index, field) = rest.split_once('_')?;
+            if field == "name" {
+                index.parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    indices.sort_unstable();
+    indices.dedup();
+
+    indices
+        .into_iter()
+        .filter_map(|index| {
+            let prefix = format!("npu_{index}_");
+            Some(ServerNpuInfo {
+                id: parse_u32(values, &format!("{prefix}id"))?,
+                chip_id: parse_u32(values, &format!("{prefix}chip_id")),
+                name: optional_text(values, &format!("{prefix}name"))?,
+                health: optional_text(values, &format!("{prefix}health")),
+                bus_id: optional_text(values, &format!("{prefix}bus_id")),
+                utilization_percent: parse_f64(values, &format!("{prefix}utilization_percent")),
+                memory_total_bytes: parse_u64(values, &format!("{prefix}memory_total_bytes")),
+                memory_used_bytes: parse_u64(values, &format!("{prefix}memory_used_bytes")),
+                hbm_total_bytes: parse_u64(values, &format!("{prefix}hbm_total_bytes")),
+                hbm_used_bytes: parse_u64(values, &format!("{prefix}hbm_used_bytes")),
+                power_watts: parse_f64(values, &format!("{prefix}power_watts")),
+                temperature_celsius: parse_f64(values, &format!("{prefix}temperature_celsius")),
+            })
+        })
+        .collect()
 }

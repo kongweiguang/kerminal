@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowDown,
   ArrowUp,
+  CircuitBoard,
   Cpu,
   HardDrive,
   MemoryStick,
@@ -44,8 +45,10 @@ import {
   gpuMemoryLabel,
   loadAverageValues,
   networkTrafficFromSnapshot,
+  npuMemoryLabel,
   percentOf,
   serverGpuSummaryValue,
+  shouldShowNpuCard,
   type NetworkTrafficSnapshot,
 } from "./serverInfoMetricsModel";
 import {
@@ -415,6 +418,52 @@ function Resources({
           ))
         )}
       </Section>
+      {shouldShowNpuCard(snapshot) ? (
+        <Section
+          icon={<CircuitBoard className="h-4 w-4" />}
+          title="NPU"
+          trailing={`${(snapshot.npus ?? []).length} 张加速卡`}
+        >
+          {(snapshot.npus ?? []).length === 0 ? (
+            <p className="py-3 text-xs text-zinc-500 dark:text-zinc-400">
+              npu-smi 未发现可监控 NPU
+            </p>
+          ) : (
+            (snapshot.npus ?? []).map((npu) => (
+              <div
+                className="border-b py-2.5 last:border-b-0"
+                key={`${npu.id}-${npu.chipId ?? "device"}`}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="truncate text-xs font-medium">
+                    {npu.name}
+                  </div>
+                  <span className="shrink-0 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+                    NPU {npu.id}
+                  </span>
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {npuMemoryLabel(npu)} · AICore {formatPercent(npu.utilizationPercent)}
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {npu.health ?? "状态未知"}
+                  {npu.temperatureCelsius != null
+                    ? ` · ${npu.temperatureCelsius.toFixed(0)}°C`
+                    : ""}
+                  {npu.powerWatts != null
+                    ? ` · ${npu.powerWatts.toFixed(1)} W`
+                    : ""}
+                </div>
+                {npu.busId ? (
+                  <div className="mt-1 truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {npu.busId}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </Section>
+      ) : null}
       <ResourceSection
         icon={<MemoryStick className="h-4 w-4" />}
         label="内存"

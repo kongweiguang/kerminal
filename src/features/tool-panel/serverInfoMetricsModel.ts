@@ -1,6 +1,9 @@
+// @author kongweiguang
+
 import type {
   ServerGpuInfo,
   ServerInfoSnapshot,
+  ServerNpuInfo,
 } from "../../lib/serverInfoApi";
 
 interface NetworkTrafficSample {
@@ -334,6 +337,30 @@ export function gpuMemoryLabel(gpu: ServerGpuInfo) {
     return `总计 ${formatBytes(gpu.memoryTotalBytes)}`;
   }
   return "-";
+}
+
+/** 优先展示 NPU 的 HBM，避免把板载通用内存误当成模型可用显存。 */
+export function npuMemoryLabel(npu: ServerNpuInfo) {
+  if (npu.hbmUsedBytes != null || npu.hbmTotalBytes != null) {
+    return `HBM ${formatBytes(npu.hbmUsedBytes)} / ${formatBytes(
+      npu.hbmTotalBytes,
+    )}`;
+  }
+  if (npu.memoryUsedBytes != null || npu.memoryTotalBytes != null) {
+    return `内存 ${formatBytes(npu.memoryUsedBytes)} / ${formatBytes(
+      npu.memoryTotalBytes,
+    )}`;
+  }
+  return "内存 -";
+}
+
+/** 仅在远端实际支持 npu-smi 时显示 NPU 区域，避免普通主机堆叠无意义空卡片。 */
+export function shouldShowNpuCard(snapshot: ServerInfoSnapshot) {
+  return (
+    (snapshot.npus?.length ?? 0) > 0 ||
+    (snapshot.npuProbeStatus != null &&
+      snapshot.npuProbeStatus !== "no_probe_command")
+  );
 }
 
 function primaryGpuPercent(gpus: ServerGpuInfo[]) {

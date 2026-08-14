@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServerInfoToolContent } from "../../../../src/features/tool-panel/ServerInfoToolContent";
 import {
@@ -245,6 +245,37 @@ describe("ServerInfoToolContent target lifecycle", () => {
     expect(diagnosticsApiMock.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
       2,
     );
+  });
+
+  it("renders Ascend NPU telemetry in the resources view", async () => {
+    serverInfoApiMock.getServerInfoSnapshot.mockResolvedValue({
+      ...serverSnapshot(machineA, "1", "ascend-node"),
+      npuProbeStatus: "npu_smi",
+      npus: [
+        {
+          busId: "0000:06:00.0",
+          chipId: 0,
+          hbmTotalBytes: 32 * 1024 * 1024 * 1024,
+          hbmUsedBytes: 2659 * 1024 * 1024,
+          health: "OK",
+          id: 2,
+          name: "910B4",
+          powerWatts: 84,
+          temperatureCelsius: 44,
+          utilizationPercent: 0,
+        },
+      ],
+    });
+
+    render(<TestServerInfoToolContent active selectedMachine={machineA} />);
+    await screen.findByText("ascend-node");
+    fireEvent.click(screen.getByRole("tab", { name: "资源" }));
+
+    expect(screen.getByRole("heading", { name: "NPU" })).toBeInTheDocument();
+    expect(screen.getByText("910B4")).toBeInTheDocument();
+    expect(screen.getByText("NPU 2")).toBeInTheDocument();
+    expect(screen.getByText(/HBM 2\.6 GB \/ 32\.0 GB/)).toBeInTheDocument();
+    expect(screen.getByText(/0000:06:00\.0/)).toBeInTheDocument();
   });
 });
 

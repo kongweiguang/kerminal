@@ -322,6 +322,8 @@ fn merge_server_info_snapshot(
         fresh.top_processes = cached.top_processes.clone();
         fresh.gpu_probe_status = cached.gpu_probe_status.clone();
         fresh.gpus = cached.gpus.clone();
+        fresh.npu_probe_status = cached.npu_probe_status.clone();
+        fresh.npus = cached.npus.clone();
     }
     fresh
 }
@@ -631,6 +633,63 @@ run_with_timeout() {
     "$@"
   fi
 }
+
+if command -v npu-smi >/dev/null 2>&1; then
+  npu_output="$(run_with_timeout 4 npu-smi info 2>/dev/null)"
+  npu_exit="$?"
+  npu_rows="$(printf '%s\n' "$npu_output" | awk -F'|' '
+    BEGIN { pending=-1; npu_index=0 }
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    /^\|/ {
+      left=trim($2)
+      middle=trim($3)
+      right=trim($4)
+      if (middle ~ /^(OK|Warning|Alarm|Critical|UNKNOWN)$/) {
+        identity_count=split(left, identity, /[[:space:]]+/)
+        if (identity_count < 2 || identity[1] !~ /^[0-9]+$/) next
+        name=identity[2]
+        for (part=3; part<=identity_count; part++) name=name " " identity[part]
+        pending=npu_index
+        printf "npu_%d_id=%s\n", npu_index, identity[1]
+        printf "npu_%d_name=%s\n", npu_index, name
+        printf "npu_%d_health=%s\n", npu_index, middle
+        stat_count=split(right, stats, /[[:space:]]+/)
+        if (stat_count >= 1 && stats[1] ~ /^[0-9.]+$/) printf "npu_%d_power_watts=%s\n", npu_index, stats[1]
+        if (stat_count >= 2 && stats[2] ~ /^[0-9.]+$/) printf "npu_%d_temperature_celsius=%s\n", npu_index, stats[2]
+        npu_index++
+        next
+      }
+      if (pending >= 0 && left ~ /^[0-9]+$/ && middle != "") {
+        printf "npu_%d_chip_id=%s\n", pending, left
+        printf "npu_%d_bus_id=%s\n", pending, middle
+        usage_count=split(right, usage, /[[:space:]]+/)
+        if (usage_count >= 1 && usage[1] ~ /^[0-9.]+$/) printf "npu_%d_utilization_percent=%s\n", pending, usage[1]
+        if (usage_count >= 4 && usage[2] ~ /^[0-9.]+$/ && usage[4] ~ /^[0-9.]+$/) {
+          printf "npu_%d_memory_used_bytes=%.0f\n", pending, usage[2]*1048576
+          printf "npu_%d_memory_total_bytes=%.0f\n", pending, usage[4]*1048576
+        }
+        if (usage_count >= 7 && usage[5] ~ /^[0-9.]+$/ && usage[7] ~ /^[0-9.]+$/) {
+          printf "npu_%d_hbm_used_bytes=%.0f\n", pending, usage[5]*1048576
+          printf "npu_%d_hbm_total_bytes=%.0f\n", pending, usage[7]*1048576
+        }
+        pending=-1
+      }
+    }
+  ')"
+  if printf '%s\n' "$npu_rows" | grep -q '^npu_0_name='; then
+    printf 'npu_probe_status=npu_smi\n'
+    printf '%s\n' "$npu_rows"
+  elif [ "$npu_exit" -eq 0 ] 2>/dev/null; then
+    printf 'npu_probe_status=npu_smi_no_devices\n'
+  else
+    printf 'npu_probe_status=npu_smi_failed\n'
+  fi
+else
+  printf 'npu_probe_status=no_probe_command\n'
+fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   gpu_lines="$(run_with_timeout 4 nvidia-smi --query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null || true)"
