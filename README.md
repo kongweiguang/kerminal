@@ -259,6 +259,4 @@ pnpm run dev
 
 ## 开源协议
 
-Kerminal 源代码以 GNU Affero General Public License v3.0 only（AGPL-3.0-only）授权，详见 [LICENSE](LICENSE)。
-
-Kerminal 名称、Logo、图标、截图和其它品牌资产不随 AGPL 授权，详见 [TRADEMARKS.md](TRADEMARKS.md)。
+Kerminal 源代码以 GNU General Public License v3.0 or later（GPL-3.0-or-later）授权，详见 [LICENSE](LICENSE)。
