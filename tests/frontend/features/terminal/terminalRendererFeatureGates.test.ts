@@ -9,13 +9,13 @@ import {
 } from "../../../../src/features/terminal/terminalRendererFeatureGates";
 
 describe("terminalRendererFeatureGates", () => {
-  it("enables stable defaults but keeps private cleanup opt-in", () => {
+  it("enables version-gated private cleanup for the verified stable renderer", () => {
     expect(DEFAULT_TERMINAL_RENDERER_FEATURE_GATES).toEqual({
       adaptiveOutputScheduler: true,
       healthWatchdog: true,
       lifecycleV2: true,
       performanceTelemetry: true,
-      privateCleanupCompat: false,
+      privateCleanupCompat: true,
     });
   });
 
@@ -30,7 +30,7 @@ describe("terminalRendererFeatureGates", () => {
       healthWatchdog: true,
       lifecycleV2: false,
       performanceTelemetry: true,
-      privateCleanupCompat: false,
+      privateCleanupCompat: true,
     });
   });
 

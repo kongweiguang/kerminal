@@ -111,6 +111,26 @@ describe("terminalDisposalCompatibility", () => {
     container.remove();
   });
 
+  it("disposes one real xterm without detaching a sibling terminal", () => {
+    installXtermBrowserStubs();
+    const firstContainer = document.createElement("div");
+    const secondContainer = document.createElement("div");
+    document.body.append(firstContainer, secondContainer);
+    const firstTerminal = new Terminal();
+    const secondTerminal = new Terminal();
+    firstTerminal.open(firstContainer);
+    secondTerminal.open(secondContainer);
+
+    disposeXtermTerminal(firstTerminal, { unregisterRenderer: vi.fn() });
+
+    expect(firstContainer.querySelector(".xterm")).toBeNull();
+    expect(secondContainer.querySelector(".xterm")).not.toBeNull();
+    expect(() => secondTerminal.write("echo surviving sibling\r\n")).not.toThrow();
+
+    disposeXtermTerminal(secondTerminal, { unregisterRenderer: vi.fn() });
+    expect(secondContainer.querySelector(".xterm")).toBeNull();
+  });
+
   it("continues coordinator and DOM cleanup after terminal failure", () => {
     const terminalError = new Error("terminal dispose failed");
     const remove = vi.fn();

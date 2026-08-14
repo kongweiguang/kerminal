@@ -13,12 +13,12 @@ const VERIFIED_VERSIONS: XtermWebglCompatibilityVersions = {
 };
 
 describe("terminalRendererCompatibility", () => {
-  it("keeps build dependency versions separate from verified compatibility versions", () => {
+  it("pins the production build to the verified stable compatibility versions", () => {
     expect(ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS).toEqual({
-      webglAddon: "0.20.0-beta.287",
-      xterm: "6.1.0-beta.288",
+      webglAddon: "0.19.0",
+      xterm: "6.0.0",
     });
-    expect(ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS).not.toEqual(
+    expect(ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS).toEqual(
       VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
     );
   });
@@ -181,43 +181,6 @@ describe("terminalRendererCompatibility", () => {
       expect(renderer._gl).toBeDefined();
     },
   );
-
-  it("keeps private cleanup disabled for the current unverified build even with an unsafe opt-in", () => {
-    const canvas = document.createElement("canvas");
-    const getContext = vi.fn();
-    Object.defineProperty(canvas, "getContext", { value: getContext });
-    const renderer = createPrivateRenderer();
-    const addon = {
-      _renderer: renderer,
-      dispose: vi.fn(),
-    };
-    const logger = { warn: vi.fn() };
-    const adapter = createXtermWebglCompatibilityAdapter({
-      capabilityGate: {
-        forceContextLoss: true,
-        privateRendererCleanup: true,
-      },
-      logger,
-      versions: ACTUAL_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
-    });
-
-    adapter.dispose({ addon, canvases: [canvas], rendererCanvases: [canvas] });
-
-    expect(adapter.capabilities).toEqual({
-      forceContextLoss: false,
-      privateRendererCleanup: false,
-    });
-    expect(addon.dispose).toHaveBeenCalledOnce();
-    expect(getContext).toHaveBeenCalledWith("webgl2");
-    expect(canvas.width).toBe(0);
-    expect(canvas.height).toBe(0);
-    expect(renderer._canvas).toBeDefined();
-    expect(renderer._charAtlas).toBeDefined();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("unverified versions"),
-      undefined,
-    );
-  });
 
   it("continues verified compatibility cleanup when public dispose throws", () => {
     const logger = { warn: vi.fn() };

@@ -14,7 +14,7 @@ export const DEFAULT_TERMINAL_RENDERER_FEATURE_GATES: Readonly<TerminalRendererF
     healthWatchdog: true,
     lifecycleV2: true,
     performanceTelemetry: true,
-    privateCleanupCompat: false,
+    privateCleanupCompat: true,
   });
 
 export const TERMINAL_RENDERER_FEATURE_GATES_STORAGE_KEY =

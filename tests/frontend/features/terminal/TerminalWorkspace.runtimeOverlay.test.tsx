@@ -88,7 +88,7 @@ const hiddenRuntimeTab: TerminalTab = {
 };
 
 describe("TerminalWorkspace runtime overlay", () => {
-  it("closing one of multiple tabs retires only its runtime and keeps the active session mounted", async () => {
+  it("closing one of multiple same-host tabs retires only its runtime and keeps the active session interactive", async () => {
     let sessionIndex = 0;
     resizableMockState.groups = [];
     mocks.api.createSshTerminalSession.mockImplementation(
@@ -113,18 +113,18 @@ describe("TerminalWorkspace runtime overlay", () => {
     const firstPane: TerminalPane = {
       ...baseTerminalPane,
       id: "pane-tab-first",
-      machineId: "host-first",
+      machineId: "host-shared",
       mode: "ssh",
-      remoteHostId: "host-first",
-      title: "第一台 SSH",
+      remoteHostId: "host-shared",
+      title: "同主机 SSH 一",
     };
     const secondPane: TerminalPane = {
       ...baseTerminalPane,
       id: "pane-tab-second",
-      machineId: "host-second",
+      machineId: "host-shared",
       mode: "ssh",
-      remoteHostId: "host-second",
-      title: "第二台 SSH",
+      remoteHostId: "host-shared",
+      title: "同主机 SSH 二",
     };
     const firstTab: TerminalTab = {
       id: "tab-first",
@@ -185,7 +185,7 @@ describe("TerminalWorkspace runtime overlay", () => {
     mocks.api.createSshTerminalSession.mockClear();
     mocks.api.closeTerminal.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭 第一台 SSH tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭 同主机 SSH 一 tab" }));
 
     await waitFor(() => {
       expect(mocks.api.closeTerminal).toHaveBeenCalledTimes(1);
@@ -196,6 +196,14 @@ describe("TerminalWorkspace runtime overlay", () => {
     expect(
       document.querySelector('[data-terminal-pane-runtime-host="pane-tab-second"]'),
     ).not.toBeNull();
+
+    mocks.terminalInstances[1].onDataCallback?.("echo surviving-tab\r");
+    await waitFor(() => {
+      expect(mocks.api.writeTerminal).toHaveBeenCalledWith(
+        "ssh-session-tab-2",
+        "echo surviving-tab\r",
+      );
+    });
   });
 
   it("keeps real XtermPane sessions alive when pane move only changes layout", async () => {

@@ -439,7 +439,7 @@ describe("terminalRenderer", () => {
     expect(controller.getDiagnostics().lifecycle.state).toBe("disposed");
   });
 
-  it("does not enable private cleanup for unverified build dependencies", async () => {
+  it("enables gated private cleanup for the verified stable build dependencies", async () => {
     const logger = { warn: vi.fn() };
     const controller = createTerminalRendererController({
       compatibilityGate: {
@@ -459,12 +459,9 @@ describe("terminalRenderer", () => {
 
     controller.dispose();
 
-    expect(addon._renderer._canvas).toBeDefined();
-    expect(addon._renderer._charAtlas).toBeDefined();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("unverified versions"),
-      undefined,
-    );
+    expect(addon._renderer._canvas).toBeUndefined();
+    expect(addon._renderer._charAtlas).toBeUndefined();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("cancels a pending attach when disposing", () => {
