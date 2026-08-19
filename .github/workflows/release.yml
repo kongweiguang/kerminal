@@ -178,9 +178,44 @@ jobs:
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 12
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          set -euo pipefail
+
+          # 尽量规避 runner 上 Azure 源间歇性阻塞：先把镜像源指向 archive，再保底重试。
+          for file in \
+            /etc/apt/sources.list \
+            /etc/apt/sources.list.d/*.list \
+            /etc/apt/sources.list.d/*.sources
+          do
+            if [ -f "$file" ]; then
+              sudo sed -i \
+                -e 's|https://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' \
+                -e 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' \
+                "$file"
+            fi
+          done
+
+          if ! sudo apt-get \
+            -o Acquire::Retries=4 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            update
+          then
+            echo "::warning ::apt-get update failed, retrying without Azure 源。"
+            for file in \
+              /etc/apt/sources.list \
+              /etc/apt/sources.list.d/*.list \
+              /etc/apt/sources.list.d/*.sources
+            do
+              if [ -f "$file" ]; then
+                sudo sed -i '/azure\.archive\.ubuntu\.com/d' "$file"
+              fi
+            done
+            sudo apt-get update
+          fi
+
+          sudo apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
             curl \
