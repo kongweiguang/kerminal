@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+// @author kongweiguang
 
 use rmcp::model::ListToolsResult;
 use serde_json::Value;
@@ -58,6 +59,7 @@ const EXPECTED_TOOL_IDS: &[&str] = &[
     "ssh.command_on_resolved_host",
     "terminal.close",
     "terminal.list",
+    "terminal.reconnect",
     "terminal.log.start",
     "terminal.log.state",
     "terminal.log.stop",
@@ -366,8 +368,12 @@ pub fn assert_terminal_tool_help_payload(payload: &Value) {
                         .pointer("/inputSchema/properties/data")
                         .is_some()
                     && tool_reference
-                        .pointer("/exampleArguments/bindingGeneration")
-                        .and_then(Value::as_u64)
+                        .pointer("/exampleArguments/sessionId")
+                        .and_then(Value::as_str)
+                        .is_some()
+                    && tool_reference
+                        .pointer("/exampleArguments/agentSessionId")
+                        .and_then(Value::as_str)
                         .is_some()
                     && tool_reference
                         .pointer("/annotations/readOnlyHint")
@@ -502,8 +508,12 @@ pub fn assert_session_operation_guide_payload(payload: &Value) {
             tool_references.iter().any(|tool_reference| {
                 tool_reference.pointer("/id").and_then(Value::as_str) == Some("terminal.write")
                     && tool_reference
-                        .pointer("/exampleArguments/bindingGeneration")
-                        .and_then(Value::as_u64)
+                        .pointer("/exampleArguments/sessionId")
+                        .and_then(Value::as_str)
+                        .is_some()
+                    && tool_reference
+                        .pointer("/exampleArguments/agentSessionId")
+                        .and_then(Value::as_str)
                         .is_some()
             })
         }));

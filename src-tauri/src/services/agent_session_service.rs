@@ -16,9 +16,9 @@ use crate::{
     models::agent_session::{
         AgentId, AgentMcpCallLogEntry, AgentMcpEndpointContext, AgentProviderSession, AgentSession,
         AgentSessionCreateRequest, AgentSessionId, AgentSessionLaunch, AgentSessionLaunchRequest,
-        AgentSessionList, AgentSessionRecord, AgentSessionStatus, AgentSessionUpdateRequest,
-        AgentTargetBindingContext, AgentTerminalSnapshotContext, AgentWorkspaceSnapshotContext,
-        AGENT_SESSION_SCHEMA_VERSION,
+        AgentSessionList, AgentSessionRecord, AgentSessionScope, AgentSessionStatus,
+        AgentSessionUpdateRequest, AgentTargetBindingContext, AgentTerminalSnapshotContext,
+        AgentWorkspaceSnapshotContext, AGENT_SESSION_SCHEMA_VERSION,
     },
     services::agent_session_file_store::AgentSessionFileStore,
 };
@@ -106,19 +106,23 @@ impl AgentSessionService {
             .title
             .and_then(normalize_optional_text)
             .unwrap_or_else(|| default_title(request.agent_id).to_owned());
-        let session = AgentSession {
-            schema_version: AGENT_SESSION_SCHEMA_VERSION,
-            agent_session_id: agent_session_id.clone(),
-            agent_id: request.agent_id,
-            title,
-            created_at: timestamp.clone(),
-            updated_at: timestamp.clone(),
-            status: AgentSessionStatus::Active,
-            workspace_root,
-            session_root: session_root_text,
-            launch,
-            target: request.target,
-        };
+        let session =
+            AgentSession {
+                schema_version: AGENT_SESSION_SCHEMA_VERSION,
+                agent_session_id: agent_session_id.clone(),
+                agent_id: request.agent_id,
+                title,
+                created_at: timestamp.clone(),
+                updated_at: timestamp.clone(),
+                status: AgentSessionStatus::Active,
+                workspace_root,
+                session_root: session_root_text,
+                launch,
+                scope: Some(request.scope.unwrap_or_else(|| {
+                    AgentSessionScope::from_legacy_target(request.target.as_ref())
+                })),
+                target: request.target,
+            };
         let provider = request
             .provider
             .unwrap_or_else(|| AgentProviderSession::for_agent(request.agent_id));
@@ -196,6 +200,9 @@ impl AgentSessionService {
         if let Some(launch) = request.launch {
             validate_launch(&launch)?;
             session.launch = launch;
+        }
+        if let Some(scope) = request.scope {
+            session.scope = Some(scope);
         }
         if request.clear_target {
             session.target = None;

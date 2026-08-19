@@ -150,4 +150,50 @@ describe("agentLauncherApi", () => {
       }),
     ).toBe("active");
   });
+
+  it("sends explicit tab scope without deriving it from the focused pane", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      session: {
+        agentSessionId: "ags-tab",
+        launch: { args: [], cwd: "C:/sessions/ags-tab", shell: "codex" },
+        scope: { kind: "tab", tabId: "tab-main" },
+        status: "active",
+        title: "Codex",
+      },
+    });
+    const { createAgentSession, agentSessionRecordScope } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+
+    const record = await createAgentSession({
+      agentId: "codex",
+      scope: { kind: "tab", tabId: "tab-main" },
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("agent_session_create", {
+      request: { agentId: "codex", scope: { kind: "tab", tabId: "tab-main" } },
+    });
+    expect(agentSessionRecordScope(record)).toEqual({
+      kind: "tab",
+      tabId: "tab-main",
+    });
+  });
+
+  it("maps legacy unbound records to the stable global scope", async () => {
+    const { agentSessionRecordScope } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+
+    expect(
+      agentSessionRecordScope({
+        session: {
+          agentSessionId: "ags-legacy-global",
+          launch: { args: [], cwd: "C:/sessions/legacy", shell: "codex" },
+          target: { liveStatus: "unbound" },
+          title: "Codex",
+        },
+      }),
+    ).toEqual({ kind: "global" });
+  });
 });

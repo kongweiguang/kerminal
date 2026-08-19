@@ -15,6 +15,7 @@ import {
   prepareExternalAgentWorkspace,
   updateAgentSession,
   type AgentSessionRecord,
+  type AgentSessionScope,
   type AgentSessionTargetRequest,
   type ExternalAgentId,
   type ExternalAgentLaunchSpec,
@@ -48,12 +49,15 @@ import {
 import { initialAgentActions } from "./agent-launcher/agentLauncherInitialActions";
 import {
   agentSessionScopeId,
+  agentSessionScopeFromId,
+  agentSessionRecordTabId,
   findRunningSessionForTabAgent,
   tabRemovedCleanupPlan,
   visibleAgentSessionForTab,
   type AgentSidebarSessionState,
 } from "./agent-launcher/agentTabSessionModel";
 import {
+  buildAgentSessionScope,
   buildAgentSessionTarget,
   formatCurrentAgentTargetLabel,
 } from "./agent-launcher/agentSessionTargetModel";
@@ -90,6 +94,7 @@ interface AgentLauncherToolContentProps {
 }
 type AgentLauncherScreen = "launcher" | "terminal";
 
+/** 右栏 Agent 的默认作用域是当前 terminal Tab，显式全局会话通过稳定 global key 跨 Tab 保持。 */
 export function AgentLauncherToolContent({
   activeTab,
   desktopNotifications,
@@ -155,7 +160,8 @@ export function AgentLauncherToolContent({
   const requestedPane = pendingAgentSendRequest
     ? terminalPanes?.find((pane) => pane.id === pendingAgentSendRequest.paneId)
     : undefined;
-  const effectiveFocusedPane = requestedPane ?? focusedPane;
+  // pending pane 只用于发送预览，Agent 的权限范围始终跟随当前 Tab/global scope。
+  const effectiveFocusedPane = focusedPane;
   const { renameSession: renameWorkflowSession, renamingSessionId } =
     useAgentSessionTitleRename({
       controller: workflowController,
@@ -163,11 +169,16 @@ export function AgentLauncherToolContent({
       setPersistedSessions: setPersistedAgentSessions,
       setRuntimeSessions: setAgentSessions,
     });
-  const activeAgentTabId = isTerminalSessionTab(activeTab)
-    ? activeTab.id
-    : undefined;
-  const activeAgentScopeId = agentSessionScopeId(activeAgentTabId);
-  const view = viewByTabId[activeAgentScopeId] ?? "launcher";
+  const activeAgentScope = buildAgentSessionScope(activeTab);
+  const activeAgentScopeId = agentSessionScopeId(activeAgentScope);
+  const globalAgentScopeId = agentSessionScopeId({ kind: "global" });
+  const [scopeOverrideId, setScopeOverrideId] = useState<string | null>(null);
+  const activeAgentViewScopeId = scopeOverrideId ?? activeAgentScopeId;
+  const view = viewByTabId[activeAgentViewScopeId] ?? "launcher";
+  useEffect(() => {
+    // 切换工作区 Tab 后恢复“当前 Tab 默认”语义；global 会话仍保留在稳定 key 中。
+    setScopeOverrideId(null);
+  }, [activeAgentScopeId]);
   const loadStatus = useCallback(
     async (state: AgentLauncherLoadState = "loading") => {
       setLoadState(state);
@@ -236,13 +247,26 @@ export function AgentLauncherToolContent({
     [agentActions, status],
   );
   const currentAgentTargetLabel = formatCurrentAgentTargetLabel(
-    effectiveFocusedPane,
-    activeTab,
+    activeAgentViewScopeId === globalAgentScopeId
+      ? undefined
+      : effectiveFocusedPane,
+    activeAgentViewScopeId === globalAgentScopeId
+      ? undefined
+      : activeTab,
+    terminalPanes,
   );
   const currentAgentTarget = buildAgentSessionTarget(
-    effectiveFocusedPane,
-    activeTab,
+    activeAgentViewScopeId === globalAgentScopeId
+      ? undefined
+      : effectiveFocusedPane,
+    activeAgentViewScopeId === globalAgentScopeId
+      ? undefined
+      : activeTab,
   );
+  const currentAgentScope: AgentSessionScope =
+    activeAgentViewScopeId === globalAgentScopeId
+      ? { kind: "global" }
+      : activeAgentScope;
 
   const runAction = async (
     nextAction: ExternalAgentId,
@@ -278,8 +302,8 @@ export function AgentLauncherToolContent({
   );
 
   const activeAgentSession = useMemo(
-    () => visibleAgentSessionForTab(agentSidebarState, activeAgentScopeId),
-    [activeAgentScopeId, agentSidebarState],
+    () => visibleAgentSessionForTab(agentSidebarState, activeAgentViewScopeId),
+    [activeAgentViewScopeId, agentSidebarState],
   );
   const activeAgentTerminalSession = activeAgentSession
     ? agentSessions[activeAgentSession.agentSessionId]
@@ -380,15 +404,19 @@ export function AgentLauncherToolContent({
     [],
   );
 
+  /** 激活会话并在 global 作用域时临时切换右栏视图，不复制会话到任何 Tab。 */
   const activateAgentSessionForTab = useCallback(
     (tabId: string, agentSessionId: string) => {
+      if (tabId === globalAgentScopeId) {
+        setScopeOverrideId(tabId);
+      }
       setActiveSessionIdByTabId((current) => ({
         ...current,
         [tabId]: agentSessionId,
       }));
       setTabView(tabId, "terminal");
     },
-    [setTabView],
+    [globalAgentScopeId, setTabView],
   );
 
   useAgentSendRequestCoordinator({
@@ -429,6 +457,7 @@ export function AgentLauncherToolContent({
     options: {
       customCommand?: string;
       permissionMode?: AgentLaunchPermissionMode;
+      scope?: AgentSessionScope;
       tabId: string;
       target?: AgentSessionTargetRequest;
     },
@@ -462,6 +491,7 @@ export function AgentLauncherToolContent({
       cwd: launchSpec.cwd,
       env: launchSpec.env,
       permissionMode,
+      scope: options.scope,
       shell: launchSpec.shell,
       status: launchSpec.status ?? "running",
       title: launchSpec.agentId === "custom" ? "Custom" : launchSpec.title,
@@ -532,6 +562,7 @@ export function AgentLauncherToolContent({
     await launchPreparedSpec(launchSpec, {
       customCommand: options.customCommand,
       permissionMode: options.permissionMode,
+      scope: agentSession.scope,
       tabId: agentSession.tabId,
       target: agentSession.target,
     });
@@ -539,14 +570,17 @@ export function AgentLauncherToolContent({
     await loadStatus("refreshing");
   };
 
+  /** 创建新的 provider 会话；scope 显式传入时不受当前 focused pane 影响。 */
   const startNewProviderAgentSession = async (
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
     targetMode: AgentLaunchTargetMode = "current",
+    scope?: AgentSessionScope,
   ) => {
     const agentSession = await createAgentSessionForLaunch(agentId, {
       activeTab,
       focusedPane: effectiveFocusedPane,
+      scope,
       tabId: activeAgentScopeId,
       targetMode,
     });
@@ -556,6 +590,7 @@ export function AgentLauncherToolContent({
     });
   };
 
+  /** 启动内置 Agent，并按选中的 tab/global scope 查找可恢复会话。 */
   const launchAgent = (
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
@@ -569,8 +604,14 @@ export function AgentLauncherToolContent({
       return;
     }
 
+    const launchScopeId = agentSessionScopeId(
+      buildAgentSessionScope(activeTab, targetMode),
+    );
+    if (launchScopeId === globalAgentScopeId) {
+      setScopeOverrideId(globalAgentScopeId);
+    }
     const existingSessionId = findAgentSessionId(
-      activeAgentScopeId,
+      launchScopeId,
       agentId,
       permissionMode,
     );
@@ -582,6 +623,9 @@ export function AgentLauncherToolContent({
           permissionMode,
           session: {
             agentSessionId: existingSession.agentSessionId,
+            scope:
+              existingSession.scope ??
+              agentSessionScopeFromId(existingSession.tabId),
             tabId: existingSession.tabId,
             target: existingSession.target,
           },
@@ -592,7 +636,7 @@ export function AgentLauncherToolContent({
 
     void runAction(agentId, async () => {
       const persistedSession = await resolvePersistedAgentSession(
-        activeAgentScopeId,
+        launchScopeId,
         agentId,
       );
       if (persistedSession) {
@@ -607,12 +651,18 @@ export function AgentLauncherToolContent({
     });
   };
 
+  /** 启动自定义 Agent，复用相同的 tab/global scope 解析规则。 */
   const launchCustomAgent = () => {
     const trimmedCommand = customCommand.trim();
     if (!trimmedCommand) {
       return;
     }
-    const tabId = activeAgentScopeId;
+    const tabId = agentSessionScopeId(
+      buildAgentSessionScope(activeTab, customLaunchTargetMode),
+    );
+    if (tabId === globalAgentScopeId) {
+      setScopeOverrideId(globalAgentScopeId);
+    }
 
     const existingSession = agentSessionList.find(
       (session) =>
@@ -641,6 +691,7 @@ export function AgentLauncherToolContent({
       await launchPreparedSpec(launchSpec, {
         customCommand: trimmedCommand,
         permissionMode: "default",
+        scope: agentSession.scope,
         tabId: agentSession.tabId,
         target: agentSession.target,
       });
@@ -667,12 +718,22 @@ export function AgentLauncherToolContent({
     });
   };
 
+  /** 从恢复提示创建同一作用域的新会话，避免 global 会话落回当前 Tab。 */
   const createFreshAgentSession = (choice: AgentRestoreChoice) => {
     void runAction(choice.agentId, async () => {
-      await startNewProviderAgentSession(choice.agentId, choice.permissionMode);
+      const globalScopeId = agentSessionScopeId({ kind: "global" });
+      await startNewProviderAgentSession(
+        choice.agentId,
+        choice.permissionMode,
+        choice.session.tabId === globalScopeId ? "unbound" : "current",
+        choice.session.tabId === globalScopeId
+          ? { kind: "global" }
+          : { kind: "tab", tabId: choice.session.tabId },
+      );
     });
   };
 
+  /** 继续历史会话时从记录 scope 计算运行态归属，而不是借用当前 focused pane。 */
   const continueWorkflowSession = (agentSessionId: string) => {
     const runningSession = agentSessions[agentSessionId];
     if (runningSession) {
@@ -690,12 +751,15 @@ export function AgentLauncherToolContent({
     if (!record || !agentId) {
       return;
     }
+    const recordScopeId =
+      agentSessionRecordTabId(record) ?? activeAgentScopeId;
     void runAction(agentId, async () => {
       await prepareAndLaunchAgent(
         agentId,
         {
           agentSessionId,
-          tabId: activeAgentScopeId,
+          scope: agentSessionScopeFromId(recordScopeId),
+          tabId: recordScopeId,
           target: agentSessionRecordTarget(record),
         },
         {
@@ -715,8 +779,23 @@ export function AgentLauncherToolContent({
     if (!agentId) {
       return;
     }
+    const sourceScope =
+      workflowSession.scope ??
+      (workflowSession.target?.liveStatus === "unbound"
+        ? { kind: "global" as const }
+        : workflowSession.target?.tabId
+          ? { kind: "tab" as const, tabId: workflowSession.target.tabId }
+          : activeAgentScope);
+    if (sourceScope.kind === "global") {
+      setScopeOverrideId(globalAgentScopeId);
+    }
     void runAction(agentId, async () => {
-      await startNewProviderAgentSession(agentId);
+      await startNewProviderAgentSession(
+        agentId,
+        "default",
+        sourceScope.kind === "global" ? "unbound" : "current",
+        sourceScope,
+      );
       await workflowController.refresh();
     });
   };
@@ -728,6 +807,7 @@ export function AgentLauncherToolContent({
         actionState={actionState}
         agentActions={agentActions}
         agentTechnicalDetail={agentTechnicalDetail}
+        currentAgentScope={currentAgentScope}
         currentAgentTarget={currentAgentTarget}
         currentAgentTargetLabel={currentAgentTargetLabel}
         customCommand={customCommand}
@@ -773,7 +853,7 @@ export function AgentLauncherToolContent({
               session={session}
               desktopNotifications={desktopNotifications}
               onBack={() => {
-                setTabView(activeAgentScopeId, "launcher");
+                setTabView(activeAgentViewScopeId, "launcher");
               }}
               onAgentSignal={handleAgentSignal}
               onCancelPreview={sendPreview.cancel}

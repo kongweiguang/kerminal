@@ -1,3 +1,4 @@
+// @author kongweiguang
 import {
   agentSessionRecordId,
   agentSessionRecordStatus,
@@ -20,12 +21,22 @@ interface RankedAgentSession {
   readonly updatedAt: number;
 }
 
+/** 新 scope 是主授权边界；只有旧记录才继续使用单 pane target 评分。 */
 function bindingScore(
-  target: ReturnType<typeof agentSessionRecordTarget>,
+  record: AgentSessionRecord,
   context: WorkspaceContextAgentTarget,
 ) {
+  const scope = record.session.scope;
+  if (scope?.kind === "tab") {
+    const tabId = scope.tabId ?? ("tab_id" in scope ? scope.tab_id : undefined);
+    return context.activeTabId && tabId === context.activeTabId ? 250 : -1;
+  }
+  if (scope?.kind === "global") {
+    return 50;
+  }
+  const target = agentSessionRecordTarget(record);
   if (!target) {
-    return -1;
+    return 50;
   }
   if (context.focusedPaneId && target.paneId === context.focusedPaneId) {
     return 300;
@@ -62,15 +73,14 @@ function sessionStatus(
 ): WorkspaceContextAgent["status"] {
   return agentSessionRecordStatus(record) === "stale" ||
     liveStatus === "stale" ||
-    liveStatus === "closed" ||
-    liveStatus === "unbound"
+    liveStatus === "closed"
     ? "stale"
     : "active";
 }
 
 /**
- * 只接受与当前 pane/tab/target 明确绑定的会话。
- * 未绑定会话不能作为兜底，避免把其它任务误标为当前上下文。
+ * tab scope 优先匹配当前 Tab；global scope 可作为整个 Kerminal 的低优先级兜底。
+ * legacy target 仅用于迁移期评分，unbound/无 target 按新语义解释为 global。
  */
 export function resolveWorkspaceContextAgent(
   context: WorkspaceContextAgentTarget,
@@ -81,7 +91,7 @@ export function resolveWorkspaceContextAgent(
       return [];
     }
     const target = agentSessionRecordTarget(record);
-    const score = bindingScore(target, context);
+    const score = bindingScore(record, context);
     if (score < 0) {
       return [];
     }

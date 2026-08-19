@@ -1,6 +1,9 @@
 // @author kongweiguang
 
-import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
+import type {
+  AgentSessionScope,
+  AgentSessionTargetRequest,
+} from "../../../lib/agentLauncherApi";
 import { targetStableId } from "../../../lib/targetModel";
 import {
   getTerminalPaneSessionRecord,
@@ -11,6 +14,18 @@ import {
   type TerminalPane,
   type TerminalTab,
 } from "../../workspace/contracts/index";
+import { collectPaneIds } from "../../workspace/workspaceLayout";
+
+/** 将启动入口的当前上下文转换成稳定作用域；pane/session 仅用于兼容展示，不参与权限边界。 */
+export function buildAgentSessionScope(
+  activeTab?: TerminalTab,
+  targetMode: "current" | "unbound" = "current",
+): AgentSessionScope {
+  if (targetMode === "unbound" || !isTerminalSessionTab(activeTab)) {
+    return { kind: "global" };
+  }
+  return { kind: "tab", tabId: activeTab.id };
+}
 
 export function buildAgentSessionTarget(
   focusedPane?: TerminalPane,
@@ -80,11 +95,18 @@ function joinTargetRefParts(parts: Array<string | undefined>): string {
   return parts.filter((part): part is string => Boolean(part?.trim())).join(":");
 }
 
+/** 将旧 target 仅用于历史提示；新 global 会话没有 target 时明确显示全局范围。 */
 export function formatTargetChipLabel(
   target?: AgentSessionTargetRequest,
 ): string {
-  if (!target?.targetTerminalSessionId) {
-    return "未绑定";
+  if (!target) {
+    return "整个 Kerminal";
+  }
+  if (target.liveStatus === "unbound") {
+    return "整个 Kerminal";
+  }
+  if (!target.targetTerminalSessionId) {
+    return target.tabId ? "当前 Tab" : "整个 Kerminal";
   }
   if (target.liveStatus === "closed") {
     return "已关闭";
@@ -97,33 +119,23 @@ export function formatTargetChipLabel(
   return path ? `${name} · ${path}` : name;
 }
 
+/** 为右栏展示当前权限范围和 Tab 内终端数量，不暴露 pane/session 作为绑定提示。 */
 export function formatCurrentAgentTargetLabel(
-  focusedPane?: TerminalPane,
+  _focusedPane?: TerminalPane,
   activeTab?: TerminalTab,
+  terminalPanes?: readonly TerminalPane[],
 ): string {
-  if (!buildAgentSessionTarget(focusedPane, activeTab)) {
-    return "未绑定";
+  if (!isTerminalSessionTab(activeTab)) {
+    return "整个 Kerminal";
   }
-  const paneTitle = focusedPane?.title?.trim();
-  if (paneTitle) {
-    return paneTitle;
-  }
-  const tabTitle = isTerminalSessionTab(activeTab)
-    ? activeTab.title?.trim()
-    : undefined;
-  if (tabTitle) {
-    return tabTitle;
-  }
-  if (focusedPane?.mode === "ssh") {
-    return "SSH 终端";
-  }
-  if (focusedPane?.mode === "container") {
-    return "容器终端";
-  }
-  if (focusedPane?.mode === "local") {
-    return "本地终端";
-  }
-  return "当前终端";
+  const paneIds = activeTab.layout ? collectPaneIds(activeTab.layout) : [];
+  const livePaneCount = terminalPanes
+    ? paneIds.filter((paneId) => terminalPanes.some((pane) => pane.id === paneId))
+        .length
+    : paneIds.length;
+  const paneCount = livePaneCount || paneIds.length || 1;
+  const tabTitle = activeTab.title?.trim();
+  return `当前 Tab · ${paneCount} 个终端${tabTitle ? ` · ${tabTitle}` : ""}`;
 }
 
 function compactTargetName(value?: string): string {

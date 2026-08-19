@@ -10,9 +10,9 @@ use crate::{
     error::{AppError, AppResult},
     models::agent_session::{
         AgentId, AgentProviderSession, AgentSessionCreateRequest, AgentSessionId,
-        AgentSessionLaunchRequest, AgentSessionList, AgentSessionRecord, AgentSessionTarget,
-        AgentSessionUpdateRequest, AgentTargetLiveStatus, AgentTerminalSnapshotContext,
-        AGENT_SESSION_SCHEMA_VERSION,
+        AgentSessionLaunchRequest, AgentSessionList, AgentSessionRecord, AgentSessionScope,
+        AgentSessionTarget, AgentSessionUpdateRequest, AgentTargetLiveStatus,
+        AgentTerminalSnapshotContext, AGENT_SESSION_SCHEMA_VERSION,
     },
     security::redaction::redact_terminal_text,
     services::{
@@ -35,6 +35,9 @@ pub struct AgentSessionCreateCommandRequest {
     pub title: Option<String>,
     #[serde(default)]
     pub launch: Option<AgentSessionLaunchRequest>,
+    /// 新会话 scope；缺失时由旧 target/tabId 兼容迁移。
+    #[serde(default)]
+    pub scope: Option<AgentSessionScope>,
     #[serde(default)]
     pub target: Option<AgentSessionTargetCommandRequest>,
     #[serde(default)]
@@ -181,6 +184,7 @@ fn create_agent_session(
         agent_id: request.agent_id,
         title: request.title,
         launch: request.launch,
+        scope: request.scope,
         target: request.target.clone().map(AgentSessionTarget::from),
         provider: request.provider,
         mcp_endpoint: request.mcp_endpoint,

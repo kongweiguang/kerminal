@@ -113,6 +113,7 @@ pub fn mcp_context<'a>(
         ssh_runtime: state.ssh_runtime(),
         storage: state.storage(),
         terminal_session_bindings: state.terminal_session_bindings(),
+        terminal_reconnect: state.terminal_reconnect(),
         terminals: state.terminals(),
         tmux: state.tmux(),
     }

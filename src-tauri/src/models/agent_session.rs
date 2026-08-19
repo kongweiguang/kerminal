@@ -117,6 +117,64 @@ pub enum AgentTargetLiveStatus {
     Closed,
 }
 
+/// Agent 会话的终端操作范围。
+///
+/// scope 是稳定的授权边界，而不是启动时抓取的一次性终端绑定：tab 范围
+/// 每次工具调用都按当前 pane 元数据重新解析成员，global 范围则覆盖整个
+/// Kerminal 工作区。保留 Option 兼容旧 session.toml，读取时通过
+/// [`AgentSession::effective_scope`] 迁移旧 target/tabId 语义。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AgentSessionScope {
+    /// 当前 tab 内的全部用户终端。
+    Tab {
+        /// wire 使用 camelCase；alias 保证已落盘的早期 snake_case scope 可继续恢复。
+        #[serde(rename = "tabId", alias = "tab_id")]
+        tab_id: String,
+    },
+    /// 整个 Kerminal 工作区的所有用户终端。
+    Global,
+}
+
+impl AgentSessionScope {
+    /// 从旧版 target 迁移 scope，明确把无绑定 session 视为 global。
+    pub fn from_legacy_target(target: Option<&AgentSessionTarget>) -> Self {
+        let Some(target) = target else {
+            return Self::Global;
+        };
+        if target.live_status == AgentTargetLiveStatus::Unbound {
+            return Self::Global;
+        }
+        target
+            .tab_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|tab_id| !tab_id.is_empty())
+            .map(|tab_id| Self::Tab {
+                tab_id: tab_id.to_owned(),
+            })
+            .unwrap_or(Self::Global)
+    }
+
+    /// 返回 tab scope 的 tab id，global scope 返回 None。
+    pub fn tab_id(&self) -> Option<&str> {
+        match self {
+            Self::Tab { tab_id } => Some(tab_id.as_str()),
+            Self::Global => None,
+        }
+    }
+
+    /// 禁止空 Tab 标识，避免会话落入永远无法命中成员的伪作用域。
+    pub fn validate(&self) -> AppResult<()> {
+        if matches!(self, Self::Tab { tab_id } if tab_id.trim().is_empty()) {
+            return Err(AppError::InvalidInput(
+                "Agent tab scope 的 tabId 不能为空".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Agent 会话绑定的目标终端元数据。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct AgentSessionTarget {
@@ -204,12 +262,22 @@ pub struct AgentSession {
     pub session_root: String,
     /// Agent CLI 启动信息。
     pub launch: AgentSessionLaunch,
+    /// 终端操作范围；旧文件缺失时按 target/tabId 动态迁移。
+    #[serde(default)]
+    pub scope: Option<AgentSessionScope>,
     /// 当前绑定目标；未绑定时为空。
     #[serde(default)]
     pub target: Option<AgentSessionTarget>,
 }
 
 impl AgentSession {
+    /// 计算当前会话的有效 scope，并为旧持久化数据提供兼容迁移。
+    pub fn effective_scope(&self) -> AgentSessionScope {
+        self.scope
+            .clone()
+            .unwrap_or_else(|| AgentSessionScope::from_legacy_target(self.target.as_ref()))
+    }
+
     /// 校验持久化 session 元数据。
     pub fn validate(&self) -> AppResult<()> {
         if self.schema_version != AGENT_SESSION_SCHEMA_VERSION {
@@ -234,6 +302,7 @@ impl AgentSession {
                 "Agent workspace root 不能为空".to_owned(),
             ));
         }
+        self.effective_scope().validate()?;
         Ok(())
     }
 }
@@ -353,6 +422,9 @@ pub struct AgentTargetBindingContext {
     pub schema_version: u32,
     /// Kerminal Agent 会话主键。
     pub agent_session_id: AgentSessionId,
+    /// 当前会话的动态终端操作范围；旧 context 文件缺失时从 binding 迁移。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<AgentSessionScope>,
     /// 目标绑定详情。
     pub binding: AgentTargetBindingContextBinding,
     /// 右栏 Agent 终端详情。
@@ -368,6 +440,7 @@ impl AgentTargetBindingContext {
         Self {
             schema_version: AGENT_SESSION_SCHEMA_VERSION,
             agent_session_id: session.agent_session_id.clone(),
+            scope: Some(session.effective_scope()),
             binding: AgentTargetBindingContextBinding::from_target(session.target.as_ref()),
             agent_terminal: None,
             generated_at: generated_at.into(),
@@ -383,7 +456,27 @@ impl AgentTargetBindingContext {
             )));
         }
         AgentSessionId::new(self.agent_session_id.as_str().to_owned())?;
+        self.effective_scope().validate()?;
         Ok(())
+    }
+
+    /// 兼容读取 scope 字段出现前的 target-binding.json；旧 unbound 为 global，
+    /// 其余记录优先沿用 binding.tabId，避免历史会话恢复后扩大到整个工作区。
+    pub fn effective_scope(&self) -> AgentSessionScope {
+        self.scope.clone().unwrap_or_else(|| {
+            if self.binding.status == AgentTargetBindingStatus::Unbound {
+                return AgentSessionScope::Global;
+            }
+            self.binding
+                .tab_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|tab_id| !tab_id.is_empty())
+                .map(|tab_id| AgentSessionScope::Tab {
+                    tab_id: tab_id.to_owned(),
+                })
+                .unwrap_or(AgentSessionScope::Global)
+        })
     }
 }
 
@@ -727,6 +820,9 @@ pub struct AgentSessionCreateRequest {
     /// 启动信息覆盖。
     #[serde(default)]
     pub launch: Option<AgentSessionLaunchRequest>,
+    /// 新会话的终端操作范围；缺失时兼容旧 target/tabId 语义。
+    #[serde(default)]
+    pub scope: Option<AgentSessionScope>,
     /// 初始目标绑定。
     #[serde(default)]
     pub target: Option<AgentSessionTarget>,
@@ -751,6 +847,9 @@ pub struct AgentSessionUpdateRequest {
     /// 更新启动信息。
     #[serde(default)]
     pub launch: Option<AgentSessionLaunch>,
+    /// 更新终端操作范围。
+    #[serde(default)]
+    pub scope: Option<AgentSessionScope>,
     /// 更新目标绑定。
     #[serde(default)]
     pub target: Option<AgentSessionTarget>,

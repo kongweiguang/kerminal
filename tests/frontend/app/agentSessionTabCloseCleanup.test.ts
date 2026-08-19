@@ -16,11 +16,12 @@ describe("archiveAgentSessionsForClosedTabs", () => {
     const listSessions = vi.fn().mockResolvedValue({
       diagnostics: [],
       sessions: [
-        record("agent-active", "tab-a", "active"),
-        record("agent-stale", "tab-a", "stale"),
+        record("agent-active", "tab-a", "active", "scope"),
+        record("agent-stale", "tab-a", "stale", "scope"),
         record("agent-archived", "tab-a", "archived"),
         record("agent-other-tab", "tab-b", "active"),
         record("agent-unbound", "tab-a", "active", "unbound"),
+        record("agent-global", "tab-a", "active", "global"),
       ],
     });
 
@@ -52,15 +53,27 @@ function record(
   agentSessionId: string,
   tabId: string,
   status: AgentSessionRecordStatus,
-  liveStatus: "ready" | "unbound" = "ready",
+  representation: "ready" | "unbound" | "scope" | "global" = "ready",
 ): AgentSessionRecord {
   return {
     session: {
       agentId: "codex",
       agentSessionId,
       launch: { args: [], cwd: "C:/workspace", shell: "codex" },
+      scope:
+        representation === "scope"
+          ? { kind: "tab", tabId }
+          : representation === "global"
+            ? { kind: "global" }
+            : undefined,
       status,
-      target: { liveStatus, tabId },
+      target:
+        representation === "scope" || representation === "global"
+          ? undefined
+          : {
+              liveStatus: representation === "unbound" ? "unbound" : "ready",
+              tabId,
+            },
       title: "Codex",
     },
   };

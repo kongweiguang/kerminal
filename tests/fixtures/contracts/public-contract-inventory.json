@@ -1,13 +1,14 @@
 {
   "schemaVersion": 1,
   "tauri": {
-    "commandCount": 185,
-    "signatureFingerprint": "fnv1a64:0a22fc9ee611dc50",
+    "commandCount": 186,
+    "signatureFingerprint": "fnv1a64:bb3971ef48e70c99",
     "frontendInvokeCount": 136,
     "frontendInvokeFingerprint": "fnv1a64:bb95b9455ac1a4ca"
   },
   "events": [
     "kerminal://native-menu-action",
+    "kerminal://terminal-reconnect-request",
     "kerminal-config-changed",
     "kerminal-external-ssh-launch",
     "sftp-transfer-updated"
@@ -40,8 +41,8 @@
     ]
   },
   "mcp": {
-    "toolCount": 70,
-    "contractFingerprint": "fnv1a64:38f428bcf82320de",
+    "toolCount": 71,
+    "contractFingerprint": "fnv1a64:1a2340444442b245",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",

@@ -9,7 +9,7 @@ use std::fs;
 use kerminal_lib::{
     models::agent_session::{
         AgentId, AgentProviderSession, AgentSession, AgentSessionId, AgentSessionLaunch,
-        AgentSessionStatus, AgentSessionTarget, AgentTargetLiveStatus,
+        AgentSessionScope, AgentSessionStatus, AgentSessionTarget, AgentTargetLiveStatus,
         AGENT_SESSION_SCHEMA_VERSION,
     },
     services::{
@@ -28,6 +28,7 @@ use support::external_agent_workspace::{
 const CONFIG_REFERENCE_FILE_NAME: &str = "kerminal-config.md";
 
 #[test]
+/// 验证 session workspace 模板写入 scope-aware MCP 说明及运行态环境变量。
 fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -85,10 +86,14 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
     assert!(agents.contains("file-first"));
     assert!(agents.contains(CONFIG_REFERENCE_FILE_NAME));
     assert!(agents.contains("agentSessionId"));
-    assert!(agents.contains("bindingGeneration"));
+    assert!(agents.contains("sessionId"));
+    assert!(agents.contains("tab"));
+    assert!(agents.contains("global"));
+    assert!(agents.contains("terminal.reconnect"));
+    assert!(!agents.contains("bindingGeneration"));
     assert!(agents.contains("terminal.write"));
-    assert!(agents.contains("stale"));
-    assert!(agents.contains("rebind"));
+    assert!(agents.contains("disconnected"));
+    assert!(!agents.contains("rebind"));
     assert!(agents.contains("kerminal.config.validate"));
     assert!(agents.contains("kerminal.app_guide"));
     assert!(agents.contains("kerminal.config_guide"));
@@ -163,21 +168,9 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
     );
     assert_eq!(
         target_context
-            .pointer("/binding/status")
+            .pointer("/scope/kind")
             .and_then(Value::as_str),
-        Some("unbound")
-    );
-    assert_eq!(
-        target_context
-            .pointer("/binding/generation")
-            .and_then(Value::as_u64),
-        Some(0)
-    );
-    assert_eq!(
-        target_context
-            .pointer("/binding/stale")
-            .and_then(Value::as_bool),
-        Some(false)
+        Some("global")
     );
 
     let terminal_snapshot: Value = serde_json::from_str(
@@ -210,7 +203,8 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
 }
 
 #[test]
-fn prepare_agent_session_workspace_seeds_target_binding_from_session_toml() {
+/// 验证 session TOML 的 tab scope 会进入生成的 target context。
+fn prepare_agent_session_workspace_seeds_scope_from_session_toml() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
         temp.path(),
@@ -241,6 +235,9 @@ fn prepare_agent_session_workspace_seeds_target_binding_from_session_toml() {
                 args: Vec::new(),
                 cwd: path_to_string(&session_root),
             },
+            scope: Some(AgentSessionScope::Tab {
+                tab_id: "tab-1".to_owned(),
+            }),
             target: Some(AgentSessionTarget {
                 binding_id: Some("binding-1".to_owned()),
                 binding_generation: 7,
@@ -275,33 +272,15 @@ fn prepare_agent_session_workspace_seeds_target_binding_from_session_toml() {
     .expect("target json");
     assert_eq!(
         target_context
-            .pointer("/binding/status")
+            .pointer("/scope/kind")
             .and_then(Value::as_str),
-        Some("ready")
+        Some("tab")
     );
     assert_eq!(
         target_context
-            .pointer("/binding/generation")
-            .and_then(Value::as_u64),
-        Some(7)
-    );
-    assert_eq!(
-        target_context
-            .pointer("/binding/targetTerminalSessionId")
+            .pointer("/scope/tabId")
             .and_then(Value::as_str),
-        Some("terminal-1")
-    );
-    assert_eq!(
-        target_context
-            .pointer("/binding/targetRef")
-            .and_then(Value::as_str),
-        Some("ssh:prod-web")
-    );
-    assert_eq!(
-        target_context
-            .pointer("/binding/cwd")
-            .and_then(Value::as_str),
-        Some("/srv/app")
+        Some("tab-1")
     );
 }
 
@@ -417,6 +396,7 @@ fn prepare_claude_agent_session_resume_migrates_legacy_provider_without_command(
 }
 
 #[test]
+/// 验证恢复 session 时 scope 信息可以从持久化 session 文件同步回来。
 fn prepare_agent_session_resume_syncs_launch_back_to_session_toml() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -449,6 +429,7 @@ fn prepare_agent_session_resume_syncs_launch_back_to_session_toml() {
                 args: Vec::new(),
                 cwd: path_to_string(&session_root),
             },
+            scope: Some(AgentSessionScope::Global),
             target: None,
         })
         .expect("write session");
@@ -482,6 +463,7 @@ fn prepare_agent_session_resume_syncs_launch_back_to_session_toml() {
 }
 
 #[test]
+/// 验证 Claude session workspace 也使用显式 scope member 和断线恢复流程。
 fn prepare_claude_agent_session_workspace_writes_default_provider_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -522,9 +504,11 @@ fn prepare_claude_agent_session_workspace_writes_default_provider_files() {
     assert!(claude.contains("@AGENTS.md"));
     assert!(claude.contains("tools-only"));
     assert!(claude.contains("MCP host policy owns confirmation"));
-    assert!(claude.contains("bindingGeneration"));
+    assert!(claude.contains("sessionId"));
+    assert!(claude.contains("terminal.reconnect"));
+    assert!(!claude.contains("bindingGeneration"));
     assert!(claude.contains(CONFIG_REFERENCE_FILE_NAME));
-    assert!(claude.contains("rebind"));
+    assert!(!claude.contains("rebind"));
     assert!(claude.contains("kerminal.config.validate"));
     assert!(claude.contains("kerminal.app_guide"));
     assert!(claude.contains("kerminal.config_guide"));

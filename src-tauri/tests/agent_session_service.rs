@@ -40,9 +40,10 @@ pub mod services {
 
 use models::agent_session::{
     AgentId, AgentMcpCallLogEntry, AgentMcpEndpointContext, AgentProvider, AgentProviderSession,
-    AgentSessionCreateRequest, AgentSessionId, AgentSessionLaunch, AgentSessionStatus,
-    AgentSessionTarget, AgentSessionUpdateRequest, AgentTargetLiveStatus,
-    AgentTerminalSnapshotContext, AGENT_SESSION_SCHEMA_VERSION,
+    AgentSessionCreateRequest, AgentSessionId, AgentSessionLaunch, AgentSessionScope,
+    AgentSessionStatus, AgentSessionTarget, AgentSessionUpdateRequest, AgentTargetBindingContext,
+    AgentTargetBindingStatus, AgentTargetLiveStatus, AgentTerminalSnapshotContext,
+    AGENT_SESSION_SCHEMA_VERSION,
 };
 use services::{
     agent_session_file_store::AgentSessionFileStore,
@@ -93,6 +94,7 @@ fn create_get_update_and_archive_session_files() {
                 agent_id: AgentId::Codex,
                 title: Some("Prod deploy".to_owned()),
                 launch: None,
+                scope: None,
                 target: Some(target),
                 provider: None,
                 mcp_endpoint: Some("http://127.0.0.1:37657/mcp/agents/ags_test_001".to_owned()),
@@ -170,6 +172,7 @@ fn list_skips_bad_session_toml_and_reports_diagnostics() {
                 agent_id: AgentId::Claude,
                 title: None,
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -205,6 +208,7 @@ fn list_reports_bad_context_json_without_skipping_session() {
                 agent_id: AgentId::Custom,
                 title: Some("Custom".to_owned()),
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -237,6 +241,7 @@ fn list_orders_by_updated_at_descending() {
                 agent_id: AgentId::Codex,
                 title: Some("old".to_owned()),
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -250,6 +255,7 @@ fn list_orders_by_updated_at_descending() {
                 agent_id: AgentId::Claude,
                 title: Some("new".to_owned()),
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -263,6 +269,7 @@ fn list_orders_by_updated_at_descending() {
                 agent_id: AgentId::Custom,
                 title: Some("middle".to_owned()),
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -291,6 +298,7 @@ fn store_writes_provider_and_mcp_endpoint_directly() {
                 agent_id: AgentId::Codex,
                 title: None,
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -340,6 +348,7 @@ fn store_writes_terminal_snapshot_and_rotates_mcp_call_log() {
                 agent_id: AgentId::Codex,
                 title: None,
                 launch: None,
+                scope: None,
                 target: None,
                 provider: None,
                 mcp_endpoint: None,
@@ -414,6 +423,7 @@ fn list_one_hundred_sessions_uses_metadata_only_and_ignores_large_snapshot() {
                     agent_id: AgentId::Codex,
                     title: Some(format!("session {index}")),
                     launch: None,
+                    scope: None,
                     target: None,
                     provider: None,
                     mcp_endpoint: None,
@@ -489,6 +499,49 @@ fn service_with_ids(root: &Path, ids: &[&str]) -> AgentSessionService {
         AgentSessionFileStore::new(root),
         Arc::new(FixedIdGenerator::new(ids)),
     )
+}
+
+#[test]
+fn legacy_target_binding_context_without_scope_migrates_from_binding() {
+    let tab_context: AgentTargetBindingContext = serde_json::from_value(serde_json::json!({
+        "schemaVersion": AGENT_SESSION_SCHEMA_VERSION,
+        "agentSessionId": "ags_legacy_tab",
+        "binding": {
+            "generation": 7,
+            "status": "ready",
+            "stale": false,
+            "tabId": "tab-legacy"
+        },
+        "generatedAt": "100"
+    }))
+    .expect("legacy tab context");
+    assert_eq!(
+        tab_context.effective_scope(),
+        AgentSessionScope::Tab {
+            tab_id: "tab-legacy".to_owned()
+        }
+    );
+    tab_context.validate().expect("legacy tab context valid");
+
+    let global_context: AgentTargetBindingContext = serde_json::from_value(serde_json::json!({
+        "schemaVersion": AGENT_SESSION_SCHEMA_VERSION,
+        "agentSessionId": "ags_legacy_global",
+        "binding": {
+            "generation": 0,
+            "status": "unbound",
+            "stale": false
+        },
+        "generatedAt": "101"
+    }))
+    .expect("legacy global context");
+    assert_eq!(
+        global_context.binding.status,
+        AgentTargetBindingStatus::Unbound
+    );
+    assert_eq!(global_context.effective_scope(), AgentSessionScope::Global);
+    global_context
+        .validate()
+        .expect("legacy global context valid");
 }
 
 fn assert_no_temp_files(session_root: &str) {

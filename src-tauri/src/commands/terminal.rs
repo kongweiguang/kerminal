@@ -2,6 +2,7 @@
 //!
 //! @author kongweiguang
 
+use crate::services::terminal_reconnect_service::TerminalReconnectAck;
 use crate::{
     error::AppError,
     models::terminal::{
@@ -176,4 +177,16 @@ pub fn terminal_pty_output_pump_stats(
         .map_err(map_terminal_command_error(
             TerminalErrorOperation::Diagnostics,
         ))
+}
+
+/// 接收前端完成终端 pane 重连后的 request/ack 确认。
+#[tauri::command(rename_all = "camelCase")]
+pub fn terminal_reconnect_ack(
+    state: State<'_, AppState>,
+    ack: TerminalReconnectAck,
+) -> Result<(), String> {
+    state
+        .terminal_reconnect()
+        .acknowledge(ack)
+        .map_err(|error| error.to_string())
 }

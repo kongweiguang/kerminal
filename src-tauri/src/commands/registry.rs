@@ -163,6 +163,7 @@ pub fn register_kerminal_commands(
         crate::commands::terminal::terminal_stop_log,
         crate::commands::terminal::terminal_log_state,
         crate::commands::terminal::terminal_pty_output_pump_stats,
+        crate::commands::terminal::terminal_reconnect_ack,
         crate::commands::terminal_session_binding::terminal_session_binding_register,
         crate::commands::terminal_session_binding::terminal_session_binding_ready,
         crate::commands::terminal_session_binding::terminal_session_binding_disconnected,

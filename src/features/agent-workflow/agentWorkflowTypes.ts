@@ -1,6 +1,8 @@
+// @author kongweiguang
 import type {
   AgentSessionRecord,
   AgentSessionRecordStatus,
+  AgentSessionScope,
   AgentSessionTargetRequest,
   ExternalAgentId,
 } from "../../lib/agentLauncherApi";
@@ -28,6 +30,8 @@ export interface AgentWorkflowSessionSnapshot {
   terminalAgent?: TerminalAgentKind;
   terminalSessionId?: string;
   terminalStatus?: TerminalAgentStatus;
+  /** 权限作用域必须进入派生快照，否则刷新列表后会退回 legacy 单终端筛选。 */
+  scope?: AgentSessionScope;
   target?: AgentSessionTargetRequest;
   title: string;
   updatedAt?: string;

@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRecord } from "../../../../../src/lib/agentLauncherApi";
 import {
@@ -5,6 +6,7 @@ import {
   agentSessionRecordIds,
   agentSessionRecordTabId,
   agentSessionScopeId,
+  agentSessionScopeFromId,
   agentSessionTabId,
   findRunningSessionForTabAgent,
   restorableSessionsForTab,
@@ -80,8 +82,27 @@ describe("agentTabSessionModel", () => {
     );
     expect(
       agentSessionTabId(sidebarSession({ target: { liveStatus: "unbound" } })),
-    ).toBe("tab-a");
+    ).toBe(UNBOUND_AGENT_SESSION_SCOPE_ID);
     expect(agentSessionScopeId(undefined)).toBe(UNBOUND_AGENT_SESSION_SCOPE_ID);
+  });
+
+  it("uses a stable global scope key that is independent of terminal tabs", () => {
+    expect(agentSessionScopeId({ kind: "global" })).toBe(
+      UNBOUND_AGENT_SESSION_SCOPE_ID,
+    );
+    expect(agentSessionScopeId(undefined)).toBe(
+      agentSessionScopeId({ kind: "global" }),
+    );
+    expect(agentSessionScopeId("__kerminal_agent_unbound__")).toBe(
+      agentSessionScopeId({ kind: "global" }),
+    );
+    expect(agentSessionScopeFromId("__kerminal_agent_unbound__")).toEqual({
+      kind: "global",
+    });
+    expect(agentSessionScopeFromId("tab-a")).toEqual({
+      kind: "tab",
+      tabId: "tab-a",
+    });
   });
 
   it("returns only the visible session for the active tab mapping", () => {
@@ -207,6 +228,23 @@ describe("agentTabSessionModel", () => {
     });
   });
 
+  it("keeps global sessions when a terminal tab closes", () => {
+    const global = sidebarSession({
+      agentSessionId: "ags-global-codex",
+      scope: { kind: "global" },
+      tabId: UNBOUND_AGENT_SESSION_SCOPE_ID,
+      target: undefined,
+    });
+    const model = state([global], {
+      [UNBOUND_AGENT_SESSION_SCOPE_ID]: global.agentSessionId,
+    });
+
+    expect(tabRemovedCleanupPlan(["tab-a"], [], model)).toEqual({
+      agentSessionIds: [],
+      removedTabIds: ["tab-a"],
+    });
+  });
+
   it("restores only active records for the requested tab", () => {
     const tabAActive = record("ags-a-active", "tab-a", "active");
     const tabAArchived = record("ags-a-archived", "tab-a", "archived");
@@ -220,7 +258,9 @@ describe("agentTabSessionModel", () => {
 
     expect(agentSessionRecordIds(restorable)).toEqual(["ags-a-active"]);
     expect(agentSessionRecordTabId(tabAActive)).toBe("tab-a");
-    expect(agentSessionRecordTabId(legacyActive)).toBeUndefined();
+    expect(agentSessionRecordTabId(legacyActive)).toBe(
+      UNBOUND_AGENT_SESSION_SCOPE_ID,
+    );
   });
 
   it("restores active unbound records only for the fallback scope", () => {
@@ -235,10 +275,15 @@ describe("agentTabSessionModel", () => {
       undefined,
     );
 
-    expect(agentSessionRecordIds(restorable)).toEqual(["ags-unbound"]);
+    expect(agentSessionRecordIds(restorable)).toEqual([
+      "ags-unbound",
+      "ags-legacy",
+    ]);
     expect(agentSessionRecordTabId(unboundActive)).toBe(
       UNBOUND_AGENT_SESSION_SCOPE_ID,
     );
-    expect(agentSessionRecordTabId(legacyActive)).toBeUndefined();
+    expect(agentSessionRecordTabId(legacyActive)).toBe(
+      UNBOUND_AGENT_SESSION_SCOPE_ID,
+    );
   });
 });

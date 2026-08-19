@@ -10,7 +10,9 @@ import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeSched
 import {
   markTerminalPaneSessionDisconnected,
   markTerminalPaneSessionReconnected,
+  registerTerminalPaneReconnectHandler,
   registerTerminalPaneSession,
+  unregisterTerminalPaneReconnectHandler,
   unregisterTerminalPaneSession,
 } from "./terminalSessionRegistry";
 import type { TerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
@@ -158,6 +160,8 @@ export function createXtermPaneSessionRuntime({
 }: CreateXtermPaneSessionRuntimeOptions): XtermPaneSessionRuntime {
   let disposed = false;
   let sessionRun = 0;
+  // 活动 session 清空后仍保留最后绑定 id，pane 被关闭时才能注销 disconnected binding。
+  let lastBoundSessionId: string | null = null;
   const sshFailureTracker = createSshTerminalFailureTracker();
   const isSshTerminalTarget = () =>
     Boolean(
@@ -179,7 +183,7 @@ export function createXtermPaneSessionRuntime({
       sessionIdRef.current = null;
     }
     paneResizeController.clearSession(sessionId);
-    unregisterTerminalPaneSession(paneId, sessionId);
+    unregisterTerminalPaneSession(paneId, sessionId, { preserveBinding: true });
     resetShellIntegration();
     commandBlockRuntime.resetProtocolState();
     setLogState({ active: false, bytesWritten: 0 });
@@ -200,6 +204,7 @@ export function createXtermPaneSessionRuntime({
       return true;
     }
     sessionStatusPoll.clear();
+    markTerminalPaneSessionDisconnected(paneId, sessionId);
     clearSessionState(sessionId);
     try {
       await closeTerminal(sessionId);
@@ -383,6 +388,7 @@ export function createXtermPaneSessionRuntime({
         targetRef: session.targetRef,
         targetToken: session.targetToken,
       });
+      lastBoundSessionId = session.id;
       if (reason === "reconnect") {
         markTerminalPaneSessionReconnected(paneId, session.id);
       }
@@ -472,7 +478,15 @@ export function createXtermPaneSessionRuntime({
     }
   };
 
-  reconnectSessionRef.current = () => startSession("reconnect");
+  reconnectSessionRef.current = async () => {
+    await startSession("reconnect");
+    if (!sessionIdRef.current) {
+      throw new Error("终端重连未建立新的会话");
+    }
+  };
+  registerTerminalPaneReconnectHandler(paneId, async () => {
+    await reconnectSessionRef.current?.();
+  });
   disconnectSessionRef.current = disconnectSession;
 
   return {
@@ -491,11 +505,14 @@ export function createXtermPaneSessionRuntime({
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
       reconnectSessionRef.current = null;
       disconnectSessionRef.current = null;
+      unregisterTerminalPaneReconnectHandler(paneId);
       const sessionId = sessionIdRef.current;
+      const boundSessionId = sessionId ?? lastBoundSessionId;
       sessionIdRef.current = null;
-      if (sessionId) {
-        paneResizeController.clearSession(sessionId);
-        unregisterTerminalPaneSession(paneId, sessionId);
+      lastBoundSessionId = null;
+      if (boundSessionId) {
+        paneResizeController.clearSession(boundSessionId);
+        unregisterTerminalPaneSession(paneId, boundSessionId);
       }
       if (sessionId) {
         void closeTerminal(sessionId);

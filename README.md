@@ -17,9 +17,9 @@
 
 ![在 Kerminal 工作台右侧成功启动 Codex](docs/assets/kerminal-hero.png)
 
-Kerminal 是一个本地桌面终端、远程管理与 Agent 工作台。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code 或自己的命令行 Agent。Agent 可以绑定当前终端目标，通过 Kerminal MCP 使用已经连接的运行态能力。
+Kerminal 是一个本地桌面终端、远程管理与 Agent 工作台。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code 或自己的命令行 Agent。Agent 通过 Kerminal MCP 使用当前 Tab 的全部终端，或在全局范围操作所有工作区 Tab 的用户终端。
 
-当前版本：**v0.3.24**
+当前版本：**v0.3.25**
 
 ## 你可以用 Kerminal 做什么
 
@@ -83,7 +83,7 @@ SSH 支持密码、私钥、SSH Agent、代理和跳板机。保存的密码与�
 
 点击右侧的 Agent 图标，然后选择 Codex、Claude 或自定义命令。
 
-Agent 会在独立的本地会话目录中启动，并可以绑定当前终端或远程目标。再次打开时，可以继续之前的会话，也可以新建会话。
+Agent 会在独立的本地会话目录中启动，并以 `tab` 或 `global` 作为终端操作范围：`tab` 自动包含当前 Tab 的全部 pane 以及之后新开的 pane，`global` 覆盖所有工作区 Tab。再次打开时，可以继续之前的会话，也可以新建会话；终端断线时 Agent 可用 `terminal.reconnect` 恢复连接。
 
 ![Kerminal Agent 会话列表](docs/assets/kerminal-agent.png)
 
@@ -121,12 +121,12 @@ Kerminal 使用围绕当前目标组织的三栏工作台。左右栏都可以�
 
 ### Agent 会话与 Kerminal MCP
 
-Agent 不是悬浮在终端之外的聊天窗口，而是可以绑定当前机器、标签页或分屏的独立会话。Kerminal 为每个会话创建隔离工作区，保存目标绑定和必要的终端快照，并支持重命名、继续、同 Agent 新建会话、归档和删除本地记录。
+Agent 不是悬浮在终端之外的聊天窗口，而是拥有明确 `tab`/`global` scope 的独立会话。Kerminal 为每个会话创建隔离工作区，保存 scope 上下文和必要的终端快照，并支持重命名、继续、同 Agent 新建会话、归档和删除本地记录。右栏 Agent 自己的 TUI 不属于任何用户终端 scope。
 
 - 支持 Codex、Claude Code 和自定义命令行 Agent。
 - 可以从终端选区、命令块或当前上下文生成发送预览。
 - Agent 忙碌时可以排队后续提示，并保留最近的发送历史。
-- Kerminal 运行时 MCP 提供当前会话与目标、终端、SSH/SFTP、容器及容器文件、tmux、端口转发、服务器信息、命令历史和诊断工具。
+- Kerminal 运行时 MCP 提供当前会话与 scope、终端、SSH/SFTP、容器及容器文件、tmux、端口转发、服务器信息、命令历史和诊断工具。Agent 先用 `kerminal.agent.target_context` 和 `terminal.list` 获取 scope 成员，再用显式 `sessionId` 调用 `terminal.snapshot`/`terminal.write`；断线 pane 使用 `terminal.reconnect({ paneId })`。
 - `kerminal.app_guide`、`kerminal.capabilities`、`kerminal.tool_help`、`kerminal.operation_guide` 和 `kerminal.runtime_snapshot` 帮助 Agent 发现界面入口、可用工具、调用顺序与当前运行状态。
 - 工具确认、审批、权限和审计由 Codex、Claude Code 等 MCP host 负责；Kerminal 只暴露必须依赖正在运行应用和现有连接的能力。
 
@@ -215,7 +215,7 @@ Kerminal 可以接收来自 PuTTY、MobaXterm、Xshell、SecureCRT、OpenSSH、U
 
 - 主机、会话、传输记录和设置默认保存在本机。
 - 密码、私钥口令等敏感信息保存在本地加密凭据库中。
-- Agent 会话使用独立目录，不会把不同会话的上下文混在一起。
+- Agent 会话使用 `~/.kerminal/agents/sessions/<agentSessionId>` 独立目录，不会把不同会话的上下文混在一起；其逻辑 workspace 仍是 `~/.kerminal`。
 - 向 Agent 发送终端内容前需要经过预览。
 - 删除 Kerminal 中的 Agent 会话记录，不会删除 Codex 或 Claude 服务商保存的历史。
 - 主机 TOML 只保存 `secret_ref`、`key_passphrase_ref` 等凭据引用，不写入密码、私钥正文或私钥口令。
@@ -235,7 +235,7 @@ claude
 
 ### Agent 是否会自动获得所有服务器权限
 
-不会。Agent 只使用当前会话绑定的目标和 Kerminal 提供的运行能力；目标断开或会话失效后需要重新连接。
+不会。Agent 只使用当前会话的 `tab`/`global` scope 和 Kerminal 提供的运行能力；`tab` 只覆盖当前 Tab，`global` 才覆盖全部工作区 Tab，右栏 Agent TUI 永远排除。终端断开后由 Agent 调用 `terminal.reconnect` 恢复，不会因此失去 scope。
 
 ### 可以只把 Kerminal 当作终端工具使用吗
 

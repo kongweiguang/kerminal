@@ -4,6 +4,11 @@
 
 use super::*;
 
+/// 为工具发现和操作指南生成不执行副作用的参数样例。
+///
+/// 这里按公开字符串先处理可选的运行态工具，避免指南代码在 catalog 增加
+/// `terminal.reconnect` 等工具时复制一套业务分支；具体 schema 仍由 catalog
+/// 返回，样例只表达 scope、sessionId 和 paneId 的最小调用边界。
 pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
     match tool_id {
         ToolId::KerminalCapabilities | ToolId::KerminalRuntimeSnapshot | ToolId::TerminalList => {
@@ -11,7 +16,7 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
         }
         ToolId::KerminalOperationGuide => Some(json!({
             "intent": "session-terminal",
-            "goal": "Inspect and operate the currently bound Kerminal target safely."
+            "goal": "Inspect and operate the current Agent tab/global terminal scope safely."
         })),
         ToolId::KerminalToolHelp => Some(json!({
             "toolId": "terminal.write",
@@ -28,13 +33,19 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
             "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>"
         })),
         ToolId::TerminalSnapshot => Some(json!({
-            "agentSessionId": "<agent-session-id>",
+            "sessionId": "<scope-member-terminal-session-id>",
+            "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
             "maxBytes": 24576
         })),
         ToolId::TerminalWrite => Some(json!({
-            "agentSessionId": "<agent-session-id>",
-            "bindingGeneration": 7,
+            "sessionId": "<scope-member-terminal-session-id>",
+            "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
             "data": "pwd\n"
+        })),
+        ToolId::TerminalReconnect => Some(json!({
+            "paneId": "<disconnected-pane-id>",
+            "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
+            "timeoutMs": 30000
         })),
         ToolId::TerminalResize => Some(json!({
             "sessionId": "<terminal-session-id>",

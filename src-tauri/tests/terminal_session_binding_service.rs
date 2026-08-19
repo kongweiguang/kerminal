@@ -2,6 +2,7 @@
 //!
 //! @author kongweiguang
 
+use kerminal_lib::models::agent_session::AgentSessionScope;
 use kerminal_lib::services::terminal_session_binding_service::{
     AgentTargetBindingRequest, AgentTargetBindingStatus, TerminalSessionBindingCapabilityUse,
     TerminalSessionBindingEventKind, TerminalSessionBindingMetadata, TerminalSessionBindingService,
@@ -96,6 +97,93 @@ fn lifecycle_events_drive_active_and_stale_queries() {
             TerminalSessionBindingEventKind::Reconnected,
             TerminalSessionBindingEventKind::Closed,
         ]
+    );
+}
+
+/// tab scope 必须动态包含同一 Tab 的多个 pane，并保留断开成员供重连发现。
+#[test]
+fn tab_scope_lists_all_current_and_disconnected_members_without_crossing_tabs() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    for (pane_id, session_id, tab_id) in [
+        ("pane-a1", "session-a1", "tab-a"),
+        ("pane-a2", "session-a2", "tab-a"),
+        ("pane-b1", "session-b1", "tab-b"),
+    ] {
+        service
+            .register_at_with_metadata(
+                pane_id,
+                session_id,
+                Some(TerminalSessionBindingMetadata {
+                    tab_id: Some(tab_id.to_owned()),
+                    target_ref: None,
+                    target_kind: Some("local".to_owned()),
+                    remote_host_id: None,
+                    profile_id: None,
+                    cwd: None,
+                    shell: Some("pwsh".to_owned()),
+                }),
+                10,
+            )
+            .expect("register scoped terminal");
+    }
+    service
+        .disconnected_at("pane-a2", "session-a2", 20)
+        .expect("disconnect second tab member");
+
+    let members = service
+        .bindings_for_scope(&AgentSessionScope::Tab {
+            tab_id: "tab-a".to_owned(),
+        })
+        .expect("list tab scope");
+    assert_eq!(
+        members
+            .iter()
+            .map(|binding| binding.session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["session-a1", "session-a2"]
+    );
+    assert_eq!(
+        members[1].status,
+        TerminalSessionBindingStatus::Disconnected
+    );
+}
+
+/// global scope 覆盖所有用户 Tab，但右栏 Agent 自身 pane 永远不进入授权集合。
+#[test]
+fn global_scope_lists_workspace_terminals_but_excludes_agent_tui() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    for (pane_id, session_id, tab_id) in [
+        ("pane-a", "session-a", "tab-a"),
+        ("pane-b", "session-b", "tab-b"),
+        ("agent-terminal-ags-1", "agent-session", "tab-a"),
+    ] {
+        service
+            .register_at_with_metadata(
+                pane_id,
+                session_id,
+                Some(TerminalSessionBindingMetadata {
+                    tab_id: Some(tab_id.to_owned()),
+                    target_ref: None,
+                    target_kind: Some("local".to_owned()),
+                    remote_host_id: None,
+                    profile_id: None,
+                    cwd: None,
+                    shell: Some("pwsh".to_owned()),
+                }),
+                10,
+            )
+            .expect("register global member candidate");
+    }
+
+    let members = service
+        .bindings_for_scope(&AgentSessionScope::Global)
+        .expect("list global scope");
+    assert_eq!(
+        members
+            .iter()
+            .map(|binding| binding.session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["session-a", "session-b"]
     );
 }
 

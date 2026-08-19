@@ -21,6 +21,7 @@ const CONFIG_REFERENCE_FILE_NAME: &str = "kerminal-config.md";
 const MANAGED_BLOCK_START: &str = "<!-- KERMINAL_EXTERNAL_AGENT_START -->";
 
 #[test]
+/// 验证 Codex 模板只描述 scope 成员操作，并保留用户自定义内容。
 fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -101,7 +102,12 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(agents.contains("MCP host policy owns confirmation"));
     assert!(agents.contains("Prefer direct file edits"));
     assert!(agents.contains("terminal.write"));
-    assert!(agents.contains("bindingGeneration"));
+    assert!(agents.contains("sessionId"));
+    assert!(agents.contains("tab"));
+    assert!(agents.contains("global"));
+    assert!(agents.contains("terminal.reconnect"));
+    assert!(!agents.contains("bindingGeneration"));
+    assert!(!agents.contains("rebind"));
     assert!(agents.contains("kerminal.agent.target_context"));
     assert!(agents.contains("kerminal.app_guide"));
     assert!(agents.contains("kerminal.config_guide"));
@@ -153,6 +159,7 @@ fn default_initialization_writes_codex_claude_and_config_guide_files() {
 }
 
 #[test]
+/// 验证 Claude 模板与 Codex 使用相同的 tab/global 终端 scope 规则。
 fn prepare_claude_merges_mcp_json() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(
@@ -197,7 +204,10 @@ fn prepare_claude_merges_mcp_json() {
     assert!(claude.contains("Kerminal runtime workspace"));
     assert!(claude.contains("MCP host policy owns confirmation"));
     assert!(claude.contains("terminal.write"));
-    assert!(claude.contains("bindingGeneration"));
+    assert!(claude.contains("sessionId"));
+    assert!(claude.contains("terminal.reconnect"));
+    assert!(!claude.contains("bindingGeneration"));
+    assert!(!claude.contains("rebind"));
     assert!(claude.contains("kerminal.app_guide"));
     assert!(claude.contains("kerminal.config_guide"));
     assert!(claude.contains("kerminal.capabilities"));
@@ -472,6 +482,7 @@ fn default_policy_repairs_invalid_claude_mcp_json_with_backup() {
 }
 
 #[test]
+/// 验证无 session 的共享工作区说明 global scope、显式 sessionId 和断线恢复。
 fn shared_agents_instructions_include_config_boundaries_and_validator() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -505,7 +516,12 @@ fn shared_agents_instructions_include_config_boundaries_and_validator() {
     assert!(agents.contains("Kerminal runtime workspace"));
     assert!(agents.contains("MCP host policy owns confirmation"));
     assert!(agents.contains("terminal.write"));
-    assert!(agents.contains("bindingGeneration"));
+    assert!(agents.contains("sessionId"));
+    assert!(agents.contains("tab"));
+    assert!(agents.contains("global"));
+    assert!(agents.contains("terminal.reconnect"));
+    assert!(!agents.contains("bindingGeneration"));
+    assert!(!agents.contains("rebind"));
     assert!(agents.contains("kerminal.agent.target_context"));
     assert!(agents.contains("kerminal.app_guide"));
     assert!(agents.contains("kerminal.config_guide"));

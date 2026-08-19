@@ -494,6 +494,7 @@ updated_at = "1"
             agent_id: AgentId::Codex,
             title: Some("Codex".to_owned()),
             launch: None,
+            scope: None,
             target: None,
             provider: None,
             mcp_endpoint: Some(format!("{endpoint}/agents/ags_test_scoped")),
@@ -554,6 +555,30 @@ updated_at = "1"
         Some(agent_session_id.as_str())
     );
 
+    let target_context = scoped_client
+        .peer()
+        .call_tool(CallToolRequestParams::new("kerminal.agent.target_context"))
+        .await
+        .expect("discover global scope through scoped endpoint without a terminal selector");
+    assert_eq!(target_context.is_error, Some(false));
+    assert_eq!(
+        target_context
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/data/scope/kind"))
+            .and_then(Value::as_str),
+        Some("global")
+    );
+    assert_eq!(
+        target_context
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/data/terminals"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(0)
+    );
+
     let mut mismatched_arguments = serde_json::Map::new();
     mismatched_arguments.insert(
         "agentSessionId".to_owned(),
@@ -586,8 +611,8 @@ updated_at = "1"
         .expect("scoped terminal.write returns a tool error");
     assert_eq!(direct_write.is_error, Some(true));
     assert!(
-        format!("{direct_write:?}").contains("不能同时提供 sessionId"),
-        "expected scoped terminal.write to reject explicit sessionId bypass, got {direct_write:?}"
+        format!("{direct_write:?}").contains("终端会话不存在"),
+        "expected scoped terminal.write to accept the explicit selector and reach runtime validation, got {direct_write:?}"
     );
     let _ = scoped_client.cancel().await;
 

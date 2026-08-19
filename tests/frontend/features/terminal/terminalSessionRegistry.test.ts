@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getTerminalPaneSession,
@@ -241,6 +243,21 @@ describe("terminalSessionRegistry", () => {
 
     expect(getTerminalPaneSession("pane-a")).toBe("session-new");
     expect(closeTerminalSessionBindingMock).not.toHaveBeenCalled();
+  });
+
+  it("closes a preserved disconnected binding when the pane is later disposed", () => {
+    registerTerminalPaneSession("pane-a", "session-disconnected");
+    unregisterTerminalPaneSession("pane-a", "session-disconnected", {
+      preserveBinding: true,
+    });
+    closeTerminalSessionBindingMock.mockClear();
+
+    unregisterTerminalPaneSession("pane-a", "session-disconnected");
+
+    expect(closeTerminalSessionBindingMock).toHaveBeenCalledWith({
+      paneId: "pane-a",
+      sessionId: "session-disconnected",
+    });
   });
 
   it("reports metadata register and ready after registering a pane session", () => {

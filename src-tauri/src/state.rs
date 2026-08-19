@@ -435,6 +435,13 @@ impl AppState {
         &self.terminal.session_bindings
     }
 
+    /// 返回前端终端 pane 重连 request/ack 协调器。
+    pub fn terminal_reconnect(
+        &self,
+    ) -> &crate::services::terminal_reconnect_service::TerminalReconnectService {
+        &self.terminal.reconnect
+    }
+
     /// 返回 tmux 管理服务。
     pub fn tmux(&self) -> &TmuxService {
         &self.remote.tmux

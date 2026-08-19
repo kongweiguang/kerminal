@@ -107,6 +107,7 @@ export function AgentIconButton({
   );
 }
 
+/** 提供权限模式与全局作用域入口；“操作整个 Kerminal”不再伪装成主机解绑。 */
 export function AgentLaunchContextMenu({
   agent,
   onLaunch,
@@ -153,17 +154,17 @@ export function AgentLaunchContextMenu({
           </button>
         ) : null}
         <button
-          aria-label={`Launch ${agent.title} without binding a host`}
+          aria-label={`Launch ${agent.title} for the entire Kerminal`}
           className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
           onClick={() => onLaunch("default", "unbound")}
           role="menuitem"
-          title="不绑定当前主机或终端"
+          title="允许 Agent 操作所有标签、终端和 Kerminal 运行态"
           type="button"
         >
           <span className="kerminal-context-menu-icon">
             <Unlink />
           </span>
-          <span className="kerminal-context-menu-label">不绑定主机打开</span>
+          <span className="kerminal-context-menu-label">操作整个 Kerminal</span>
         </button>
       </div>
     </div>

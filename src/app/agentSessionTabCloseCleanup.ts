@@ -1,8 +1,8 @@
 // @author kongweiguang
 import {
   agentSessionRecordId,
+  agentSessionRecordScope,
   agentSessionRecordStatus,
-  agentSessionRecordTarget,
   archiveAgentSession,
   listAgentSessions,
   type AgentSessionList,
@@ -35,11 +35,11 @@ export async function archiveAgentSessionsForClosedTabs(
       if (agentSessionRecordStatus(record) === "archived") {
         return false;
       }
-      const target = agentSessionRecordTarget(record);
-      if (target?.liveStatus === "unbound") {
+      const scope = agentSessionRecordScope(record);
+      if (scope.kind === "global") {
         return false;
       }
-      const tabId = normalizedText(target?.tabId);
+      const tabId = normalizedText(scope.tabId);
       return Boolean(tabId && closedTabIds.has(tabId));
     })
     .flatMap((record) => {

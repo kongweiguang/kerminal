@@ -14,6 +14,7 @@ import {
 } from "../../../lib/desktopNotificationApi";
 import type { DesktopNotificationSettings } from "../../../lib/desktopNotificationPolicy";
 import type {
+  AgentSessionScope,
   AgentSessionTargetRequest,
   ExternalAgentId,
   ExternalAgentSessionStatus,
@@ -50,6 +51,7 @@ export interface AgentTerminalSession {
   status: ExternalAgentSessionStatus;
   customCommand?: string;
   permissionMode: AgentLaunchPermissionMode;
+  scope?: AgentSessionScope;
   tabId: string;
   target?: AgentSessionTargetRequest;
 }

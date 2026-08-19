@@ -291,11 +291,18 @@ fn scoped_tool_arguments(
 fn accepts_scoped_agent_session_id(tool_id: ToolId) -> bool {
     matches!(
         tool_id,
-        ToolId::KerminalAgentCurrentSession
-            | ToolId::KerminalAgentTargetContext
-            | ToolId::TerminalResolveAgentTarget
+        ToolId::TerminalList
+            | ToolId::TerminalClose
+            | ToolId::TerminalLogStart
+            | ToolId::TerminalLogStop
+            | ToolId::TerminalLogState
+            | ToolId::TerminalResize
+            | ToolId::TerminalReconnect
             | ToolId::TerminalSnapshot
             | ToolId::TerminalWrite
+            | ToolId::KerminalAgentCurrentSession
+            | ToolId::KerminalAgentTargetContext
+            | ToolId::TerminalResolveAgentTarget
     )
 }
 
@@ -337,6 +344,7 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         terminals: state.terminals(),
         agent_sessions: state.agent_sessions(),
         terminal_session_bindings: state.terminal_session_bindings(),
+        terminal_reconnect: state.terminal_reconnect(),
         command_history: state.command_history(),
         command_store: state.command_store(),
         settings: state.settings(),

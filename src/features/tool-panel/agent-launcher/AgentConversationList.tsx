@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useEffect, useMemo, useState } from "react";
 import {
   Check,
@@ -14,16 +15,23 @@ import {
   type AgentWorkflowHistoryMetadata,
   type AgentWorkflowSessionSnapshot,
 } from "../../agent-workflow";
-import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
+import type {
+  AgentSessionScope,
+  AgentSessionTargetRequest,
+} from "../../../lib/agentLauncherApi";
 import { cn } from "../../../lib/cn";
 import { formatTargetChipLabel } from "./agentSessionTargetModel";
 import { AgentSessionDeleteConfirmDialog } from "./AgentSessionDeleteConfirmDialog";
 
 type ConversationScope = "current" | "all";
 
+export type AgentConversationSessionSnapshot = AgentWorkflowSessionSnapshot;
+
 interface AgentConversationListProps {
   actionDisabled: boolean;
   currentTarget?: AgentSessionTargetRequest;
+  /** 当前右栏实际 scope；缺省时继续按 legacy target 过滤。 */
+  currentScope?: AgentSessionScope;
   deletingSessionId: string | null;
   historyMetadata: readonly AgentWorkflowHistoryMetadata[];
   onContinue: (sessionId: string) => void;
@@ -31,13 +39,14 @@ interface AgentConversationListProps {
   onNewSession: (sessionId: string) => void;
   onRename: (sessionId: string, title: string) => Promise<boolean>;
   renamingSessionId: string | null;
-  sessions: readonly AgentWorkflowSessionSnapshot[];
+  sessions: readonly AgentConversationSessionSnapshot[];
 }
 
-/** Agent 对话列表只负责范围、标题编辑和展示，不直接访问持久化仓库。 */
+/** Agent 对话列表只负责范围、标题编辑和展示；scope 优先于 legacy target 决定当前列表。 */
 export function AgentConversationList({
   actionDisabled,
   currentTarget,
+  currentScope,
   deletingSessionId,
   historyMetadata,
   onContinue,
@@ -47,22 +56,23 @@ export function AgentConversationList({
   renamingSessionId,
   sessions,
 }: AgentConversationListProps) {
-  const [scope, setScope] = useState<ConversationScope>(
-    currentTarget ? "current" : "all",
-  );
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [deleteCandidate, setDeleteCandidate] =
-    useState<AgentWorkflowSessionSnapshot | null>(null);
-  const [draftTitle, setDraftTitle] = useState("");
+  const currentScopeKey = currentScope ? scopeKey(currentScope) : "";
   const currentTargetKey =
     currentTarget?.targetRef ??
     currentTarget?.targetTerminalSessionId ??
     currentTarget?.paneId ??
     currentTarget?.tabId ??
     "";
+  const [scope, setScope] = useState<ConversationScope>(
+    currentScopeKey || currentTargetKey ? "current" : "all",
+  );
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] =
+    useState<AgentWorkflowSessionSnapshot | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
   useEffect(() => {
-    setScope(currentTargetKey ? "current" : "all");
-  }, [currentTargetKey]);
+    setScope(currentScopeKey || currentTargetKey ? "current" : "all");
+  }, [currentScopeKey, currentTargetKey]);
   const activeSessions = useMemo(
     () => sessions.filter((session) => session.repositoryStatus !== "archived"),
     [sessions],
@@ -70,9 +80,9 @@ export function AgentConversationList({
   const currentSessions = useMemo(
     () =>
       activeSessions.filter((session) =>
-        matchesCurrentTarget(session, currentTarget),
+        matchesCurrentTarget(session, currentTarget, currentScope),
       ),
-    [activeSessions, currentTarget],
+    [activeSessions, currentScope, currentTarget],
   );
   const visibleSessions = useMemo(
     () => sortSessions(scope === "current" ? currentSessions : activeSessions),
@@ -214,11 +224,15 @@ export function AgentConversationList({
                           <span aria-hidden>·</span>
                           <span
                             className="max-w-full truncate"
-                            title={formatTargetChipLabel(session.target)}
+                            title={formatConversationScopeLabel(session)}
                           >
-                            {matchesCurrentTarget(session, currentTarget)
+                            {matchesCurrentTarget(
+                              session,
+                              currentTarget,
+                              currentScope,
+                            )
                               ? "当前目标"
-                              : formatTargetChipLabel(session.target)}
+                              : formatConversationScopeLabel(session)}
                           </span>
                           <span aria-hidden>·</span>
                           <span>{formatSessionTime(session)}</span>
@@ -314,8 +328,22 @@ function ScopeButton({
   );
 }
 
-function matchesCurrentTarget(
-  session: AgentWorkflowSessionSnapshot,
+/** scope 存在时按权限边界匹配；没有 scope 的历史记录才回退到 target。 */
+export function matchesCurrentTarget(
+  session: AgentConversationSessionSnapshot,
+  currentTarget?: AgentSessionTargetRequest,
+  currentScope?: AgentSessionScope,
+) {
+  const sessionScope = resolveSessionScope(session);
+  if (currentScope && sessionScope) {
+    return scopesEqual(sessionScope, currentScope);
+  }
+  return matchesLegacyTarget(session, currentTarget);
+}
+
+/** 兼容旧记录的 pane/session target 匹配，避免升级后历史会话无法筛选。 */
+function matchesLegacyTarget(
+  session: AgentConversationSessionSnapshot,
   currentTarget?: AgentSessionTargetRequest,
 ) {
   const target = session.target;
@@ -334,6 +362,52 @@ function matchesCurrentTarget(
     return target.paneId === currentTarget.paneId;
   }
   return Boolean(target.tabId && target.tabId === currentTarget.tabId);
+}
+
+/** 将显式 scope 或 legacy target 归一化为可比较的 tab/global 作用域。 */
+function resolveSessionScope(
+  session: AgentConversationSessionSnapshot,
+): AgentSessionScope | undefined {
+  if (session.scope?.kind === "global") {
+    return { kind: "global" };
+  }
+  if (session.scope?.kind === "tab" && session.scope.tabId.trim()) {
+    return { kind: "tab", tabId: session.scope.tabId.trim() };
+  }
+  if (session.target?.liveStatus === "unbound" || !session.target) {
+    return { kind: "global" };
+  }
+  const tabId = session.target.tabId?.trim();
+  return tabId ? { kind: "tab", tabId } : undefined;
+}
+
+/** 作用域比较只允许同类 tab 比较，不把 global 会话误归入任意当前 Tab。 */
+function scopesEqual(left: AgentSessionScope, right: AgentSessionScope): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === "global") {
+    return true;
+  }
+  return right.kind === "tab" && left.tabId === right.tabId;
+}
+
+/** 生成当前列表的稳定 key，避免切换 tab/global 时沿用旧的筛选状态。 */
+function scopeKey(scope: AgentSessionScope): string {
+  return scope.kind === "global" ? "global" : `tab:${scope.tabId}`;
+}
+
+/** scope-only 会话用权限范围展示；legacy target 仍保留原有终端信息。 */
+function formatConversationScopeLabel(
+  session: AgentConversationSessionSnapshot,
+): string {
+  if (session.scope?.kind === "global") {
+    return "整个 Kerminal";
+  }
+  if (session.scope?.kind === "tab") {
+    return "当前 Tab";
+  }
+  return formatTargetChipLabel(session.target);
 }
 
 function sortSessions(sessions: readonly AgentWorkflowSessionSnapshot[]) {

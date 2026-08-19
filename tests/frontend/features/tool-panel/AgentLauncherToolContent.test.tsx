@@ -243,7 +243,7 @@ describe("AgentLauncherToolContent", () => {
     expect(await screen.findByText("可用")).toBeInTheDocument();
     expect(screen.getAllByText("需设置")).toHaveLength(2);
     expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · 未绑定",
+      "新建对话当前目标 · 当前 Tab · 1 个终端 · tab-main",
     );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
@@ -305,10 +305,8 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: {
-          liveStatus: "unbound",
-        },
-        title: "Codex",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Codex · 当前 Tab · 1 个终端 · tab-main",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -358,10 +356,8 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: {
-          liveStatus: "unbound",
-        },
-        title: "Codex",
+        scope: { kind: "global" },
+        title: "Codex · 整个 Kerminal",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -423,7 +419,7 @@ describe("AgentLauncherToolContent", () => {
     expect(menu).toHaveClass("kerminal-agent-launch-menu");
     expect(menu).toHaveClass("w-[164px]");
     expect(menu).toHaveTextContent("跳过权限打开");
-    expect(menu).toHaveTextContent("不绑定主机打开");
+    expect(menu).toHaveTextContent("操作整个 Kerminal");
     expect(screen.getAllByRole("menuitem")).toHaveLength(2);
 
     await user.click(
@@ -538,6 +534,44 @@ describe("AgentLauncherToolContent", () => {
     );
   });
 
+  it("creates a workflow follow-up session in the source global scope", async () => {
+    const user = userEvent.setup();
+    apiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentId: "codex",
+            agentSessionId: "ags-global-source",
+            launch: {
+              args: [],
+              commandLabel: "codex",
+              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-global-source",
+              shell: "codex",
+            },
+            scope: { kind: "global" },
+            status: "active",
+            title: "Global Codex",
+          },
+        },
+      ],
+    });
+
+    renderAgentLauncher();
+    await user.click(await screen.findByRole("button", { name: /全部/u }));
+    await user.click(
+      await screen.findByRole("button", { name: "同 Agent 新会话" }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "codex",
+        scope: { kind: "global" },
+        title: "Codex · 整个 Kerminal",
+      });
+    });
+  });
+
   it("opens Claude with skipped permissions from the launcher context menu", async () => {
     const user = userEvent.setup();
 
@@ -598,7 +632,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · prod web",
+      "新建对话当前目标 · 当前 Tab · 1 个终端",
     );
     expect(screen.getByTestId("agent-current-target")).not.toHaveTextContent(
       /pane-prod|term-prod|tab-main/,
@@ -608,17 +642,8 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: {
-          cwd: "/srv/app",
-          liveStatus: "ready",
-          paneId: "pane-prod",
-          shell: "bash",
-          tabId: "tab-main",
-          targetKind: "ssh",
-          targetRef: "ssh:prod-web",
-          targetTerminalSessionId: "term-prod",
-        },
-        title: "Codex · prod web",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Codex · 当前 Tab · 1 个终端",
       });
     });
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
@@ -659,17 +684,15 @@ describe("AgentLauncherToolContent", () => {
     fireEvent.contextMenu(codexButton, { clientX: 120, clientY: 160 });
     await user.click(
       await screen.findByRole("menuitem", {
-        name: "Launch Codex without binding a host",
+        name: "Launch Codex for the entire Kerminal",
       }),
     );
 
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: {
-          liveStatus: "unbound",
-        },
-        title: "Codex",
+        scope: { kind: "global" },
+        title: "Codex · 整个 Kerminal",
       });
     });
     expect(await screen.findByTestId("agent-xterm")).toHaveTextContent("Codex");

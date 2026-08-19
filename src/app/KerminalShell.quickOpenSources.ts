@@ -17,6 +17,7 @@ import {
 import {
   agentSessionRecordAgentId,
   agentSessionRecordId,
+  agentSessionRecordScope,
   agentSessionRecordStatus,
   agentSessionRecordTarget,
   listAgentSessions,
@@ -321,6 +322,7 @@ export function createKerminalQuickOpenRegistry({
           }
           try {
             const target = agentSessionRecordTarget(record);
+            const scope = agentSessionRecordScope(record);
             const agentId = agentSessionRecordAgentId(record) ?? "custom";
             return [
               {
@@ -329,8 +331,12 @@ export function createKerminalQuickOpenRegistry({
                 label: record.session.title,
                 description: `在 Agent 启动器中继续 · ${agentId} · ${status}`,
                 keywords: [agentId, status],
-                targetId: target?.targetRef,
-                targetLabel: target?.liveStatus,
+                targetId:
+                  target?.targetRef ??
+                  (scope.kind === "tab" ? scope.tabId : undefined),
+                targetLabel:
+                  target?.liveStatus ??
+                  (scope.kind === "tab" ? "当前 Tab" : "整个 Kerminal"),
               },
             ];
           } catch {

@@ -115,19 +115,19 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalWrite,
             "写入终端",
-            "向指定既有 session 写入原始输入；在 session-scoped Agent endpoint 中必须通过 agentSessionId 和 bindingGeneration 写入当前 Agent 绑定目标，不能显式指定 sessionId。调用前确认由 MCP host 负责。",
+            "向指定既有 session 写入原始输入；Agent scope 可显式指定属于当前 scope 的 sessionId，未指定时兼容旧 bindingGeneration 目标。调用前确认由 MCP host 负责。",
             ToolCategory::Terminal,
             ToolEffect::Write,
             object_schema(vec![
                 string_field(
                     "sessionId",
-                    "终端 session id；仅全局 MCP endpoint 手动调用时使用，提供 agentSessionId 时禁止使用。",
+                    "终端 session id；提供 agentSessionId 时必须属于当前 tab/global scope。",
                     false,
                 ),
                 string_field("agentSessionId", "Kerminal Agent session id；用于解析默认目标终端。", false),
                 number_field(
                     "bindingGeneration",
-                    "Agent target binding generation；通过 agentSessionId 写入时必填。",
+                    "兼容旧单目标绑定的 generation；scope 模式优先显式提供 sessionId。",
                     false,
                 ),
                 string_field("data", "写入终端的原始输入。", true),
@@ -201,6 +201,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
             ToolEffect::Write,
             object_schema(vec![
                 string_field("sessionId", "终端 session id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验当前 scope。", false),
                 number_field("cols", "目标列数。", true),
                 number_field("rows", "目标行数。", true),
             ]),
@@ -208,10 +209,26 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalList,
             "列出终端会话",
-            "读取当前运行时本地终端会话摘要。",
+            "读取当前运行时本地终端会话摘要；在 Agent endpoint 中按 tab/global scope 返回用户终端及断开 pane 成员。",
             ToolCategory::Terminal,
             ToolEffect::Read,
-            object_schema(vec![]),
+            object_schema(vec![string_field(
+                "agentSessionId",
+                "Agent session id；由 session-scoped endpoint 自动注入。",
+                false,
+            )]),
+        ),
+        tool(
+            ToolId::TerminalReconnect,
+            "重连终端 pane",
+            "请求前端按 paneId 复用现有连接配置执行真实重连，并等待成功、失败或超时确认；不在 Rust 猜测主机凭据。",
+            ToolCategory::Terminal,
+            ToolEffect::Write,
+            object_schema(vec![
+                string_field("paneId", "需要重连的终端 pane id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验 pane 属于当前 scope。", false),
+                number_field("timeoutMs", "等待前端确认的超时毫秒数，默认 30000，最大 60000。", false),
+            ]),
         ),
         tool_with_exposure(
             ToolId::TerminalClose,
@@ -221,7 +238,10 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
             ToolEffect::Destructive,
             true,
             true,
-            object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
+            object_schema(vec![
+                string_field("sessionId", "终端 session id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验当前 scope。", false),
+            ]),
         ),
         tool(
             ToolId::TerminalLogStart,
@@ -229,7 +249,10 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
             "开始把指定终端 session 的新输出写入本地日志文件。",
             ToolCategory::Terminal,
             ToolEffect::Write,
-            object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
+            object_schema(vec![
+                string_field("sessionId", "终端 session id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验当前 scope。", false),
+            ]),
         ),
         tool(
             ToolId::TerminalLogStop,
@@ -237,7 +260,10 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
             "停止日志记录并返回路径摘要。",
             ToolCategory::Terminal,
             ToolEffect::Write,
-            object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
+            object_schema(vec![
+                string_field("sessionId", "终端 session id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验当前 scope。", false),
+            ]),
         ),
         tool(
             ToolId::TerminalLogState,
@@ -245,7 +271,10 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
             "读取指定终端 session 当前日志记录状态。",
             ToolCategory::Terminal,
             ToolEffect::Read,
-            object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
+            object_schema(vec![
+                string_field("sessionId", "终端 session id。", true),
+                string_field("agentSessionId", "Agent session id；提供时校验当前 scope。", false),
+            ]),
         ),
     ]
 }

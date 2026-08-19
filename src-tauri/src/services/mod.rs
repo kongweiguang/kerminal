@@ -46,6 +46,7 @@ pub mod terminal_agent_signal_detector;
 pub mod terminal_escape_responder;
 pub mod terminal_manager;
 pub mod terminal_output_pump;
+pub mod terminal_reconnect_service;
 pub mod terminal_session_binding_service;
 pub mod terminal_shell_integration;
 pub mod tmux_service;

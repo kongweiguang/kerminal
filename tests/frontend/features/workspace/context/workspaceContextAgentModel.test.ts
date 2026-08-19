@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRecord } from "../../../../../src/lib/agentLauncherApi";
 import { resolveWorkspaceContextAgent } from "../../../../../src/features/workspace/context";
@@ -54,7 +55,7 @@ describe("resolveWorkspaceContextAgent", () => {
     });
   });
 
-  it("不把其它目标、未绑定或已归档会话当作当前会话", () => {
+  it("不把其它目标或已归档会话当作当前会话", () => {
     const result = resolveWorkspaceContextAgent(
       {
         activeTabId: "tab-1",
@@ -65,10 +66,6 @@ describe("resolveWorkspaceContextAgent", () => {
         record({
           agentSessionId: "agent-other",
           target: { paneId: "pane-2", tabId: "tab-2" },
-        }),
-        record({
-          agentSessionId: "agent-unbound",
-          target: null,
         }),
         record({
           agentSessionId: "agent-archived",
@@ -82,6 +79,28 @@ describe("resolveWorkspaceContextAgent", () => {
       sessionId: null,
       status: "unavailable",
     });
+  });
+
+  it("把显式 global 和 legacy unbound 会话作为整个 Kerminal 的可用兜底", () => {
+    const context = {
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      targetId: "host-1",
+    };
+    expect(
+      resolveWorkspaceContextAgent(context, [
+        record({
+          agentSessionId: "agent-global",
+          scope: { kind: "global" },
+          target: null,
+        }),
+      ]),
+    ).toMatchObject({ sessionId: "agent-global", status: "active" });
+    expect(
+      resolveWorkspaceContextAgent(context, [
+        record({ agentSessionId: "agent-legacy-global", target: null }),
+      ]),
+    ).toMatchObject({ sessionId: "agent-legacy-global", status: "active" });
   });
 
   it("在没有活动会话时显示当前目标的 stale 会话", () => {

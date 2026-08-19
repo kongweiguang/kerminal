@@ -1,3 +1,4 @@
+// @author kongweiguang
 import type { AgentSessionRecord } from "../../lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import type {
@@ -62,6 +63,7 @@ export function resolveAgentWorkflowSessionSnapshot({
     terminalAgent: terminalMatches ? signal.agent : undefined,
     terminalSessionId: terminalMatches ? signal.terminalSessionId : undefined,
     terminalStatus: terminalMatches ? signal.status : undefined,
+    scope: normalizeAgentWorkflowScope(record),
     target: record.session.target
       ? {
           bindingId:
@@ -93,6 +95,23 @@ export function resolveAgentWorkflowSessionSnapshot({
     title: record.session.title,
     updatedAt: record.session.updatedAt ?? record.session.updated_at,
   };
+}
+
+/** 兼容 Rust 历史 snake_case scope，并拒绝空 tabId，避免无效范围被当作全局权限。 */
+function normalizeAgentWorkflowScope(
+  record: AgentSessionRecord,
+): AgentWorkflowSessionSnapshot["scope"] {
+  const scope = record.session.scope;
+  if (scope?.kind === "global") {
+    return { kind: "global" };
+  }
+  if (scope?.kind !== "tab") {
+    return undefined;
+  }
+  const tabId = (
+    scope.tabId ?? ("tab_id" in scope ? scope.tab_id : undefined)
+  )?.trim();
+  return tabId ? { kind: "tab", tabId } : undefined;
 }
 
 export function resolveAgentWorkflowBadge(

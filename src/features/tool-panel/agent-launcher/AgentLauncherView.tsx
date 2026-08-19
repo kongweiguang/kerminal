@@ -14,6 +14,7 @@ import {
 } from "../../agent-workflow";
 import { cn } from "../../../lib/cn";
 import type {
+  AgentSessionScope,
   AgentSessionTargetRequest,
   ExternalAgentId,
 } from "../../../lib/agentLauncherApi";
@@ -24,6 +25,7 @@ import type {
   AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
 import type { AgentSessionSelection } from "./agentSessionRestoreModel";
+import { agentSessionScopeId } from "./agentTabSessionModel";
 import { formatTargetChipLabel } from "./agentSessionTargetModel";
 import {
   AgentIconButton,
@@ -48,6 +50,8 @@ interface AgentLauncherViewProps {
   agentActions: AgentActionViewModel[];
   agentTechnicalDetail: string;
   currentAgentTarget?: AgentSessionTargetRequest;
+  /** 缺省仅用于旧测试/嵌入调用方；主工具面板始终传入显式 scope。 */
+  currentAgentScope?: AgentSessionScope;
   currentAgentTargetLabel: string;
   customCommand: string;
   customCommandOpen: boolean;
@@ -101,6 +105,7 @@ export function AgentLauncherView({
   agentActions,
   agentTechnicalDetail,
   currentAgentTarget,
+  currentAgentScope,
   currentAgentTargetLabel,
   customCommand,
   customCommandOpen,
@@ -305,7 +310,7 @@ export function AgentLauncherView({
           {restoreChoice ? (
             <AgentRestoreChoicePanel
               actionState={actionState}
-              choice={restoreChoice}
+          choice={restoreChoice}
               onCancel={onCancelRestore}
               onContinue={onContinueRestore}
               onNewSession={onNewSession}
@@ -314,6 +319,7 @@ export function AgentLauncherView({
 
           <AgentConversationList
             actionDisabled={actionState !== null}
+            currentScope={currentAgentScope}
             currentTarget={currentAgentTarget}
             deletingSessionId={deletingSessionId}
             historyMetadata={workflowSnapshot.historyMetadata}
@@ -376,6 +382,7 @@ function AgentRestoreChoicePanel({
 }) {
   const busy = actionState === choice.agentId;
   const disabled = actionState !== null;
+  const targetLabel = formatRestoreTargetLabel(choice.session);
   return (
     <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
       <div className="flex min-w-0 items-center gap-2 px-1">
@@ -391,9 +398,9 @@ function AgentRestoreChoicePanel({
               : "border-[var(--border-subtle)] bg-[var(--surface-hover)] text-zinc-600 dark:text-zinc-300",
           )}
           data-testid="agent-restore-target-chip"
-          title={formatTargetChipLabel(choice.session.target)}
+          title={targetLabel}
         >
-          {formatTargetChipLabel(choice.session.target)}
+          {targetLabel}
         </span>
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1">
@@ -428,6 +435,16 @@ function AgentRestoreChoicePanel({
       </div>
     </div>
   );
+}
+
+/** 新 scope-only 记录没有 legacy target 时，仍显示真实 tab/global 范围而非误报未绑定。 */
+function formatRestoreTargetLabel(session: AgentSessionSelection): string {
+  if (session.target) {
+    return formatTargetChipLabel(session.target);
+  }
+  return session.tabId === agentSessionScopeId({ kind: "global" })
+    ? "整个 Kerminal"
+    : "当前 Tab";
 }
 
 function agentTitle(agentId: ExternalAgentId): string {

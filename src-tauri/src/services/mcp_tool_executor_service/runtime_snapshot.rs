@@ -89,6 +89,21 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "stale" => stale_agent_sessions += 1,
                 _ => {}
             }
+            let scope = record.session.effective_scope();
+            let scope_members = match context
+                .terminal_session_bindings
+                .bindings_for_scope(&scope)
+            {
+                Ok(bindings) => bindings,
+                Err(error) => {
+                    diagnostics.push(runtime_snapshot_diagnostic(
+                        "agent.scope",
+                        "agentScopeUnavailable",
+                        &error,
+                    ));
+                    Vec::new()
+                }
+            };
             json!({
                 "agentSessionId": record.session.agent_session_id.as_str(),
                 "agentId": record.session.agent_id,
@@ -96,6 +111,11 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "status": record.session.status,
                 "sessionRoot": record.session.session_root,
                 "agentSignal": agent_signal,
+                "scope": scope,
+                "scopeMemberCount": scope_members.len(),
+                "disconnectedScopeMemberCount": scope_members.iter().filter(|binding| {
+                    matches!(binding.status, crate::services::terminal_session_binding_service::TerminalSessionBindingStatus::Disconnected)
+                }).count(),
                 "target": record.session.target.as_ref().map(|target| {
                     json!({
                         "liveStatus": target.live_status,
@@ -348,7 +368,7 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "Call kerminal.config_guide or read kerminal-config.md before editing file-backed configuration.",
                 "Call kerminal.operation_guide with intent when you need a concrete tool sequence for a task.",
                 "Call terminal.list or terminal.snapshot for terminal details before terminal.write.",
-                "In a session workspace, call kerminal.agent.target_context before writing to the bound terminal.",
+                "In a session workspace, call kerminal.agent.target_context and terminal.list, then choose an explicit sessionId from the current tab/global scope before terminal.write.",
                 "Inspect managedSsh in this snapshot when debugging SSH terminal/SFTP/exec/tmux/container/port-forward session reuse; it is redacted and does not expose passwords, private keys, or vault refs.",
                 "Inspect externalLaunch in this snapshot before debugging bastion/jump-host launch compatibility; edit settings.toml externalLaunch and validate instead of looking for external_launch.* MCP control tools.",
                 "For config edits, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate."
@@ -356,9 +376,9 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         })),
         entities,
         next_hints: vec![
-            "For live terminal work, inspect terminalSessions and resolve the target before terminal.write.".to_owned(),
+            "For live terminal work, resolve current tab/global scope members and inspect the selected session before terminal.write.".to_owned(),
             "For SSH reuse diagnostics, inspect managedSsh session/channel counts before assuming SFTP or exec opened a separate connection.".to_owned(),
-            "For host ids, read file-backed hosts/*.toml or use the bound target context; remote_host.* MCP tools are intentionally absent.".to_owned(),
+            "For host ids, read file-backed hosts/*.toml or use a terminal returned by the Agent scope context; remote_host.* MCP tools are intentionally absent.".to_owned(),
             "For config edits, validate with kerminal.config.validate after direct file edits.".to_owned(),
         ],
         ..ToolExecutionResult::default()

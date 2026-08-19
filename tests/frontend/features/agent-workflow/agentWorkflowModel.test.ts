@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { describe, expect, it } from "vitest";
 import {
   adaptAgentPromptHistoryMetadata,
@@ -53,7 +54,7 @@ describe("agentWorkflowModel", () => {
     ).not.toContain("sensitive body");
   });
 
-  it("会话快照保留标题、目标和最近活动时间", () => {
+  it("会话快照保留标题、scope、目标和最近活动时间", () => {
     expect(
       resolveAgentWorkflowSessionSnapshot({
         record: {
@@ -62,6 +63,7 @@ describe("agentWorkflowModel", () => {
             agentSessionId: "ags-1",
             createdAt: "2026-07-11T08:00:00.000Z",
             launch: { args: [], cwd: "/workspace", shell: "codex" },
+            scope: { kind: "tab", tab_id: "tab-work" },
             status: "active",
             target: {
               cwd: "/srv/app",
@@ -76,6 +78,7 @@ describe("agentWorkflowModel", () => {
     ).toMatchObject({
       agentSessionId: "ags-1",
       createdAt: "2026-07-11T08:00:00.000Z",
+      scope: { kind: "tab", tabId: "tab-work" },
       target: {
         cwd: "/srv/app",
         liveStatus: "ready",

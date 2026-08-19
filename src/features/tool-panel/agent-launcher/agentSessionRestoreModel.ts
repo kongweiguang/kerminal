@@ -4,6 +4,7 @@ import {
   agentSessionRecordId,
   agentSessionRecordTarget,
   type AgentSessionRecord,
+  type AgentSessionScope,
   type AgentSessionTargetRequest,
   type ExternalAgentId,
 } from "../../../lib/agentLauncherApi";
@@ -11,11 +12,15 @@ import {
   agentSessionRecordPermissionMode,
   type AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
-import { restorableSessionsForTab } from "./agentTabSessionModel";
+import {
+  agentSessionScopeFromId,
+  restorableSessionsForTab,
+} from "./agentTabSessionModel";
 
 export interface AgentSessionSelection {
   agentSessionId: string;
   permissionMode?: AgentLaunchPermissionMode;
+  scope: AgentSessionScope;
   tabId: string;
   target?: AgentSessionTargetRequest;
 }
@@ -34,6 +39,7 @@ export function findPersistedAgentSession(
       return {
         agentSessionId: agentSessionRecordId(record),
         permissionMode: agentSessionRecordPermissionMode(record),
+        scope: agentSessionScopeFromId(tabId),
         tabId,
         target: agentSessionRecordTarget(record),
       };

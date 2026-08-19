@@ -30,8 +30,8 @@ use super::{MANAGED_BLOCK_END, MANAGED_BLOCK_START};
 use crate::{
     error::{AppError, AppResult},
     models::agent_session::{
-        AgentSessionId, AgentTargetBindingContext, AgentTargetBindingContextBinding,
-        AgentTargetBindingStatus, AGENT_SESSION_SCHEMA_VERSION,
+        AgentSessionId, AgentSessionScope, AgentTargetBindingContext,
+        AgentTargetBindingContextBinding, AgentTargetBindingStatus, AGENT_SESSION_SCHEMA_VERSION,
     },
 };
 
@@ -115,6 +115,7 @@ pub(super) fn current_unix_timestamp_string() -> String {
         .unwrap_or_else(|_| "0".to_owned())
 }
 
+/// 旧 unbound 上下文按新权限语义迁移为 global，确保无终端时仍能发现整个工作区。
 pub(super) fn unbound_agent_target_binding_context(
     agent_session_id: AgentSessionId,
     generated_at: String,
@@ -122,6 +123,7 @@ pub(super) fn unbound_agent_target_binding_context(
     AgentTargetBindingContext {
         schema_version: AGENT_SESSION_SCHEMA_VERSION,
         agent_session_id,
+        scope: Some(AgentSessionScope::Global),
         binding: AgentTargetBindingContextBinding {
             binding_id: None,
             generation: 0,

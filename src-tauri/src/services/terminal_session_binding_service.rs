@@ -6,6 +6,7 @@
 //! @author kongweiguang
 
 use crate::error::{AppError, AppResult};
+use crate::models::agent_session::AgentSessionScope;
 use std::{sync::Mutex, time::Duration};
 
 mod agent_target_migration;
@@ -484,6 +485,63 @@ impl TerminalSessionBindingService {
             .cloned())
     }
 
+    /// 返回当前 pane/session registry 中属于 Agent scope 的用户终端绑定。
+    ///
+    /// 这里故意不只返回 Ready 绑定：Disconnected 仍是 scope 成员，前端
+    /// 可以基于 pane id 重新连接；只有 Closed/被替换的绑定才不再参与解析。
+    pub fn bindings_for_scope(
+        &self,
+        scope: &AgentSessionScope,
+    ) -> AppResult<Vec<TerminalSessionBindingSnapshot>> {
+        let state = self.lock_state()?;
+        let mut bindings = state
+            .bindings
+            .values()
+            .filter(|binding| !is_agent_terminal_pane(&binding.pane_id))
+            .filter(|binding| match scope {
+                AgentSessionScope::Global => true,
+                AgentSessionScope::Tab { tab_id } => binding
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.tab_id.as_deref())
+                    .is_some_and(|candidate| candidate == tab_id),
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        bindings.sort_by(|left, right| {
+            left.pane_id
+                .cmp(&right.pane_id)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+        Ok(bindings)
+    }
+
+    /// 返回指定 session 当前 pane binding，包括暂时断开的成员。
+    pub fn binding_for_session(
+        &self,
+        session_id: &str,
+    ) -> AppResult<Option<TerminalSessionBindingSnapshot>> {
+        let state = self.lock_state()?;
+        Ok(state
+            .by_session
+            .get(session_id)
+            .and_then(|pane_id| state.bindings.get(&binding_key(pane_id, session_id)))
+            .cloned())
+    }
+
+    /// 返回指定 pane 当前 binding，包括断开但尚未关闭的连接成员。
+    pub fn binding_for_pane(
+        &self,
+        pane_id: &str,
+    ) -> AppResult<Option<TerminalSessionBindingSnapshot>> {
+        let state = self.lock_state()?;
+        Ok(state
+            .by_pane
+            .get(pane_id)
+            .and_then(|session_id| state.bindings.get(&binding_key(pane_id, session_id)))
+            .cloned())
+    }
+
     pub fn stale_sessions_at(
         &self,
         occurred_at_ms: u64,
@@ -755,4 +813,9 @@ impl TerminalSessionBindingService {
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("terminal_session_binding_registry"))
     }
+}
+
+/// 右栏 Agent 自身的 PTY 不是用户终端，必须从 global/tab scope 中排除。
+fn is_agent_terminal_pane(pane_id: &str) -> bool {
+    pane_id.starts_with("agent-terminal-")
 }

@@ -404,10 +404,11 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
-        target: {
-          liveStatus: "unbound",
+        scope: {
+          kind: "tab",
+          tabId: "tab-main",
         },
-        title: "Custom",
+        title: "Custom · 当前 Tab · 1 个终端 · tab-main",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "custom",
@@ -451,6 +452,7 @@ describe("AgentLauncherToolContent", () => {
             agentId: "codex",
             agentSessionId: "ags-title",
             launch: { args: [], cwd: "", shell: "codex" },
+            scope: { kind: "tab", tabId: "tab-main" },
             status: "active",
             title: "旧标题",
           },

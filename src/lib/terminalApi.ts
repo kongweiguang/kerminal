@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { readDesktopClipboardText } from "./desktopClipboardApi";
 import type { SshAuthPromptPlan } from "./sshAuthApi";
@@ -101,6 +102,22 @@ export interface TerminalSessionReapDiagnostics {
   sessionIds: string[];
   elapsedMs: number;
 }
+
+export interface TerminalReconnectRequest {
+  requestId: string;
+  paneId: string;
+  timeoutMs: number;
+}
+
+export interface TerminalReconnectAck {
+  requestId: string;
+  paneId: string;
+  success: boolean;
+  error?: string;
+}
+
+export const TERMINAL_RECONNECT_REQUEST_EVENT =
+  "kerminal://terminal-reconnect-request" as const;
 
 type TerminalPtyOutputPumpFlushReason =
   | "threshold"
@@ -431,6 +448,16 @@ export async function closeTerminal(sessionId: string): Promise<void> {
   }
 
   await invokeTerminalCommand("terminal_close", { sessionId });
+}
+
+/** 将 pane 重连结果回传 Rust request/ack 协调器，保持连接参数只由现有 pane runtime 持有。 */
+export async function acknowledgeTerminalReconnect(
+  ack: TerminalReconnectAck,
+): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+  await invokeTerminalCommand("terminal_reconnect_ack", { ack });
 }
 
 export async function reapOrphanTerminalSessions(): Promise<TerminalSessionReapDiagnostics> {

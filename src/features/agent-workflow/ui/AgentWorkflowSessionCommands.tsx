@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { Play, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 
@@ -10,7 +11,7 @@ export interface AgentWorkflowSessionCommandsProps {
 
 /**
  * 会话命令仅上抛稳定 session id，不直接访问 repository 或 terminal。
- * 新会话只复用 Agent 类型，不承诺继承来源会话的 target 或 parent 关系。
+ * 新会话复用 Agent 类型和权限 scope，但不继承具体 target 或 parent 关系。
  */
 export function AgentWorkflowSessionCommands({
   disabled = false,

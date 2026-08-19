@@ -162,6 +162,7 @@ fn mcp_context_with_ssh_runtime<'a>(
         ssh_runtime,
         storage: state.storage(),
         terminal_session_bindings: state.terminal_session_bindings(),
+        terminal_reconnect: state.terminal_reconnect(),
         terminals: state.terminals(),
         tmux: state.tmux(),
     }

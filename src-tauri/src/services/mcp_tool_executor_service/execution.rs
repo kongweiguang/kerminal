@@ -1,3 +1,4 @@
+// @author kongweiguang
 use super::*;
 
 pub(super) async fn execute_tool(
@@ -13,13 +14,46 @@ pub(super) async fn execute_tool(
         ToolId::KerminalToolHelp => execute_kerminal_tool_help(tools, arguments),
         ToolId::KerminalOperationGuide => execute_kerminal_operation_guide(tools, arguments),
         ToolId::KerminalRuntimeSnapshot => execute_kerminal_runtime_snapshot(context, tools),
-        ToolId::TerminalList => execute_terminal_list(context.terminals),
-        ToolId::TerminalClose => execute_terminal_close(context.terminals, arguments),
-        ToolId::TerminalLogStart => {
-            execute_terminal_log_start(context.terminals, context.paths, arguments)
+        ToolId::TerminalList => execute_terminal_list(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
+        ToolId::TerminalReconnect => {
+            execute_terminal_reconnect(
+                context.agent_sessions,
+                context.terminal_session_bindings,
+                context.terminal_reconnect,
+                arguments,
+            )
+            .await
         }
-        ToolId::TerminalLogStop => execute_terminal_log_stop(context.terminals, arguments),
-        ToolId::TerminalLogState => execute_terminal_log_state(context.terminals, arguments),
+        ToolId::TerminalClose => execute_terminal_close(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
+        ToolId::TerminalLogStart => execute_terminal_log_start(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            context.paths,
+            arguments,
+        ),
+        ToolId::TerminalLogStop => execute_terminal_log_stop(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
+        ToolId::TerminalLogState => execute_terminal_log_state(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
         ToolId::SshCommand => {
             execute_ssh_command(
                 context.ssh_commands,
@@ -300,7 +334,12 @@ pub(super) async fn execute_tool(
         ToolId::HistorySearch => {
             execute_history_search(context.command_history, context.command_store, arguments)
         }
-        ToolId::TerminalResize => execute_terminal_resize(context.terminals, arguments),
+        ToolId::TerminalResize => execute_terminal_resize(
+            context.agent_sessions,
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
         ToolId::TerminalSnapshot => execute_terminal_snapshot(
             context.agent_sessions,
             context.terminals,

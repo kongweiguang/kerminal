@@ -82,6 +82,7 @@ use crate::{
         ssh_command_service::SshCommandService,
         ssh_runtime::ManagedSshSessionManager,
         terminal_manager::TerminalManager,
+        terminal_reconnect_service::TerminalReconnectService,
         terminal_session_binding_service::{
             AgentTargetBindingSnapshot, TerminalSessionBindingService,
         },
@@ -233,6 +234,8 @@ pub struct McpToolExecutionContext<'a> {
     pub agent_sessions: &'a AgentSessionService,
     /// Agent session 到目标终端的运行态绑定解析服务。
     pub terminal_session_bindings: &'a TerminalSessionBindingService,
+    /// 前端 pane reconnect request/ack 协调器。
+    pub terminal_reconnect: &'a TerminalReconnectService,
     /// 命令历史服务。
     pub command_history: &'a CommandHistoryService,
     /// 命令历史和命令建议专用 SQLite 存储。

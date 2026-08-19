@@ -23,7 +23,7 @@ pub mod window_management;
 #[cfg(not(test))]
 use state::AppState;
 #[cfg(not(test))]
-use tauri::{webview::PageLoadEvent, Manager};
+use tauri::{webview::PageLoadEvent, Emitter, Manager};
 #[cfg(not(test))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -81,6 +81,20 @@ pub fn run() {
             if !app.manage(app_state) {
                 return Err("AppState was already managed during Kerminal setup".into());
             }
+            let reconnect_service = app.state::<AppState>().terminal_reconnect().clone();
+            let app_handle = app.handle().clone();
+            reconnect_service.set_emitter(move |request| {
+                app_handle
+                    .emit(
+                        services::terminal_reconnect_service::TERMINAL_RECONNECT_REQUEST_EVENT,
+                        request,
+                    )
+                    .map_err(|error| {
+                        error::AppError::InvalidInput(format!(
+                            "terminal reconnect event emission failed: {error}"
+                        ))
+                    })
+            })?;
             if commands::connection::cleanup_stale_rdp_artifacts().is_err() {
                 // 清扫失败不阻断主窗口；日志只记录固定诊断，避免暴露本机临时路径。
                 tauri_plugin_log::log::warn!(

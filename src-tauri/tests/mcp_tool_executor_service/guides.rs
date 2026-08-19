@@ -1,3 +1,7 @@
+//! MCP guide contract golden tests.
+//!
+//! @author kongweiguang
+
 use super::fixtures::*;
 
 #[tokio::test]
@@ -426,6 +430,7 @@ async fn mcp_runtime_snapshot_reports_managed_ssh_runtime_without_secrets() {
     assert!(!serialized.contains("kerminal://host/"));
 }
 
+/// 验证 MCP 调用审计仍然脱敏，并兼容 scope-aware Agent session 创建请求。
 #[tokio::test]
 async fn mcp_tool_call_log_includes_redacted_runtime_audit() {
     let (_home, state) = test_state();
@@ -435,6 +440,7 @@ async fn mcp_tool_call_log_includes_redacted_runtime_audit() {
             agent_id: AgentId::Codex,
             title: Some("runtime audit".to_owned()),
             launch: None,
+            scope: None,
             target: None,
             provider: None,
             mcp_endpoint: None,
@@ -484,4 +490,120 @@ async fn mcp_tool_call_log_includes_redacted_runtime_audit() {
     assert!(!log.contains("correct horse"));
     assert!(!log.contains("battery staple"));
     assert!(!log.contains("kerminal://host/"));
+}
+
+/// 锁定 capabilities 对 tab/global scope、显式 sessionId 和断线恢复的公共契约。
+#[tokio::test]
+async fn mcp_capabilities_exposes_agent_scope_contract() {
+    let (_home, state) = test_state();
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    let output = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "kerminal.capabilities",
+            json!({}),
+        )
+        .await
+        .expect("capabilities");
+
+    assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
+    assert!(value_array_contains_str(
+        &output.data["recommendedFirstCalls"],
+        "terminal.list"
+    ));
+    assert!(output.data["sessionWorkspace"]["scopeRule"]
+        .as_str()
+        .expect("scope rule")
+        .contains("tab"));
+    assert!(output.data["sessionWorkspace"]["scopeRule"]
+        .as_str()
+        .expect("scope rule")
+        .contains("global"));
+    let write_rule = output.data["sessionWorkspace"]["terminalWriteRule"]
+        .as_str()
+        .expect("terminal write rule");
+    assert!(write_rule.contains("sessionId"));
+    assert!(write_rule.contains("terminal.reconnect"));
+    assert!(!write_rule.contains("bindingGeneration"));
+    assert!(!write_rule.contains("rebind"));
+}
+
+/// 锁定 session-terminal 指南始终按 scope 成员操作，并把断线恢复放在同一流程内。
+#[tokio::test]
+async fn mcp_operation_guide_session_terminal_uses_scope_members() {
+    let (_home, state) = test_state();
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    let output = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "kerminal.operation_guide",
+            json!({ "intent": "session-terminal" }),
+        )
+        .await
+        .expect("session-terminal operation guide");
+
+    assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
+    let workflow = output.data["workflow"].as_array().expect("workflow");
+    assert!(workflow
+        .iter()
+        .any(|step| step["toolId"] == "terminal.list"));
+    assert!(workflow
+        .iter()
+        .any(|step| step["toolId"] == "terminal.snapshot"));
+    assert!(workflow
+        .iter()
+        .any(|step| step["toolId"] == "terminal.write"));
+    assert!(value_array_contains_str(
+        &output.data["availableReferencedToolIds"],
+        "terminal.reconnect"
+    ));
+    let guidance_only = json!({
+        "workflow": output.data["workflow"].clone(),
+        "safetyBoundaries": output.data["safetyBoundaries"].clone(),
+        "fallbacks": output.data["fallbacks"].clone(),
+        "nextHints": output.data["nextHints"].clone()
+    })
+    .to_string();
+    assert!(guidance_only.contains("scope-member"));
+    assert!(guidance_only.contains("sessionId"));
+    assert!(!guidance_only.contains("bindingGeneration"));
+    assert!(!guidance_only.contains("rebind"));
+}
+
+/// 工具帮助的 scope 查询必须把 runtime scope 入口和 terminal membership 边界一起返回。
+#[tokio::test]
+async fn mcp_tool_help_query_terminal_scope_returns_membership_boundary() {
+    let (_home, state) = test_state();
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    let output = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "kerminal.tool_help",
+            json!({
+                "query": "terminal scope reconnect",
+                "includeSchemas": false
+            }),
+        )
+        .await
+        .expect("terminal scope tool help");
+
+    assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
+    assert!(value_array_contains_str(
+        &output.data["availableToolIds"],
+        "terminal.list"
+    ));
+    let scope_boundary = output.data["safetyBoundaries"]["agentScope"]
+        .as_str()
+        .expect("agent scope boundary");
+    assert!(scope_boundary.contains("sessionId"));
+    assert!(scope_boundary.contains("terminal.reconnect"));
 }

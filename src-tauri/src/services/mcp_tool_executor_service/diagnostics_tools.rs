@@ -1,7 +1,9 @@
+// @author kongweiguang
 use super::diagnostics_common::{absent_tool_families, exposed_tool_definitions, tool_references};
 use super::*;
 use crate::models::target::RemoteTargetRef;
 
+/// 返回当前 catalog 的 schema 和 scope/reconnect 安全说明，不执行所选工具。
 pub(super) fn execute_kerminal_tool_help(
     tools: &[ToolDefinition],
     arguments: &serde_json::Map<String, Value>,
@@ -108,6 +110,7 @@ pub(super) fn execute_kerminal_tool_help(
                 "Use tools/list for the raw MCP protocol list when your host needs the unprocessed catalog.",
                 "For file-backed configuration, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate.",
                 "For SSH terminal/SFTP/exec/tmux/container/port-forward reuse, inspect kerminal.runtime_snapshot.managedSsh before assuming each tool opens a separate SSH connection.",
+                "For Agent terminal scope, call kerminal.agent.target_context and terminal.list; tab includes current and future panes in one tab, global includes user terminals across tabs, and the right-panel Agent TUI is excluded.",
                 "For external SSH launch compatibility, inspect kerminal.runtime_snapshot.externalLaunch; edit settings.toml externalLaunch and validate instead of looking for external_launch.* MCP control tools."
             ],
             "managedSshRuntime": {
@@ -129,6 +132,7 @@ pub(super) fn execute_kerminal_tool_help(
                 "readOnly": "kerminal.tool_help is read-only and never invokes the referenced tool.",
                 "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit before write or destructive tools.",
                 "fileFirstConfiguration": "settings/profile/host/snippet/workflow CRUD tools are deliberately absent; use direct file edits plus validation.",
+                "agentScope": "terminal.list returns current members of the tab/global Agent scope. terminal.snapshot/write take an explicit sessionId and the server rejects members outside the scope; terminal.reconnect accepts a paneId for a disconnected member.",
                 "managedSsh": "SSH-bound tool families reuse a managed runtime where possible; diagnostics prove session/channel ownership without exposing credential material.",
                 "externalLaunch": "External launch passwords and passphrases are session-only; MCP diagnostics expose policy, counts, launch ids, and redacted rejection metadata only.",
                 "secrets": "Do not extract or print stored secrets. Authorized credential writes use kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret."
@@ -136,7 +140,7 @@ pub(super) fn execute_kerminal_tool_help(
             "nextActions": [
                 "Call the selected read-only discovery or runtime tool only after checking required arguments.",
                 "For SSH-bound operations, call kerminal.runtime_snapshot and inspect managedSsh before and after the operation when debugging session reuse.",
-                "For terminal.write, resolve and inspect the target first; session-bound writes require agentSessionId, bindingGeneration, and data.",
+                "For terminal work, refresh kerminal.agent.target_context and terminal.list, inspect a returned scope member, then use explicit sessionId values for terminal.snapshot/write; recover disconnected panes with terminal.reconnect.",
                 "For destructive tools, require clear user intent and host-side approval/audit."
             ]
         })),
@@ -161,6 +165,7 @@ fn optional_nonempty_argument(
         .map(ToOwned::to_owned)
 }
 
+/// 按工具族返回 schema 帮助；Agent/session 族必须包含 scope discovery 和断线恢复入口。
 fn tool_ids_for_help_family<'a>(
     tools: &[&'a ToolDefinition],
     requested_family: &str,
@@ -185,9 +190,11 @@ fn tool_ids_for_help_family<'a>(
             tools,
             &[
                 "kerminal.agent.",
+                "terminal.list",
                 "terminal.resolve_agent_target",
                 "terminal.snapshot",
                 "terminal.write",
+                "terminal.reconnect",
             ],
         ),
         "terminal" => tool_ids_matching_prefixes(tools, &["terminal."]),
@@ -251,6 +258,7 @@ fn tool_ids_matching_prefixes<'a>(
         .collect()
 }
 
+/// 按自然语言查询补齐相关工具，特别处理 tab/global scope 和 disconnected pane 诊断。
 fn tool_ids_for_help_query<'a>(
     tools: &[&'a ToolDefinition],
     requested_query: &str,
@@ -295,6 +303,30 @@ fn tool_ids_for_help_query<'a>(
                 "container.",
                 "port_forward.",
                 "server_info.",
+            ],
+        ) {
+            if !matches.contains(&tool_id) {
+                matches.push(tool_id);
+            }
+        }
+    }
+
+    if normalized_query.contains("terminal scope")
+        || normalized_query.contains("tab scope")
+        || normalized_query.contains("global scope")
+        || normalized_query.contains("reconnect")
+        || normalized_query.contains("disconnected pane")
+    {
+        for tool_id in tool_ids_matching_prefixes(
+            tools,
+            &[
+                "kerminal.agent.current_session",
+                "kerminal.agent.target_context",
+                "terminal.list",
+                "terminal.snapshot",
+                "terminal.write",
+                "terminal.reconnect",
+                "kerminal.runtime_snapshot",
             ],
         ) {
             if !matches.contains(&tool_id) {

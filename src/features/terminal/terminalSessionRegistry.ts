@@ -1,4 +1,12 @@
-import { writeTerminal } from "../../lib/terminalApi";
+// @author kongweiguang
+import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import {
+  acknowledgeTerminalReconnect,
+  TERMINAL_RECONNECT_REQUEST_EVENT,
+  type TerminalReconnectRequest,
+  writeTerminal,
+} from "../../lib/terminalApi";
 import {
   recordCommandHistory,
   type CommandHistoryTarget,
@@ -43,7 +51,51 @@ export interface TerminalPaneRuntimeContext {
 
 const paneSessions = new Map<string, PaneSessionRecord>();
 const paneConnectionGenerations = new Map<string, number>();
+const paneReconnectHandlers = new Map<string, () => Promise<void>>();
 const remoteSocksInjectionTasks = new Map<string, Promise<void>>();
+let reconnectListenerStarted = false;
+
+/** 建立全局 request/ack listener，让 MCP 重连请求复用真实 pane runtime。 */
+function ensureTerminalReconnectListener() {
+  if (!isTauri() || reconnectListenerStarted) {
+    return;
+  }
+  reconnectListenerStarted = true;
+  void listen<TerminalReconnectRequest>(
+    TERMINAL_RECONNECT_REQUEST_EVENT,
+    async ({ payload }) => {
+      const handler = paneReconnectHandlers.get(payload.paneId);
+      if (!handler) {
+        await acknowledgeTerminalReconnect({
+          requestId: payload.requestId,
+          paneId: payload.paneId,
+          success: false,
+          error: "目标 pane 当前没有可用的重连运行时",
+        }).catch(() => undefined);
+        return;
+      }
+      try {
+        await handler();
+        await acknowledgeTerminalReconnect({
+          requestId: payload.requestId,
+          paneId: payload.paneId,
+          success: true,
+        }).catch(() => undefined);
+      } catch (error: unknown) {
+        await acknowledgeTerminalReconnect({
+          requestId: payload.requestId,
+          paneId: payload.paneId,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }).catch(() => undefined);
+      }
+    },
+  ).catch(() => {
+    reconnectListenerStarted = false;
+  });
+}
+
+ensureTerminalReconnectListener();
 
 export interface BroadcastWriteRequest {
   command?: string;
@@ -89,6 +141,7 @@ export function registerTerminalPaneSession(
   sessionId: string,
   metadata: Partial<Omit<PaneSessionRecord, "sessionId">> = {},
 ) {
+  ensureTerminalReconnectListener();
   const connectionGeneration = (paneConnectionGenerations.get(paneId) ?? 0) + 1;
   paneConnectionGenerations.set(paneId, connectionGeneration);
   const record = {
@@ -110,18 +163,36 @@ export function registerTerminalPaneSession(
   void injectRemoteSocksIfEnabled(paneId, record)?.catch(() => undefined);
 }
 
+/** 注册 pane 当前的真实 reconnect 回调，连接参数仍由 XtermPane runtime 持有。 */
+export function registerTerminalPaneReconnectHandler(
+  paneId: string,
+  handler: () => Promise<void>,
+) {
+  ensureTerminalReconnectListener();
+  paneReconnectHandlers.set(paneId, handler);
+}
+
+/** pane 销毁时移除 reconnect 回调，避免事件触达已卸载的 runtime。 */
+export function unregisterTerminalPaneReconnectHandler(paneId: string) {
+  paneReconnectHandlers.delete(paneId);
+}
+
 export function unregisterTerminalPaneSession(
   paneId: string,
   sessionId?: string,
+  options: { preserveBinding?: boolean } = {},
 ) {
   const currentSession = paneSessions.get(paneId);
-  if (sessionId && currentSession?.sessionId !== sessionId) {
+  if (sessionId && currentSession && currentSession.sessionId !== sessionId) {
     return;
   }
   clearInjectedRemoteSocksSessions(paneId, currentSession?.sessionId);
   paneSessions.delete(paneId);
-  if (currentSession) {
-    reportTerminalSessionClosed(paneId, currentSession.sessionId);
+  // disconnected 时运行态 Map 已清空，但 pane dispose 仍必须凭最后 sessionId
+  // 关闭 Rust binding；否则 global/tab scope 会永久保留一个不可重连的幽灵成员。
+  const closingSessionId = currentSession?.sessionId ?? sessionId;
+  if (closingSessionId && !options.preserveBinding) {
+    reportTerminalSessionClosed(paneId, closingSessionId);
   }
 }
 

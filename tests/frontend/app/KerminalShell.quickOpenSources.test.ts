@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it, vi } from "vitest";
 import {
   createKerminalQuickOpenRegistry,
@@ -49,6 +51,7 @@ describe("Kerminal Quick Open production sources", () => {
                   shell: "pwsh",
                 },
                 sessionRoot: "C:/private/session",
+                scope: { kind: "global" },
                 status: "active",
                 title: "修复任务",
               },
@@ -119,6 +122,10 @@ describe("Kerminal Quick Open production sources", () => {
       candidates.find((item) => item.reference.kind === "command-history")
         ?.label,
     ).toHaveLength(96);
+    expect(
+      candidates.find((item) => item.reference.kind === "agent-session")
+        ?.targetLabel,
+    ).toBe("整个 Kerminal");
   });
 
   it("checks AbortSignal before and after async fact reads", async () => {

@@ -4,6 +4,11 @@ import { parseAgentCommandLine } from "./agentCommandLine";
 
 export type ExternalAgentId = "codex" | "claude" | "custom";
 
+/** Agent 会话的权限作用域；作用域决定 MCP 可以观察和操作的终端集合。 */
+export type AgentSessionScope =
+  | { kind: "tab"; tabId: string }
+  | { kind: "global" };
+
 export interface ExternalAgentStatus {
   id: ExternalAgentId;
   title: string;
@@ -104,8 +109,15 @@ interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
   last_seen_at?: string;
 }
 
+interface AgentSessionScopeRecord {
+  kind?: "tab" | "global";
+  tabId?: string;
+  tab_id?: string;
+}
+
 export interface AgentSessionCreateRequest {
   agentId: ExternalAgentId;
+  scope: AgentSessionScope;
   title?: string;
   target?: AgentSessionTargetRequest;
   mcpEndpoint?: string;
@@ -148,6 +160,7 @@ export interface AgentSessionRecord {
     updated_at?: string;
     status?: AgentSessionRecordStatus;
     launch: AgentSessionRecordLaunch;
+    scope?: AgentSessionScopeRecord | AgentSessionScope | null;
     target?: AgentSessionTargetRecord | null;
   };
 }
@@ -245,6 +258,27 @@ export function agentSessionRecordAgentId(
   record: AgentSessionRecord,
 ): ExternalAgentId | undefined {
   return record.session.agentId ?? record.session.agent_id;
+}
+
+/** 读取新的 scope 字段，并把旧 target/unbound 记录归一化为同一作用域。 */
+export function agentSessionRecordScope(
+  record: AgentSessionRecord,
+  fallback?: AgentSessionScope,
+): AgentSessionScope {
+  const scope = normalizeAgentSessionScope(record.session.scope);
+  if (scope) {
+    return scope;
+  }
+
+  const target = agentSessionRecordTarget(record);
+  if (target?.liveStatus === "unbound") {
+    return { kind: "global" };
+  }
+  const tabId = target?.tabId?.trim();
+  if (tabId) {
+    return { kind: "tab", tabId };
+  }
+  return fallback ?? { kind: "global" };
 }
 
 export function agentSessionRecordTarget(
@@ -376,6 +410,7 @@ function previewExternalAgentLaunchSpec({
   };
 }
 
+/** 在非 Tauri 预览中保留请求 scope，确保 UI 测试与真实 IPC 使用同一权限模型。 */
 function previewAgentSessionRecord(
   request: AgentSessionCreateRequest,
 ): AgentSessionRecord {
@@ -399,6 +434,7 @@ function previewAgentSessionRecord(
         cwd: sessionRoot,
         shell: request.agentId === "custom" ? "" : request.agentId,
       },
+      scope: request.scope,
       sessionRoot,
       status: "active",
       target: request.target,
@@ -406,6 +442,24 @@ function previewAgentSessionRecord(
       workspaceRoot,
     },
   };
+}
+
+/** 兼容 Rust 返回的 camelCase/snake_case scope，拒绝缺失 tabId 的非法 tab 作用域。 */
+function normalizeAgentSessionScope(
+  value: AgentSessionRecord["session"]["scope"] | undefined,
+): AgentSessionScope | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  if (value.kind === "global") {
+    return { kind: "global" };
+  }
+  if (value.kind !== "tab") {
+    return undefined;
+  }
+  const candidate = value as AgentSessionScopeRecord;
+  const tabId = candidate.tabId ?? candidate.tab_id;
+  return tabId?.trim() ? { kind: "tab", tabId: tabId.trim() } : undefined;
 }
 
 function previewArchivedAgentSessionRecord(
