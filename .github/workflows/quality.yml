@@ -58,7 +58,7 @@ jobs:
           shared-key: quality-linux-x64
 
       - name: Install Tauri build dependencies
-        timeout-minutes: 12
+        timeout-minutes: 25
         run: |
           set -euo pipefail
 

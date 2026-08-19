@@ -178,7 +178,7 @@ jobs:
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
-        timeout-minutes: 12
+        timeout-minutes: 25
         run: |
           set -euo pipefail
 
