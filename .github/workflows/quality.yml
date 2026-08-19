@@ -138,14 +138,22 @@ jobs:
         run: |
           set -euo pipefail
           reference_path="${RUNNER_TEMP}/source-size-reference.json"
-          if [[ -n "${BASE_SHA}" ]] && \
-             [[ "${BASE_SHA}" != "0000000000000000000000000000000000000000" ]] && \
-             git cat-file -e "${BASE_SHA}:scripts/source-size-baseline.json" 2>/dev/null; then
-            git show "${BASE_SHA}:scripts/source-size-baseline.json" > "${reference_path}"
-            echo "KERMINAL_SOURCE_SIZE_REFERENCE_BASELINE=${reference_path}" >> "${GITHUB_ENV}"
+
+          if [[ -z "${BASE_SHA}" ]] ||
+            [[ "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+            BASE_SHA="$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null || true)"
+          fi
+
+          if [[ -n "${BASE_SHA}" ]] &&
+            git cat-file -e "${BASE_SHA}:scripts/source-size-baseline.json" 2>/dev/null; then
+            git show "${BASE_SHA}:scripts/source-size-baseline.json" \
+              > "${reference_path}"
+            echo "KERMINAL_SOURCE_SIZE_REFERENCE_BASELINE=${reference_path}" \
+              >> "${GITHUB_ENV}"
             echo "Comparing source-size debt with ${BASE_SHA}."
           else
-            echo "No reference baseline exists for this event; validating the current exact snapshot."
+            echo "No reference baseline exists for this event;"
+            echo "validating the current exact snapshot."
           fi
 
       - name: Run the shared quality entry
@@ -259,8 +267,8 @@ jobs:
           workspaces: "src-tauri -> target"
           shared-key: native-check-${{ matrix.os }}
 
-      # Rust/Tauri dependencies contain platform-specific branches that the Linux quality
-      # job cannot compile; checking both desktop targets before tagging keeps release failures reversible.
+      # Rust/Tauri dependencies have platform-specific branches.
+      # Check both desktop targets before tagging to keep failures reversible.
       - name: Check native application and tests
         working-directory: src-tauri
         run: cargo check --all-targets --all-features
