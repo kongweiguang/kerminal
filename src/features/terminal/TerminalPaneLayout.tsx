@@ -24,6 +24,7 @@ import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import type { ConnectionState } from "./XtermPane.helpers";
 
 interface TerminalPaneLayoutProps {
+  backgroundImageVisible?: boolean;
   draggingPaneId?: string;
   focusedPaneId: string;
   layout: TerminalLayoutNode;
@@ -81,6 +82,7 @@ function normalizeRootLayout(
 }
 
 function TerminalPaneLayoutNode({
+  backgroundImageVisible = false,
   draggingPaneId,
   focusedPaneId,
   layout,
@@ -107,6 +109,7 @@ function TerminalPaneLayoutNode({
   if (layout.type !== "pane") {
     return (
       <TerminalPaneLayout
+        backgroundImageVisible={backgroundImageVisible}
         focusedPaneId={focusedPaneId}
         draggingPaneId={draggingPaneId}
         layout={layout}
@@ -141,6 +144,7 @@ function TerminalPaneLayoutNode({
   return (
     <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
       <TerminalPaneCard
+        backgroundImageVisible={backgroundImageVisible}
         dragging={pane.id === draggingPaneId}
         focused={pane.id === focusedPaneId}
         machineGroups={machineGroups}
@@ -165,7 +169,9 @@ function TerminalPaneLayoutNode({
   );
 }
 
+/** 递归渲染分屏树，并让所有叶子终端共享同一背景透明策略。 */
 export function TerminalPaneLayout({
+  backgroundImageVisible = false,
   draggingPaneId,
   focusedPaneId,
   layout,
@@ -227,6 +233,7 @@ export function TerminalPaneLayout({
               minSize="20%"
             >
               <TerminalPaneLayoutNode
+                backgroundImageVisible={backgroundImageVisible}
                 focusedPaneId={focusedPaneId}
                 draggingPaneId={draggingPaneId}
                 layout={child}

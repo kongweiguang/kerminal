@@ -11,10 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { KerminalShell } from "../../../../src/app/KerminalShell";
-import {
-  mocks,
-  windowChromeMocks,
-} from "./setup";
+import { mocks, windowChromeMocks } from "./setup";
 
 export function registerChromeAndRestoreTests() {
   it("applies the resolved theme to the document root for portal dialogs", async () => {
@@ -66,7 +63,7 @@ export function registerChromeAndRestoreTests() {
     });
     const rightTitleStrip = dragRegions.find((element) => {
       const className = element.getAttribute("class") ?? "";
-      return className.includes("col-[2/6]") && className.includes("row-[1/2]");
+      return className.includes("col-[2/8]") && className.includes("row-[1/2]");
     });
 
     expect(leftTitleStrip).toBeInTheDocument();
@@ -129,23 +126,27 @@ export function registerChromeAndRestoreTests() {
     const workspace = await screen.findByRole("main", { name: "终端工作区" });
     const shell = container.firstElementChild as HTMLElement;
     expect(shell).toHaveStyle({
-      gridTemplateRows: "36px minmax(0, 1fr)",
+      gridTemplateRows: "36px minmax(0, 1fr) 0px 0px",
     });
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 8" });
 
     const content = container.querySelector(
       "[data-terminal-workspace-content]",
     ) as HTMLElement;
     expect(content).toHaveStyle({ marginRight: "44px" });
 
-    await user.click(
-      screen.getByRole("button", { name: "打开 命令历史" }),
-    );
+    await user.click(screen.getByRole("button", { name: "打开 命令历史" }));
 
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toHaveAttribute("aria-expanded", "true");
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(
+      screen.getByRole("complementary", { name: "工具面板" }).parentElement,
+    ).toHaveAttribute("data-compositor", "surface-parent");
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 8" });
+    expect(
+      screen.getByRole("complementary", { name: "右侧工具栏" }).parentElement,
+    ).toHaveStyle({ zIndex: "calc(var(--layer-chrome) + 1)" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
       marginRight: "340px",
     });
@@ -157,23 +158,148 @@ export function registerChromeAndRestoreTests() {
     });
   });
 
-  it("allows the right tool panel to expand to the wider resize limit", async () => {
+  it("docks a configured tool between the machine sidebar and terminal", async () => {
+    mocks.settingsApi.getSettings.mockResolvedValue({
+      ...defaultAppSettings,
+      toolRail: {
+        ...defaultAppSettings.toolRail,
+        panelPlacements: {
+          ...defaultAppSettings.toolRail.panelPlacements,
+          logs: "left",
+        },
+      },
+    });
     const user = userEvent.setup();
     const { container } = render(<KerminalShell />);
 
-    await user.click(
-      screen.getByRole("button", { name: "打开 命令历史" }),
-    );
-
-    const rightSeparator = screen.getByRole("separator", {
-      name: "调整工具面板宽度",
+    await waitFor(() => {
+      expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
     });
-    for (let index = 0; index < 12; index += 1) {
-      fireEvent.keyDown(rightSeparator, { key: "ArrowLeft", shiftKey: true });
-    }
+    await user.click(screen.getByRole("button", { name: "打开 命令历史" }));
 
     const shell = container.firstElementChild as HTMLElement;
-    expect(shell.style.gridTemplateColumns).toContain("720px");
+    const workspace = screen.getByRole("main", { name: "终端工作区" });
+    expect(
+      screen.getByRole("complementary", { name: "左侧工具面板" }),
+    ).toHaveStyle({ gridColumn: "3 / 4", gridRow: "2 / 5" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 8" });
+    expect(shell.style.gridTemplateColumns).toMatch(
+      /^\d+px 0px 340px 0px minmax\(0, 1fr\) 0px 44px$/,
+    );
+    expect(
+      screen.getByRole("separator", {
+        name: "调整左侧工具面板宽度",
+      }),
+    ).toHaveStyle({ gridColumn: "4 / 5", gridRow: "2 / 5" });
+    expect(
+      container.querySelector("[data-terminal-workspace-content]"),
+    ).toHaveStyle({ marginLeft: "340px", marginRight: "44px" });
+  });
+
+  it("allows the right tool panel to expand to the application midpoint", async () => {
+    const originalViewportWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1920,
+    });
+    fireEvent(window, new Event("resize"));
+
+    try {
+      const user = userEvent.setup();
+      const { container } = render(<KerminalShell />);
+
+      await user.click(screen.getByRole("button", { name: "打开 命令历史" }));
+
+      const rightSeparator = screen.getByRole("separator", {
+        name: "调整工具面板宽度",
+      });
+      for (let index = 0; index < 20; index += 1) {
+        fireEvent.keyDown(rightSeparator, { key: "ArrowLeft", shiftKey: true });
+      }
+
+      const shell = container.firstElementChild as HTMLElement;
+      expect(shell.style.gridTemplateColumns).toContain("960px");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalViewportWidth,
+      });
+      fireEvent(window, new Event("resize"));
+    }
+  });
+
+  it("keeps the terminal inset locked to the right separator during pointer resize", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<KerminalShell />);
+
+    await user.click(screen.getByRole("button", { name: "打开 命令历史" }));
+
+    const shell = container.firstElementChild as HTMLElement;
+    const content = container.querySelector(
+      "[data-terminal-workspace-content]",
+    ) as HTMLElement;
+    const separator = screen.getByRole("separator", {
+      name: "调整工具面板宽度",
+    });
+    const initialWidth = Number.parseFloat(content.style.marginRight);
+    const initialGridTemplate = shell.style.gridTemplateColumns;
+    const shellRenderCountBeforeDrag = mocks.appTitleBar.renderCount;
+    const startX = 1_000;
+    const nextX = startX - 40;
+
+    fireEvent.pointerDown(separator, {
+      button: 0,
+      buttons: 1,
+      clientX: startX,
+      pointerId: 7,
+    });
+    expect(shell).toHaveAttribute("data-panel-resizing", "tools-right");
+    expect(shell.style.getPropertyValue("--kerminal-live-right-inset")).toBe(
+      `${initialWidth}px`,
+    );
+
+    fireEvent.pointerMove(window, {
+      buttons: 1,
+      clientX: nextX,
+      pointerId: 7,
+    });
+    fireEvent.pointerMove(window, {
+      buttons: 1,
+      clientX: nextX - 20,
+      pointerId: 7,
+    });
+    expect(shell.style.gridTemplateColumns).toBe(initialGridTemplate);
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        }),
+    );
+
+    const resizedWidth = initialWidth + 60;
+    expect(shell.style.gridTemplateColumns).toContain(`${resizedWidth}px`);
+    expect(shell.style.getPropertyValue("--kerminal-live-right-inset")).toBe(
+      `${resizedWidth}px`,
+    );
+    expect(mocks.appTitleBar.renderCount).toBe(shellRenderCountBeforeDrag);
+
+    fireEvent.pointerUp(window, {
+      buttons: 0,
+      clientX: nextX - 20,
+      pointerId: 7,
+    });
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        }),
+    );
+
+    expect(shell).not.toHaveAttribute("data-panel-resizing");
+    expect(shell.style.getPropertyValue("--kerminal-live-right-inset")).toBe(
+      "",
+    );
+    expect(content).toHaveStyle({ marginRight: `${resizedWidth}px` });
   });
 
   it("matches the expanded left sidebar resize column to the shell glass surface", () => {
@@ -233,33 +359,62 @@ export function registerChromeAndRestoreTests() {
       expect(document.documentElement).toHaveAttribute("data-language", "enUS");
     });
     expect(frame).toHaveAttribute("lang", "en-US");
+    expect(frame).toHaveAttribute("data-background-image-visible", "true");
     expect(frame.style.backgroundImage).toContain("linear-gradient");
-    expect(frame.style.backgroundImage).toContain("radial-gradient");
+    expect(frame.style.backgroundImage).not.toContain("radial-gradient");
     expect(frame.style.backgroundColor).toBe("rgba(245, 245, 247, 0.72)");
     expect(frame.style.getPropertyValue("--app-background-veil-opacity")).toBe(
-      "0.532",
+      "0.6288",
     );
     expect(frame.style.backgroundImage).toContain(
       "var(--app-background-veil-opacity)",
     );
     expect(frame.style.getPropertyValue("--app-window-opacity")).toBe("0.72");
     expect(frame.style.getPropertyValue("--app-nav-surface-opacity")).toBe(
-      "0.7336",
+      "0.4768",
     );
     expect(
       frame.style.getPropertyValue("--app-workspace-surface-opacity"),
-    ).toBe("0.7336");
+    ).toBe("0.056");
     expect(frame.style.getPropertyValue("--app-terminal-header-opacity")).toBe(
-      "0.7452",
+      "0.2288",
     );
     expect(frame.style.getPropertyValue("--app-terminal-surface-opacity")).toBe(
-      "0.6952",
+      "0.0632",
     );
     expect(frame.style.backgroundImage).toContain(
       "file:///C:/Users/dev/Pictures/bg.png",
     );
     expect(frame.style.backgroundRepeat).toBe("repeat");
     expect(frame.style.backgroundSize).toBe("auto");
+  });
+
+  it("fully veils a configured background when its opacity is zero", async () => {
+    mocks.settingsApi.getSettings.mockResolvedValue({
+      ...defaultAppSettings,
+      appearance: {
+        ...defaultAppSettings.appearance,
+        backgroundEnabled: true,
+        backgroundImagePath: "C:\\Users\\dev\\Pictures\\bg.png",
+        backgroundOpacity: 0,
+      },
+    });
+
+    const { container } = render(<KerminalShell />);
+    const frame = container.firstElementChild as HTMLElement;
+
+    await waitFor(() => {
+      expect(frame.style.backgroundImage).toContain("bg.png");
+    });
+    expect(frame.style.getPropertyValue("--app-background-veil-opacity")).toBe(
+      "1",
+    );
+    expect(frame).not.toHaveAttribute("data-background-image-visible");
+    expect(
+      screen
+        .getByText("光标还没闪，AI 已经开始脑补命令了。")
+        .closest(".kerminal-solid-surface"),
+    ).not.toBeNull();
   });
 
   it("restores saved terminal tabs from the previous workspace session", async () => {
@@ -525,7 +680,8 @@ export function registerChromeAndRestoreTests() {
 
     await waitFor(() => {
       expect(shell).toHaveStyle({
-        gridTemplateColumns: "312px 0px minmax(0, 1fr) 0px 44px",
+        gridTemplateColumns:
+          "312px 0px 0px 0px minmax(0, 1fr) 0px 44px",
       });
     });
     const groupButton = await screen.findByRole("button", { name: /bwy/ });
@@ -615,5 +771,4 @@ export function registerChromeAndRestoreTests() {
     );
     expect(mocks.terminalApi.closeTerminal).toHaveBeenCalledTimes(closeCount);
   });
-
 }

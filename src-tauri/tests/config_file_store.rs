@@ -11,7 +11,11 @@ use kerminal_lib::{
             RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, RemoteHostProtocol,
             SshJumpHostOptions, SshOptions,
         },
-        settings::{AppSettings, TerminalRendererType, ThemeMode},
+        settings::{
+            AppSettings, TerminalKeywordHighlightMatchMode, TerminalKeywordHighlightRule,
+            TerminalKeywordHighlightStyle, TerminalRendererType, ThemeMode, ToolRailPanelPlacement,
+            ToolRailToolId,
+        },
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
@@ -26,6 +30,28 @@ fn settings_toml_roundtrip_keeps_runtime_model() {
         ..AppSettings::default()
     };
     settings.terminal.renderer_type = TerminalRendererType::Gpu;
+    settings.terminal.keyword_highlights.rules = vec![TerminalKeywordHighlightRule {
+        id: "java-errors".to_string(),
+        enabled: true,
+        pattern: "error|exception".to_string(),
+        match_mode: TerminalKeywordHighlightMatchMode::Regex,
+        case_sensitive: false,
+        note: "Java 错误".to_string(),
+        style: TerminalKeywordHighlightStyle::Red,
+        custom_colors: None,
+    }];
+    settings.tool_rail.order = vec![ToolRailToolId::Logs, ToolRailToolId::Context];
+    settings.tool_rail.hidden = vec![ToolRailToolId::System];
+    settings.tool_rail.bottom = vec![ToolRailToolId::Context];
+    settings
+        .tool_rail
+        .panel_placements
+        .insert(ToolRailToolId::Context, ToolRailPanelPlacement::Left);
+    settings
+        .tool_rail
+        .panel_placements
+        .insert(ToolRailToolId::System, ToolRailPanelPlacement::Bottom);
+    settings.tool_rail = settings.tool_rail.clone().normalized();
 
     store.write_settings(&settings).expect("write settings");
     let loaded = store.read_settings().expect("read settings");
@@ -35,6 +61,15 @@ fn settings_toml_roundtrip_keeps_runtime_model() {
     assert!(source.contains("schema_version = 1"));
     assert!(source.contains("themeMode = \"light\""));
     assert!(source.contains("rendererType = \"gpu\""));
+    assert!(source.contains("[terminal.keywordHighlights]"));
+    assert!(source.contains("[[terminal.keywordHighlights.rules]]"));
+    assert!(source.contains("matchMode = \"regex\""));
+    assert!(source.contains("[toolRail]"));
+    assert!(source.contains("agentLauncher"));
+    assert!(source.contains("bottom = [\"context\"]"));
+    assert!(source.contains("[toolRail.panelPlacements]"));
+    assert!(source.contains("context = \"left\""));
+    assert!(source.contains("system = \"bottom\""));
 }
 
 #[test]
@@ -52,6 +87,128 @@ fn settings_toml_defaults_missing_terminal_renderer_type_to_cpu() {
     let loaded = store.read_settings().expect("read legacy settings");
 
     assert_eq!(loaded.terminal.renderer_type, TerminalRendererType::Cpu);
+    assert_eq!(
+        loaded.terminal.keyword_highlights,
+        AppSettings::default().terminal.keyword_highlights
+    );
+    assert_eq!(loaded.tool_rail, AppSettings::default().tool_rail);
+}
+
+#[test]
+fn settings_toml_normalizes_duplicate_and_all_hidden_tool_rail_entries() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        concat!(
+            "schema_version = 1\n",
+            "[toolRail]\n",
+            "order = [\"logs\", \"logs\"]\n",
+            "hidden = [\"logs\", \"context\", \"agentLauncher\", \"sftp\", \"snippets\", \"tmux\", \"ports\", \"system\"]\n",
+            "bottom = [\"context\", \"logs\", \"context\"]\n",
+        ),
+    )
+    .expect("write tool rail settings");
+
+    let loaded = store.read_settings().expect("read tool rail settings");
+
+    assert_eq!(loaded.tool_rail.order[0], ToolRailToolId::Logs);
+    assert!(!loaded.tool_rail.hidden.contains(&ToolRailToolId::Logs));
+    assert_eq!(loaded.tool_rail.order.len(), 8);
+    assert_eq!(
+        loaded.tool_rail.bottom,
+        vec![ToolRailToolId::Logs, ToolRailToolId::Context]
+    );
+}
+
+#[test]
+fn settings_toml_defaults_legacy_tool_rail_section_to_logs_bottom_and_attached_panel() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        concat!(
+            "schema_version = 1\n",
+            "[toolRail]\n",
+            "order = [\"context\", \"logs\"]\n",
+            "hidden = []\n",
+        ),
+    )
+    .expect("write legacy tool rail settings");
+
+    let loaded = store
+        .read_settings()
+        .expect("read legacy tool rail settings");
+
+    assert_eq!(loaded.tool_rail.bottom, vec![ToolRailToolId::Logs]);
+    assert_eq!(
+        loaded.tool_rail.panel_placements.get(&ToolRailToolId::Logs),
+        Some(&ToolRailPanelPlacement::Attached)
+    );
+}
+
+/// 旧版全局展示位置要扩展到全部工具，并在下一次写回时只保留逐工具格式。
+#[test]
+fn settings_toml_migrates_legacy_global_tool_panel_placement() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        concat!(
+            "schema_version = 1\n",
+            "[toolRail]\n",
+            "panelPlacement = \"center\"\n",
+        ),
+    )
+    .expect("write global tool panel placement");
+
+    let loaded = store
+        .read_settings()
+        .expect("migrate global tool panel placement");
+    assert_eq!(loaded.tool_rail.panel_placements.len(), 8);
+    assert!(loaded
+        .tool_rail
+        .panel_placements
+        .values()
+        .all(|placement| *placement == ToolRailPanelPlacement::Center));
+
+    store
+        .write_settings(&loaded)
+        .expect("rewrite migrated tool panel placements");
+    let rewritten =
+        fs::read_to_string(temp.path().join("settings.toml")).expect("rewritten settings");
+    assert!(rewritten.contains("[toolRail.panelPlacements]"));
+    assert!(!rewritten.contains("panelPlacement ="));
+}
+
+#[test]
+fn settings_toml_rejects_unknown_tool_rail_entry() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        "schema_version = 1\n[toolRail]\norder = [\"unknown\"]\n",
+    )
+    .expect("write invalid tool rail settings");
+
+    store
+        .read_settings()
+        .expect_err("unknown tool rail entry should fail closed");
+}
+
+#[test]
+fn settings_toml_rejects_unknown_tool_panel_placement() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        "schema_version = 1\n[toolRail.panelPlacements]\ncontext = \"detached\"\n",
+    )
+    .expect("write invalid tool panel placement");
+
+    store
+        .read_settings()
+        .expect_err("unknown tool panel placement should fail closed");
 }
 
 #[test]

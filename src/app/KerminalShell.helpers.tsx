@@ -17,6 +17,7 @@ import { cn } from "../lib/cn";
 import { TOOL_RAIL_WIDTH } from "./KerminalShell.static";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import type { AppSettings } from "../features/settings/settingsModel";
+import type { ToolRailPanelPlacement } from "../features/tool-panel/toolRailModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import type { TerminalProfile } from "../lib/profileApi";
 import type { UserFacingMessage } from "../lib/userFacingMessage";
@@ -48,6 +49,7 @@ export function ShellResizeSeparator({
   label,
   onKeyDown,
   onPointerDown,
+  orientation = "vertical",
   style,
 }: {
   className: string;
@@ -55,25 +57,33 @@ export function ShellResizeSeparator({
   label: string;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  orientation?: "horizontal" | "vertical";
   style?: CSSProperties;
 }) {
   return (
     <div
       aria-hidden={hidden || undefined}
       aria-label={hidden ? undefined : label}
-      aria-orientation={hidden ? undefined : "vertical"}
+      aria-orientation={hidden ? undefined : orientation}
       className={cn(
-        "group relative flex h-full w-full cursor-col-resize items-center justify-center outline-none transition focus-visible:ring-4 focus-visible:ring-sky-500/20",
+        "group relative flex h-full w-full items-center justify-center outline-none transition focus-visible:ring-4 focus-visible:ring-sky-500/20",
+        orientation === "horizontal" ? "cursor-row-resize" : "cursor-col-resize",
         className,
         hidden && "pointer-events-none opacity-0",
       )}
+      data-orientation={orientation}
       onKeyDown={hidden ? undefined : onKeyDown}
       onPointerDown={hidden ? undefined : onPointerDown}
       role={hidden ? undefined : "separator"}
       style={style}
       tabIndex={hidden ? -1 : 0}
     >
-      <span className="block h-12 w-px rounded-full bg-transparent transition group-hover:bg-sky-400/70 group-focus-visible:bg-sky-400" />
+      <span
+        className={cn(
+          "block rounded-full bg-transparent transition group-hover:bg-sky-400/70 group-focus-visible:bg-sky-400",
+          orientation === "horizontal" ? "h-px w-12" : "h-12 w-px",
+        )}
+      />
     </div>
   );
 }
@@ -117,48 +127,106 @@ export function initialPanelWidth(
   return clampPanelWidth(Math.round(window.innerWidth * viewportRatio), bounds);
 }
 
-export function useViewportWidth() {
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === "undefined" ? 1440 : window.innerWidth,
-  );
+/** 只注册一个窗口监听，同时为横向和底部面板约束提供最新可视尺寸。 */
+export function useViewportSize() {
+  const [viewportSize, setViewportSize] = useState(() => ({
+    height: typeof window === "undefined" ? 900 : window.innerHeight,
+    width: typeof window === "undefined" ? 1440 : window.innerWidth,
+  }));
 
   useEffect(() => {
-    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
-    updateViewportWidth();
-    window.addEventListener("resize", updateViewportWidth);
-    return () => window.removeEventListener("resize", updateViewportWidth);
+    const updateViewportSize = () =>
+      setViewportSize({ height: window.innerHeight, width: window.innerWidth });
+    updateViewportSize();
+    window.addEventListener("resize", updateViewportSize);
+    return () => window.removeEventListener("resize", updateViewportSize);
   }, []);
 
-  return viewportWidth;
+  return viewportSize;
 }
 
+/**
+ * 七列模板把左停靠工具栏放在主机侧栏和终端之间，同时保留右侧 rail；集中生成
+ * 字符串可保证 React 布局和原生指针拖动预览使用完全相同的列语义。
+ */
+export function buildShellGridTemplateColumns({
+  leftPanelWidth,
+  leftToolPanelWidth,
+  rightPanelWidth,
+}: {
+  leftPanelWidth: number;
+  leftToolPanelWidth: number;
+  rightPanelWidth: number;
+}) {
+  return `${leftPanelWidth}px 0px ${leftToolPanelWidth}px 0px minmax(0, 1fr) 0px ${rightPanelWidth}px`;
+}
+
+/** 底部停靠使用独立行；零宽分隔轨仍由扩大的命中区域提供拖动能力。 */
+export function buildShellGridTemplateRows(bottomToolPanelHeight: number) {
+  return `36px minmax(0, 1fr) 0px ${bottomToolPanelHeight}px`;
+}
+
+/**
+ * 解析 Shell 七列四行网格；左、右和底部槽位各自让出真实布局空间，紧凑抽屉与
+ * 自由浮窗只保留 rail，因此不同方向可并开且任一槽位都不会篡改其它槽位尺寸。
+ */
 export function resolveShellLayout({
-  activeToolOpen,
+  openToolPlacements,
+  bottomToolPanelHeight,
   leftPanelCollapsed,
   leftPanelWidth,
+  leftToolPanelWidth,
   toolPanelWidth,
   viewportWidth,
 }: {
-  activeToolOpen: boolean;
+  openToolPlacements: readonly ToolRailPanelPlacement[];
+  bottomToolPanelHeight: number;
   leftPanelCollapsed: boolean;
   leftPanelWidth: number;
+  leftToolPanelWidth: number;
   toolPanelWidth: number;
   viewportWidth: number;
 }) {
   const compactShell = viewportWidth < 900;
   const effectiveLeftPanelCollapsed = leftPanelCollapsed || compactShell;
-  const effectiveRightPanelOpen = activeToolOpen && !compactShell;
+  const effectiveLeftToolPanelOpen =
+    !compactShell && openToolPlacements.includes("left");
+  const effectiveRightPanelOpen =
+    !compactShell && openToolPlacements.includes("attached");
+  const effectiveBottomToolPanelOpen =
+    !compactShell && openToolPlacements.includes("bottom");
+  const effectiveToolPanelOpen =
+    effectiveLeftToolPanelOpen ||
+    effectiveRightPanelOpen ||
+    effectiveBottomToolPanelOpen;
   const leftPanelColumnWidth = effectiveLeftPanelCollapsed ? 0 : leftPanelWidth;
+  const leftToolPanelColumnWidth = effectiveLeftToolPanelOpen
+    ? leftToolPanelWidth
+    : 0;
   const rightPanelColumnWidth = effectiveRightPanelOpen
     ? toolPanelWidth
     : TOOL_RAIL_WIDTH;
+  const bottomToolPanelRowHeight = effectiveBottomToolPanelOpen
+    ? bottomToolPanelHeight
+    : 0;
 
   return {
     compactShell,
     effectiveLeftPanelCollapsed,
+    effectiveLeftToolPanelOpen,
     effectiveRightPanelOpen,
-    gridTemplateColumns: `${leftPanelColumnWidth}px 0px minmax(0, 1fr) 0px ${rightPanelColumnWidth}px`,
+    effectiveBottomToolPanelOpen,
+    effectiveToolPanelOpen,
+    gridTemplateColumns: buildShellGridTemplateColumns({
+      leftPanelWidth: leftPanelColumnWidth,
+      leftToolPanelWidth: leftToolPanelColumnWidth,
+      rightPanelWidth: rightPanelColumnWidth,
+    }),
+    gridTemplateRows: buildShellGridTemplateRows(bottomToolPanelRowHeight),
+    bottomToolPanelRowHeight,
     leftPanelColumnWidth,
+    leftToolPanelColumnWidth,
+    leftWorkspaceInset: leftToolPanelColumnWidth,
     rightPanelColumnWidth,
     rightWorkspaceInset: rightPanelColumnWidth,
   };
@@ -400,10 +468,13 @@ export function htmlLanguage(language: AppSettings["appearance"]["interfaceLangu
   return "zh-CN";
 }
 
+/**
+ * 构造统一的工作台壁纸遮罩。这里刻意只保留一层均匀明暗蒙版，避免径向、
+ * 侧边和地平线渐变叠加后吞掉主体，也让终端与侧栏看到的是同一张连续图片。
+ */
 export function workspaceBackgroundImage(
   enabled: boolean,
   imagePath: string,
-  opacity: number,
   resolvedTheme: "dark" | "light",
 ) {
   const trimmedPath = imagePath.trim();
@@ -411,31 +482,10 @@ export function workspaceBackgroundImage(
     return undefined;
   }
 
-  const imageVisibility = clampUnit(opacity / 100);
-  const hiddenImage = 1 - imageVisibility;
   const overlayRgb = resolvedTheme === "dark" ? "16, 16, 18" : "245, 245, 247";
-  const vignetteCenterOpacity =
-    resolvedTheme === "dark"
-      ? 0.02 + hiddenImage * 0.08
-      : 0.08 + hiddenImage * 0.1;
-  const vignetteEdgeOpacity =
-    resolvedTheme === "dark"
-      ? 0.34 + hiddenImage * 0.22
-      : 0.26 + hiddenImage * 0.2;
-  const sideOpacity =
-    resolvedTheme === "dark"
-      ? 0.2 + hiddenImage * 0.22
-      : 0.18 + hiddenImage * 0.22;
-  const horizonOpacity =
-    resolvedTheme === "dark"
-      ? 0.18 + hiddenImage * 0.14
-      : 0.22 + hiddenImage * 0.16;
   const imageUrl = localPathToCssUrl(trimmedPath);
 
   return [
-    `radial-gradient(ellipse at 50% 45%, rgba(${overlayRgb}, ${cssAlpha(vignetteCenterOpacity)}) 0%, rgba(${overlayRgb}, ${cssAlpha(vignetteCenterOpacity)}) 42%, rgba(${overlayRgb}, ${cssAlpha(vignetteEdgeOpacity)}) 100%)`,
-    `linear-gradient(90deg, rgba(${overlayRgb}, ${cssAlpha(sideOpacity)}) 0%, rgba(${overlayRgb}, 0) 24%, rgba(${overlayRgb}, 0) 76%, rgba(${overlayRgb}, ${cssAlpha(sideOpacity)}) 100%)`,
-    `linear-gradient(180deg, rgba(${overlayRgb}, ${cssAlpha(horizonOpacity)}) 0%, rgba(${overlayRgb}, 0) 30%, rgba(${overlayRgb}, ${cssAlpha(horizonOpacity * 0.72)}) 100%)`,
     `linear-gradient(rgba(${overlayRgb}, var(--app-background-veil-opacity)), rgba(${overlayRgb}, var(--app-background-veil-opacity)))`,
     `url("${imageUrl}")`,
   ].join(", ");
@@ -464,14 +514,6 @@ function localPathToCssUrl(path: string) {
     return `file://${normalized}`.replace(/"/g, "%22");
   }
   return normalized.replace(/"/g, "%22");
-}
-
-function clampUnit(value: number) {
-  return Math.min(Math.max(value, 0), 1);
-}
-
-function cssAlpha(value: number) {
-  return String(Number(clampUnit(value).toFixed(4)));
 }
 
 export function workspaceBackgroundColor(

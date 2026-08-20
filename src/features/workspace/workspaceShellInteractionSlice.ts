@@ -3,7 +3,10 @@
 import type { StateCreator } from "zustand";
 import { isToolId } from "./types";
 import type { WorkspaceShellInteractionSlice } from "./workspaceStoreContract";
-import { setActiveToolForCurrentTabState } from "./workspaceToolPanelState";
+import {
+  setActiveToolForCurrentTabState,
+  setOpenToolsForCurrentTabState,
+} from "./workspaceToolPanelState";
 
 interface WorkspaceShellInteractionStore extends WorkspaceShellInteractionSlice {
   activeTabId: string;
@@ -13,11 +16,18 @@ interface WorkspaceShellInteractionStore extends WorkspaceShellInteractionSlice 
 export const initialWorkspaceShellInteractionState = {
   activeTool: null,
   activeToolByTabId: {},
+  openTools: [],
+  openToolsByTabId: {},
   broadcastDraft: "",
   machineSearch: "",
 } satisfies Pick<
   WorkspaceShellInteractionSlice,
-  "activeTool" | "activeToolByTabId" | "broadcastDraft" | "machineSearch"
+  | "activeTool"
+  | "activeToolByTabId"
+  | "openTools"
+  | "openToolsByTabId"
+  | "broadcastDraft"
+  | "machineSearch"
 >;
 
 /** 创建不参与 session 持久化的工作区 shell 交互 action slice。 */
@@ -37,6 +47,14 @@ export const createWorkspaceShellInteractionSlice: StateCreator<
         ? setActiveToolForCurrentTabState(state, activeTool)
         : {};
     }),
+  setOpenTools: (openTools, activeTool) =>
+    set((state) =>
+      setOpenToolsForCurrentTabState(
+        state,
+        openTools.filter(isToolId),
+        activeTool,
+      ),
+    ),
   setBroadcastDraft: (broadcastDraft) => set({ broadcastDraft }),
   setMachineSearch: (machineSearch) => set({ machineSearch }),
 });

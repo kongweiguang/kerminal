@@ -1,11 +1,14 @@
 // @author kongweiguang
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
 import { resolveThemeMode } from "../features/settings/settingsModel";
+import type {
+  ToolRailPanelPlacement,
+  ToolRailSettings,
+} from "../features/tool-panel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
 import { resolveDesktopPlatform } from "../lib/desktopPlatform";
-// @author kongweiguang
 
 import {
   createRemoteHostGroup,
@@ -17,7 +20,7 @@ import { resolveWindowChromeModel } from "../lib/windowChromeModel";
 import {
   htmlLanguage,
   useSystemThemePreference,
-  useViewportWidth,
+  useViewportSize,
 } from "./KerminalShell.helpers";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
@@ -37,11 +40,14 @@ import {
 import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
 import { useKerminalShellSnippetBridge } from "./useKerminalShellSnippetBridge";
 import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
+import { useKerminalShellToolPanels } from "./useKerminalShellToolPanels";
 import { archiveAgentSessionsForClosedTabs } from "./agentSessionTabCloseCleanup";
 
+/** 主窗口只持有一次全局 rail 编辑状态，让展开态与紧凑态共享同一保存事务。 */
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTool = useWorkspaceStore((state) => state.activeTool);
+  const openTools = useWorkspaceStore((state) => state.openTools);
   const focusedPaneId = useWorkspaceStore((state) => state.focusedPaneId);
   const machineGroups = useWorkspaceStore((state) => state.machineGroups);
   const machineSearch = useWorkspaceStore((state) => state.machineSearch);
@@ -91,7 +97,7 @@ export function KerminalShell() {
   );
   const selectMachine = useWorkspaceStore((state) => state.selectMachine);
   const selectTab = useWorkspaceStore((state) => state.selectTab);
-  const setActiveTool = useWorkspaceStore((state) => state.setActiveTool);
+  const setOpenTools = useWorkspaceStore((state) => state.setOpenTools);
   const setMachineSearch = useWorkspaceStore((state) => state.setMachineSearch);
   const setProfiles = useWorkspaceStore((state) => state.setProfiles);
   const setRemoteHostTree = useWorkspaceStore(
@@ -113,7 +119,9 @@ export function KerminalShell() {
   const activeProfileId = useWorkspaceStore((state) => state.activeProfileId);
   const settings = useWorkspaceStore((state) => state.settings);
   const setSettings = useWorkspaceStore((state) => state.setSettings);
-  const viewportWidth = useViewportWidth();
+  const [toolRailCustomizationOpen, setToolRailCustomizationOpen] =
+    useState(false);
+  const viewportSize = useViewportSize();
   const [shellNoticeVisible, setShellNoticeVisible] = useState(false);
   const [machineSidebarView, setMachineSidebarView] =
     useState<MachineSidebarViewMode>("hosts");
@@ -127,6 +135,7 @@ export function KerminalShell() {
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
   const {
     handleSettingsChange,
+    handleConfirmedSettingsChange,
     handleSettingsDialogChange,
     handleSettingsDialogClose,
     openSettingsTool,
@@ -139,8 +148,42 @@ export function KerminalShell() {
     settingsSaveState,
     settingsSaveStateRef,
   } = useKerminalShellSettings({ setSettings });
+  /** 工具栏编辑器是全局偏好入口，状态放在 Shell 以跨桌面/紧凑 rail 保持一致。 */
+  const openToolRailCustomization = useCallback(() => {
+    setToolRailCustomizationOpen(true);
+  }, []);
+  /** 关闭只撤销弹窗状态，不触碰当前 tab 的活动工具或 Agent 绑定。 */
+  const closeToolRailCustomization = useCallback(() => {
+    setToolRailCustomizationOpen(false);
+  }, []);
+  /** 只把 rail patch 合并进最新全局 settings，保存失败时由弹窗保留草稿重试。 */
+  const saveToolRailSettings = useCallback(
+    async (toolRail: ToolRailSettings) => {
+      const latestSettings = useWorkspaceStore.getState().settings;
+      await handleConfirmedSettingsChange({ ...latestSettings, toolRail });
+    },
+    [handleConfirmedSettingsChange],
+  );
   const systemPrefersDark = useSystemThemePreference();
   const resolvedTheme = resolveThemeMode(settings.themeMode, systemPrefersDark);
+  const {
+    closeAllTools,
+    closeTool,
+    openPanels: openToolPanels,
+    openTool,
+    openTools: normalizedOpenTools,
+    toggleTool,
+  } = useKerminalShellToolPanels({
+    activeTool,
+    compactShell: viewportSize.width < 900,
+    openTools,
+    setOpenTools,
+    settings: settings.toolRail,
+  });
+  const openToolPlacements = useMemo(
+    () => Object.keys(openToolPanels) as ToolRailPanelPlacement[],
+    [openToolPanels],
+  );
   const desktopPlatform = resolveDesktopPlatform();
   const windowFrameState = useTauriWindowFrameState();
   const windowChrome = resolveWindowChromeModel({
@@ -159,19 +202,24 @@ export function KerminalShell() {
     beginPanelResize,
     collapsedMachineGroupIds,
     compactShell,
+    effectiveBottomToolPanelOpen,
     effectiveLeftPanelCollapsed,
+    effectiveLeftToolPanelOpen,
     effectiveRightPanelOpen,
     gridTemplateColumns,
+    gridTemplateRows,
     handleCollapsedMachineGroupIdsChange,
     handleWorkspaceShellLayoutRestored,
     leftPanelCollapsed,
+    leftWorkspaceInset,
     resizeWithKeyboard,
     rightWorkspaceInset,
     setLeftPanelCollapsed,
     workspaceShellLayout,
   } = useKerminalShellPanelResize({
-    activeTool,
-    viewportWidth,
+    openToolPlacements,
+    viewportHeight: viewportSize.height,
+    viewportWidth: viewportSize.width,
     workspaceFrameRef,
   });
   const workspaceBackgroundStyle = useKerminalShellBackgroundStyle({
@@ -216,20 +264,21 @@ export function KerminalShell() {
   });
   const { activateTool, openLogsTool } = useKerminalShellCommands({
     activeTabId,
-    activeTool,
     addTerminalTab,
+    closeAllTools,
     closePane,
     closeTerminalTab: requestCloseTab,
     focusPane,
     focusedPaneId,
     keybindings: settings.keybindings,
     openSettingsTool,
+    openTool,
     selectTab,
-    setActiveTool,
     splitFocusedPane,
     terminalTabs,
+    toggleTool,
   });
-  useKerminalShellSnippetBridge({ activateTool, focusPane });
+  useKerminalShellSnippetBridge({ focusPane, openTool });
   const {
     enterHostContainer,
     openContainerDetails,
@@ -245,7 +294,8 @@ export function KerminalShell() {
     openSftpTransferTab,
     openSshCommandTerminal,
     selectMachine,
-    setActiveTool,
+    closeTool,
+    openTool,
     setHostContainersHostId,
     setHostContainersInitialContainerId,
     setMachineSidebarView,
@@ -350,6 +400,7 @@ export function KerminalShell() {
     profileLoadError,
     remoteHostLoadError,
     settingsLoadError,
+    toolPanelDocked: effectiveRightPanelOpen,
     windowChrome,
   });
   const {
@@ -372,8 +423,12 @@ export function KerminalShell() {
   return (
     <KerminalShellLayout
       activeTool={activeTool}
+      activeTools={normalizedOpenTools}
       compactShell={compactShell}
-      contextWorkspaceProps={{ onOpenSettings: openSettingsTool }}
+      contextWorkspaceProps={{
+        onOpenSettings: openSettingsTool,
+        onOpenTool: openTool,
+      }}
       deleteDialogProps={{
         deleteError, deleting: deleteSaving, pendingDelete,
         onConfirm: () => void confirmDelete(),
@@ -386,16 +441,33 @@ export function KerminalShell() {
       }}
       frame={{
         backgroundStyle: workspaceBackgroundStyle, density: settings.interfaceDensity,
-        desktopPlatform, gridTemplateColumns,
+        desktopPlatform, gridTemplateColumns, gridTemplateRows,
         lang: htmlLanguage(settings.appearance.interfaceLanguage),
         language: settings.appearance.interfaceLanguage, resolvedTheme,
         windowFrameState, workspaceFrameRef,
       }}
       leftSeparatorProps={{
-        className: "kerminal-shell-separator col-[2/3] row-[2/3]",
+        className: "kerminal-shell-separator col-[2/3] row-[2/5]",
         hidden: effectiveLeftPanelCollapsed, label: "调整主机侧边栏宽度",
         onKeyDown: (event) => resizeWithKeyboard("left", event),
         onPointerDown: (event) => beginPanelResize("left", event),
+      }}
+      leftToolSeparatorProps={{
+        className: "kerminal-shell-separator relative z-20",
+        hidden: !effectiveLeftToolPanelOpen,
+        label: "调整左侧工具面板宽度",
+        onKeyDown: (event) => resizeWithKeyboard("leftTools", event),
+        onPointerDown: (event) => beginPanelResize("leftTools", event),
+        style: { gridColumn: "4 / 5", gridRow: "2 / 5" },
+      }}
+      bottomSeparatorProps={{
+        className: "kerminal-shell-separator relative z-20",
+        hidden: !effectiveBottomToolPanelOpen,
+        label: "调整底部工具面板高度",
+        onKeyDown: (event) => resizeWithKeyboard("bottomTools", event),
+        onPointerDown: (event) => beginPanelResize("bottomTools", event),
+        orientation: "horizontal",
+        style: { gridColumn: "5 / 6", gridRow: "3 / 4" },
       }}
       machineSidebarProps={effectiveLeftPanelCollapsed ? null : {
         activeView: machineSidebarView, collapsed: false, collapsedGroupIds: collapsedMachineGroupIds,
@@ -435,7 +507,10 @@ export function KerminalShell() {
         onShellNoticeDismiss: () => setShellNoticeVisible(false),
       }}
       onActiveToolChange={activateTool}
-      onCloseToolPanel={() => setActiveTool(null)}
+      onOpenTool={openTool}
+      onOpenToolRailCustomization={openToolRailCustomization}
+      onCloseToolPanel={closeTool}
+      openToolPanels={openToolPanels}
       remoteGroupDialogProps={remoteGroupDialogOpen ? {
         externalConfigConflict: remoteGroupConfigConflict?.message, group: editingRemoteGroup,
         onClose: closeRemoteGroupDialog, onCreateGroup: createRemoteHostGroup,
@@ -454,16 +529,27 @@ export function KerminalShell() {
       } : null}
       rightSeparatorProps={{
         className: "kerminal-shell-separator relative z-20",
-        hidden: !effectiveRightPanelOpen, label: "调整工具面板宽度",
-        onKeyDown: (event) => resizeWithKeyboard("tools", event),
-        onPointerDown: (event) => beginPanelResize("tools", event),
-        style: { gridColumn: "4 / 5", gridRow: "2 / 3" },
+        hidden: !effectiveRightPanelOpen,
+        label: "调整工具面板宽度",
+        onKeyDown: (event) => resizeWithKeyboard("rightTools", event),
+        onPointerDown: (event) => beginPanelResize("rightTools", event),
+        style: {
+          gridColumn: "6 / 7",
+          gridRow: "2 / 5",
+        },
       }}
       settingsDialogProps={settingsDialogOpen ? {
         initialSectionId: settingsInitialSectionId, onClose: handleSettingsDialogClose,
+        onConfirmedSettingsChange: handleConfirmedSettingsChange,
         onSettingsChange: handleSettingsDialogChange, open: settingsDialogOpen,
         saveError: settingsSaveError, saveState: settingsSaveState, settings,
       } : null}
+      toolRailCustomizationProps={{
+        onClose: closeToolRailCustomization,
+        onSave: saveToolRailSettings,
+        open: toolRailCustomizationOpen,
+        settings: settings.toolRail,
+      }}
       shellWindowChromeProps={{
         desktopPlatform, leftPanelCollapsed,
         onLeftPanelCollapsedChange: setLeftPanelCollapsed, resolvedTheme,
@@ -477,6 +563,8 @@ export function KerminalShell() {
         activeTool, defaultRemoteGroupId, defaultRemoteHostId, machineGroups,
         onActiveToolChange: activateTool, onCreateTerminal: addTerminalTab,
         onFocusTab: selectTab, onOpenSettingsSection: openSettingsTool,
+        onOpenToolRailCustomization: openToolRailCustomization,
+        onOpenTool: openTool,
         onOpenSshTerminal: openSshTerminal, onRemoteHostCreated: refreshRemoteHostTree,
         onSettingsChange: handleSettingsChange, onSplitPane: splitFocusedPane,
         resolvedTheme, settings, snippetConfigRevision: configCatalogRevisions.snippets,
@@ -490,13 +578,18 @@ export function KerminalShell() {
         tabCount: pendingDirtyFileTabCount,
       }}
       workspaceTerminalProps={{
+        backgroundImageVisible:
+          settings.appearance.backgroundEnabled &&
+          settings.appearance.backgroundOpacity > 0 &&
+          settings.appearance.backgroundImagePath.trim().length > 0,
+        contentLeftInset: leftWorkspaceInset,
         contentRightInset: rightWorkspaceInset, createdSftpHostTarget,
         desktopNotifications: settings.desktopNotifications,
         interfaceDensity: settings.interfaceDensity, leftTitleBarInset,
         machineGroups, onBroadcastCommand: writeBroadcastCommand,
         onCreateSftpHost: openSftpTransferHostCreateDialog,
         onCloseConfirmedTab: closeConfirmedTab,
-        onOpenAgentTool: () => setActiveTool("agentLauncher"),
+        onOpenAgentTool: () => openTool("agentLauncher"),
         onOpenConnection: () => openConnectionDialog({ mode: "ssh" }),
         onOpenLogs: openLogsTool, reserveRightTitleBarControls,
         resolvedTheme, splitDropIndicator: terminalSplitDropIndicator,

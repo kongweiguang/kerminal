@@ -3,18 +3,7 @@
  */
 
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import {
-  Bot,
-  Cpu,
-  FileText,
-  FolderOpen,
-  History,
-  Network,
-  PanelsTopLeft,
-  ScanSearch,
-} from "lucide-react";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
-import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import {
   defaultTerminalAppearance,
@@ -47,9 +36,11 @@ import {
   useAgentSendRequestSnapshot,
 } from "../agent-workflow/state/index";
 import { resolveToolPanelBinding } from "./toolPanelContextModel";
+import { ToolRail } from "./ToolRail";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
+  activeTools?: readonly ToolId[];
   activeMachine?: Machine;
   activeTab?: TerminalTab;
   defaultRemoteGroupId?: string;
@@ -61,6 +52,7 @@ interface ToolPanelProps {
   workspaceFileDirtyState?: WorkspaceFileDirtyState;
   tools: ToolSummary[];
   settings?: AppSettings;
+  showRail?: boolean;
   snippetConfigRevision?: number;
   sftpRevealRequest?: WorkspaceFileRevealRequest | null;
   resolvedTheme?: ResolvedTheme;
@@ -69,8 +61,10 @@ interface ToolPanelProps {
   workspaceContext?: WorkspaceContextProjection;
   onArtifactActionRequest?: (request: TerminalArtifactActionRequest) => void;
   onActiveToolChange: (toolId: ToolId) => void;
+  onOpenTool?: (toolId: ToolId) => void;
   onCreateTerminal?: (options?: AddTerminalTabOptions) => void;
   onFocusTab?: (tabId: string) => void;
+  onOpenToolRailCustomization?: () => void;
   onClosePane?: (paneId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
@@ -83,17 +77,6 @@ interface ToolPanelProps {
   onSettingsChange?: (settings: AppSettings) => void;
   onSplitPane?: (direction: "horizontal" | "vertical") => void;
 }
-
-const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
-  agentLauncher: Bot,
-  context: ScanSearch,
-  system: Cpu,
-  sftp: FolderOpen,
-  ports: Network,
-  tmux: PanelsTopLeft,
-  snippets: FileText,
-  logs: History,
-};
 
 const SftpToolContent = lazy(async () => ({
   default: (await import("../sftp/tool/view/index")).SftpToolContent,
@@ -125,20 +108,29 @@ const ContextInspectorTerminalArtifacts = lazy(async () => ({
     .ContextInspectorTerminalArtifacts,
 }));
 
+/**
+ * 右栏内容宿主保持完整工具树，rail 的隐藏只改变入口展示，避免隐藏工具时卸载
+ * Agent、SFTP 等带有长生命周期资源的内容组件。左侧与浮窗模式只把 rail 留在
+ * Shell，同一个内容宿主不会因展示位置切换而重建。
+ */
 export function ToolPanel({
   activeTool,
+  activeTools = activeTool ? [activeTool] : [],
   activeMachine,
   activeTab,
   focusedPane,
   selectedMachine,
   onClosePane,
   onActiveToolChange,
+  onOpenTool,
   onArtifactActionRequest,
   onFocusTab,
+  onOpenToolRailCustomization,
   onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
   resolvedTheme = "dark",
   settings,
+  showRail = true,
   snippetConfigRevision,
   sftpRevealRequest,
   terminalPanes,
@@ -192,17 +184,6 @@ export function ToolPanel({
     : spaciousDensity
       ? "scrollbar-none overflow-y-auto p-5"
       : "scrollbar-none overflow-y-auto p-4";
-  const railClassName = compactDensity
-    ? "flex w-11 shrink-0 flex-col items-center gap-1.5 py-2.5"
-    : spaciousDensity
-      ? "flex w-14 shrink-0 flex-col items-center gap-2 py-4"
-      : "flex w-12 shrink-0 flex-col items-center gap-1.5 py-3";
-  const railButtonDensityClassName = compactDensity
-    ? "h-7 w-7 rounded-lg"
-    : spaciousDensity
-      ? "h-9 w-9 rounded-lg"
-      : "h-8 w-8 rounded-lg";
-
   useEffect(() => {
     if (!contentTool) {
       return;
@@ -223,15 +204,18 @@ export function ToolPanel({
       activeTool !== "agentLauncher" &&
       tools.some((tool) => tool.id === "agentLauncher")
     ) {
-      onActiveToolChange("agentLauncher");
+      (onOpenTool ?? onActiveToolChange)("agentLauncher");
     }
-  }, [activeTool, agentSendRequest, onActiveToolChange, tools]);
+  }, [activeTool, agentSendRequest, onActiveToolChange, onOpenTool, tools]);
 
   return (
     <aside
       aria-label="工具面板"
       aria-expanded={drawerOpen}
-      className="kerminal-material-nav flex h-full w-full min-w-0 border-l"
+      className={cn(
+        "kerminal-material-nav flex h-full w-full min-w-0",
+        showRail && "border-l",
+      )}
     >
       <div
         aria-hidden={!drawerOpen}
@@ -408,41 +392,19 @@ export function ToolPanel({
             );
           })}
       </div>
-      <nav
-        aria-label="工具栏"
-        className={cn(
-          railClassName,
-          drawerOpen && "border-l border-[var(--border-subtle)]",
-        )}
-      >
-        {railTools.map((tool) => {
-          const Icon = toolIcons[tool.id];
-          const selected = tool.id === activeTool;
-          if (!Icon) {
-            return null;
-          }
-
-          return (
-            <Button
-              aria-label={`${selected ? "收起" : "打开"} ${tool.title}`}
-              aria-pressed={selected}
-              className={cn(
-                railButtonDensityClassName,
-                tool.id === "logs" && "mt-auto",
-                selected &&
-                  "bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-500/10 dark:text-sky-100",
-              )}
-              key={tool.id}
-              onClick={() => onActiveToolChange(tool.id)}
-              size="icon"
-              title={tool.title}
-              variant="ghost"
-            >
-              <Icon className="h-4 w-4" />
-            </Button>
-          );
-        })}
-      </nav>
+      {showRail ? (
+        <ToolRail
+          activeTool={activeTool}
+          activeTools={activeTools}
+          drawerOpen={drawerOpen}
+          interfaceDensity={interfaceDensity}
+          onActiveToolChange={onActiveToolChange}
+          onOpenToolRailCustomization={onOpenToolRailCustomization}
+          settings={settings?.toolRail}
+          tools={railTools}
+          variant="panel"
+        />
+      ) : null}
     </aside>
   );
 }

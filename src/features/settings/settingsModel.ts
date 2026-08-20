@@ -23,6 +23,14 @@ import {
   TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX,
   TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN,
 } from "./settingsLimits";
+import {
+  normalizeToolRailSettings,
+  type ToolRailSettings,
+} from "../tool-panel";
+import {
+  normalizeTerminalKeywordHighlightSettings,
+  type TerminalKeywordHighlightSettings,
+} from "./terminalKeywordHighlightModel";
 
 export {
   defaultAppSettings,
@@ -53,6 +61,25 @@ export {
   terminalRendererTypeOptions,
   terminalRightClickBehaviorOptions,
 } from "./settingsOptions";
+export {
+  isTerminalKeywordHighlightCustomColorsComplete,
+  isTerminalKeywordHighlightHexColor,
+  normalizeTerminalKeywordHighlightRule,
+  terminalKeywordHighlightColorsForTheme,
+  terminalKeywordHighlightPalette,
+  terminalKeywordHighlightPresetStyles,
+  TERMINAL_KEYWORD_HIGHLIGHT_NOTE_LIMIT,
+  TERMINAL_KEYWORD_HIGHLIGHT_PATTERN_LIMIT,
+  TERMINAL_KEYWORD_HIGHLIGHT_RULE_LIMIT,
+} from "./terminalKeywordHighlightModel";
+export type {
+  TerminalKeywordHighlightColorPair,
+  TerminalKeywordHighlightCustomColors,
+  TerminalKeywordHighlightMatchMode,
+  TerminalKeywordHighlightRule,
+  TerminalKeywordHighlightSettings,
+  TerminalKeywordHighlightStyle,
+} from "./terminalKeywordHighlightModel";
 
 export type ThemeMode = "dark" | "light" | "system";
 
@@ -139,6 +166,7 @@ export interface TerminalAppearance {
   confirmCloseTab: boolean;
   cursorBlink: boolean;
   inlineSuggestion: TerminalInlineSuggestionSettings;
+  keywordHighlights: TerminalKeywordHighlightSettings;
   scrollback: number;
 }
 
@@ -194,8 +222,13 @@ export interface AppSettings {
   terminal: TerminalAppearance;
   keybindings: KeybindingSetting[];
   sftp: SftpPerformanceSettings;
+  toolRail: ToolRailSettings;
 }
 
+/**
+ * 归一化跨版本 settings payload，并把右栏偏好与其他全局设置保持在同一快照中，
+ * 这样旧 settings.toml 缺少 toolRail 时仍能无感升级。
+ */
 export function normalizeAppSettings(
   settings?: Partial<AppSettings>,
 ): AppSettings {
@@ -206,6 +239,7 @@ export function normalizeAppSettings(
   const terminal = settings?.terminal ?? defaultTerminalAppearance;
   const keybindings = normalizeKeybindings(settings?.keybindings);
   const sftp = settings?.sftp ?? defaultSftpPerformanceSettings;
+  const toolRail = normalizeToolRailSettings(settings?.toolRail);
   const sftpGlobalTransfers = clampNumber(
     sftp.globalTransfers,
     SFTP_GLOBAL_TRANSFERS_MIN,
@@ -299,6 +333,7 @@ export function normalizeAppSettings(
         defaultSftpPerformanceSettings.timeoutSeconds,
       ),
     },
+    toolRail,
     terminal: {
       autoReconnect:
         terminal.autoReconnect ?? defaultTerminalAppearance.autoReconnect,
@@ -321,6 +356,9 @@ export function normalizeAppSettings(
       fontWeight: normalizeTerminalFontWeight(terminal.fontWeight),
       inlineSuggestion: normalizeTerminalInlineSuggestion(
         terminal.inlineSuggestion,
+      ),
+      keywordHighlights: normalizeTerminalKeywordHighlightSettings(
+        terminal.keywordHighlights,
       ),
       lightColorScheme: normalizeTerminalColorScheme(
         terminal.lightColorScheme ?? terminal.colorScheme,

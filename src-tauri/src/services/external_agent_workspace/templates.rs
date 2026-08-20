@@ -165,6 +165,33 @@ Minimal example:
 schema_version = 1
 themeMode = "dark"
 interfaceDensity = "compact"
+
+[toolRail]
+order = ["context", "agentLauncher", "sftp", "snippets", "tmux", "ports", "system", "logs"]
+hidden = []
+bottom = ["logs"]
+
+[toolRail.panelPlacements]
+context = "attached"
+agentLauncher = "attached"
+sftp = "attached"
+snippets = "attached"
+tmux = "attached"
+ports = "attached"
+system = "attached"
+logs = "attached"
+
+[terminal.keywordHighlights]
+enabled = true
+
+[[terminal.keywordHighlights.rules]]
+id = "errors"
+enabled = true
+pattern = "error|exception"
+matchMode = "regex"
+caseSensitive = false
+note = "Errors"
+style = "red"
 ```
 
 Known settings groups:
@@ -172,9 +199,12 @@ Known settings groups:
 - `themeMode`: `dark`, `light`, or `system`.
 - `interfaceDensity`: `compact`, `comfortable`, or `spacious`.
 - `[appearance]`: background image path, background opacity, window opacity, interface language.
-- `[terminal]`: font family, font size, line height, scrollback, cursor, color scheme, inline suggestion settings.
+- `[terminal]`: font family, font size, line height, scrollback, cursor, color scheme, inline suggestion settings, and global keyword highlights.
+- `[terminal.keywordHighlights]`: global switch plus up to 64 ordered `rules`; earlier rules win overlaps. Each rule uses a unique `id`, a non-empty `pattern` up to 256 characters, `matchMode = "literal" | "wholeWord" | "regex"`, `caseSensitive`, an optional `note` up to 160 characters, and `style = "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink" | "custom"`. Regex rules reject empty matches, backreferences, lookarounds, and inline flags.
+- `[terminal.keywordHighlights.rules.customColors.light]` and `.dark`: required for `style = "custom"`; each theme must define at least one of `foreground` or `background` as `#RRGGBB`.
 - `[[keybindings]]`: keyboard shortcuts.
 - `[sftp]`: transfer concurrency, timeout, packet size, pipeline depth.
+- `[toolRail]`: right tool rail layout. `order` is the complete tool order, `hidden` removes ordinary entries, and `bottom` assigns arbitrary tools to the bottom-fixed rail section. `[toolRail.panelPlacements]` independently maps each tool id to `"attached"` (a resizable right panel), `"left"` (a resizable panel between the host sidebar and terminal), `"bottom"` (a resizable panel below the terminal workspace), or `"center"` (an initially centered, draggable non-modal workspace window). One tool can remain open in each different placement at the same time; opening another tool in the same placement replaces that placement only. Omitted tools default to `"attached"`. The legacy single `panelPlacement` field is accepted only for migration and is rewritten as the per-tool table, so new edits must not add it. At least one tool remains visible after normalization. Supported ids are `context`, `agentLauncher`, `sftp`, `snippets`, `tmux`, `ports`, `system`, and `logs`.
 
 Do not invent settings fields. If a field is not already present and is not documented here, inspect the current Kerminal settings model or ask the user.
 

@@ -1,8 +1,9 @@
+// @author kongweiguang
+
 import { afterEach, beforeEach, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
 import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
-
 const mocks = vi.hoisted(() => {
   const terminalInstances: MockTerminal[] = [];
   const fitInstances: MockFitAddon[] = [];
@@ -112,10 +113,11 @@ const mocks = vi.hoisted(() => {
     };
     paste = vi.fn();
     refresh = vi.fn();
+    /** 只注册 provider，不在组件测试中伪造 URL 解析。 */
+    registerLinkProvider = vi.fn((_provider: unknown) => ({ dispose: vi.fn() }));
     private nextMarkerId = 1;
     selectAll = vi.fn();
     write = vi.fn((_data: string) => undefined);
-
     constructor(options: Record<string, unknown>) {
       this.options = options;
       const csiHandlers = new Map<

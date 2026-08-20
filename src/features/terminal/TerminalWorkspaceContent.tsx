@@ -76,6 +76,7 @@ interface TerminalPaneMoveDragState {
 
 interface TerminalWorkspaceContentProps {
   activeTab: TerminalTab | undefined;
+  backgroundImageVisible: boolean;
   contentInsetStyle?: CSSProperties;
   focusedPaneId: string;
   machineGroups?: MachineGroup[];
@@ -120,8 +121,13 @@ interface TerminalWorkspaceContentProps {
   workspacePaddingClass: string;
 }
 
+/**
+ * 在稳定 runtime portal 与活动布局 slot 之间编排终端；背景标记必须同时送到
+ * 两条渲染路径，双侧 inset 只移动正文而不缩短顶端导航。
+ */
 export function TerminalWorkspaceContent({
   activeTab,
+  backgroundImageVisible,
   contentInsetStyle,
   focusedPaneId,
   machineGroups,
@@ -420,10 +426,11 @@ export function TerminalWorkspaceContent({
   return (
     <div
       className={cn(
-        "relative min-h-0 flex-1 transition-[margin-right] duration-200 ease-out",
+        "relative min-h-0 flex-1 transition-[margin-left,margin-right] duration-200 ease-out",
         workspacePaddingClass,
       )}
       data-terminal-workspace-content
+      data-terminal-workspace-inset
       ref={workspaceRef}
       style={contentInsetStyle}
     >
@@ -443,6 +450,7 @@ export function TerminalWorkspaceContent({
         return (
           <TerminalRuntimePortal
             active={active}
+            backgroundImageVisible={backgroundImageVisible}
             focused={active && pane.id === focusedPaneId}
             key={pane.id}
             onFocusPane={onFocusPane}
@@ -477,6 +485,7 @@ export function TerminalWorkspaceContent({
             >
               {isTerminalSessionTab(tab) ? (
                 <TerminalPaneLayout
+                  backgroundImageVisible={backgroundImageVisible}
                   focusedPaneId={active ? focusedPaneId : ""}
                   draggingPaneId={
                     paneMoveDrag?.active ? paneMoveDrag.sourcePaneId : undefined
@@ -518,6 +527,7 @@ export function TerminalWorkspaceContent({
         })
       ) : (
         <TerminalEmptyState
+          backgroundImageVisible={backgroundImageVisible}
           onCreateTerminal={onCreateTerminal}
           onOpenAgentTool={onOpenAgentTool}
           onOpenConnection={onOpenConnection}
@@ -529,6 +539,7 @@ export function TerminalWorkspaceContent({
 
 interface TerminalRuntimePortalProps {
   active: boolean;
+  backgroundImageVisible: boolean;
   focused: boolean;
   onFocusPane: (paneId: string) => void;
   onOpenLogs?: () => void;
@@ -559,6 +570,7 @@ interface TerminalRuntimePortalProps {
  */
 function TerminalRuntimePortal({
   active,
+  backgroundImageVisible,
   focused,
   onFocusPane,
   onOpenLogs,
@@ -617,6 +629,7 @@ function TerminalRuntimePortal({
     <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
       <XtermPane
         args={pane.args}
+        backgroundImageVisible={backgroundImageVisible}
         currentCwd={pane.currentCwd}
         cwd={pane.cwd}
         env={pane.env}

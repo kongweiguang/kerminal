@@ -7,9 +7,18 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, AppResult};
 
 mod keybindings;
+mod keyword_highlights;
 mod sftp_performance;
+mod tool_rail;
 
 pub use self::keybindings::default_keybindings;
+pub use self::keyword_highlights::{
+    TerminalKeywordHighlightColorPair, TerminalKeywordHighlightCustomColors,
+    TerminalKeywordHighlightMatchMode, TerminalKeywordHighlightRule,
+    TerminalKeywordHighlightSettings, TerminalKeywordHighlightStyle,
+    MAX_TERMINAL_KEYWORD_HIGHLIGHT_NOTE_CHARS, MAX_TERMINAL_KEYWORD_HIGHLIGHT_PATTERN_CHARS,
+    MAX_TERMINAL_KEYWORD_HIGHLIGHT_RULES,
+};
 pub use self::sftp_performance::{
     SftpPerformanceSettings, DEFAULT_SFTP_GLOBAL_TRANSFERS, DEFAULT_SFTP_HOST_TRANSFERS,
     DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH, DEFAULT_SFTP_TIMEOUT_SECONDS,
@@ -18,6 +27,7 @@ pub use self::sftp_performance::{
     MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
     MIN_SFTP_TIMEOUT_SECONDS,
 };
+pub use self::tool_rail::{ToolRailPanelPlacement, ToolRailSettings, ToolRailToolId};
 
 /// 终端 inline suggestion 诊断保留最小天数。
 pub const MIN_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS: u32 = 1;
@@ -344,6 +354,9 @@ pub struct TerminalAppearance {
     /// 终端 inline suggestion 设置。
     #[serde(default)]
     pub inline_suggestion: TerminalInlineSuggestionSettings,
+    /// 普通终端的全局关键词高亮设置。
+    #[serde(default)]
+    pub keyword_highlights: TerminalKeywordHighlightSettings,
     /// xterm 滚屏缓冲行数。
     pub scrollback: u32,
 }
@@ -370,6 +383,7 @@ impl Default for TerminalAppearance {
             show_tab_numbers: false,
             confirm_close_tab: true,
             inline_suggestion: TerminalInlineSuggestionSettings::default(),
+            keyword_highlights: TerminalKeywordHighlightSettings::default(),
             scrollback: 5000,
         }
     }
@@ -585,6 +599,9 @@ pub struct AppSettings {
     /// 外部跳板机 / 堡垒机 SSH 启动兼容设置。
     #[serde(default)]
     pub external_launch: ExternalLaunchSettings,
+    /// 右侧工具栏顺序与显示设置。
+    #[serde(default)]
+    pub tool_rail: ToolRailSettings,
 }
 
 impl Default for AppSettings {
@@ -598,6 +615,7 @@ impl Default for AppSettings {
             sftp: SftpPerformanceSettings::default(),
             desktop_notifications: DesktopNotificationSettings::default(),
             external_launch: ExternalLaunchSettings::default(),
+            tool_rail: ToolRailSettings::default(),
         }
     }
 }
@@ -668,6 +686,7 @@ impl AppSettings {
         {
             self.terminal.inline_suggestion.remote_probe_enabled = false;
         }
+        self.terminal.keyword_highlights = self.terminal.keyword_highlights.validated()?;
 
         if self.keybindings.is_empty() {
             self.keybindings = default_keybindings();
@@ -675,6 +694,7 @@ impl AppSettings {
         self.sftp = self.sftp.normalized();
         self.desktop_notifications = self.desktop_notifications.normalized();
         self.external_launch = self.external_launch.normalized();
+        self.tool_rail = self.tool_rail.normalized();
 
         Ok(self)
     }

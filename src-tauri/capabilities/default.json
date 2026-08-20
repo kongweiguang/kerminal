@@ -10,7 +10,10 @@
       "identifier": "opener:allow-open-url",
       "allow": [
         {
-          "url": "https://github.com/kongweiguang/kerminal"
+          "url": "http://*"
+        },
+        {
+          "url": "https://*"
         }
       ]
     },

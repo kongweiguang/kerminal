@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModalShell } from "../../../../src/components/ui/modal-shell";
+import { Select } from "../../../../src/components/ui/select";
 
 const windowChromeMocks = vi.hoisted(() => ({
   frameState: "normal" as "fullscreen" | "maximized" | "normal",
@@ -130,6 +131,34 @@ describe("ModalShell", () => {
     );
     expect(source).toHaveFocus();
     source.remove();
+  });
+
+  it("lets an expanded themed select consume Escape before closing the dialog", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <ModalShell onClose={onClose} open title="下拉优先级">
+        <Select
+          aria-label="面板位置"
+          onValueChange={vi.fn()}
+          options={[
+            { label: "贴靠右栏", value: "attached" },
+            { label: "居中浮层", value: "center" },
+          ]}
+          value="attached"
+        />
+      </ModalShell>,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "面板位置" }));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("locks body scrolling until the last nested dialog closes", () => {

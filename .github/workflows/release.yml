@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 修复同一主机打开多个终端标签时，关闭非活动标签会导致活动标签重新连接的问题。
-            - 每个交互式终端使用独立的受管 SSH transport，并在最后一个 channel 关闭后立即回收连接。
-            - 保留命令、SFTP 等后台能力的连接池复用语义，新增同主机兄弟终端隔离与连接释放回归测试。
+            - 工具栏支持按工具自定义左侧、右侧和底部位置，并可在同一 Tab 中同时打开不同方向的工具面板。
+            - 终端新增可配置的关键词高亮与安全 Web 链接识别，规则和主题变更可在现有会话中即时生效。
+            - 优化背景图下的终端透明渲染、面板尺寸恢复与 SFTP 收起后的请求终态提交，保持会话和工作区状态稳定。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

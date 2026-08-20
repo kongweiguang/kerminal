@@ -8,6 +8,7 @@ import {
 import { runTerminalPaneVisibleRecovery } from "../../../../src/features/terminal/terminalPaneVisibleRecovery";
 import { createTerminalShellIntegrationState } from "../../../../src/features/terminal/terminalShellIntegrationModel";
 import { syncTerminalImeAnchor } from "../../../../src/features/terminal/terminalImeAnchor";
+import { createTerminalKeywordHighlightController } from "../../../../src/features/terminal/terminalKeywordHighlightController";
 
 describe("real xterm compatibility", () => {
   afterEach(() => {
@@ -52,6 +53,63 @@ describe("real xterm compatibility", () => {
         harness.terminal.buffer.normal.getLine(0)?.translateToString(true),
       ).toContain("normal buffer");
     } finally {
+      harness.dispose();
+    }
+  });
+
+  it("registers real xterm decorations for keyword highlights", async () => {
+    const harness = await createRealXtermHarness({ allowProposedApi: true });
+    const scheduledFrames = new Map<number, () => void>();
+    let nextFrameId = 1;
+    const controller = createTerminalKeywordHighlightController({
+      resolvedTheme: "dark",
+      scheduler: {
+        cancel(frameId) {
+          scheduledFrames.delete(frameId);
+        },
+        request(callback) {
+          const frameId = nextFrameId;
+          nextFrameId += 1;
+          scheduledFrames.set(frameId, callback);
+          return frameId;
+        },
+      },
+      settings: {
+        enabled: true,
+        rules: [
+          {
+            caseSensitive: false,
+            enabled: true,
+            id: "java",
+            matchMode: "literal",
+            note: "",
+            pattern: "java",
+            style: "pink",
+          },
+        ],
+      },
+      terminal: harness.terminal,
+      visible: true,
+    });
+
+    try {
+      await harness.write("root@host:~# java\r\n");
+      await vi.waitFor(() => {
+        const callbacks = [...scheduledFrames.values()];
+        scheduledFrames.clear();
+        for (const callback of callbacks) {
+          callback();
+        }
+        expect(controller.getSnapshot().suspended).toBe(false);
+      });
+
+      expect(controller.getSnapshot()).toMatchObject({
+        compileErrorCount: 0,
+        decorationCount: 1,
+        suspended: false,
+      });
+    } finally {
+      controller.dispose();
       harness.dispose();
     }
   });
@@ -491,7 +549,12 @@ async function waitForWriterIdle(
   throw new Error("terminal writer did not become idle");
 }
 
+/**
+ * 使用项目锁定的真实 xterm 包而非 mock；proposed API 只由显式测试开启，确保其它
+ * 兼容用例仍覆盖默认安全门禁，关键词装饰用例则验证生产所需能力确实可注册。
+ */
 async function createRealXtermHarness(options?: {
+  allowProposedApi?: boolean;
   rows?: number;
   scrollback?: number;
   theme?: { background: string; foreground: string };
@@ -502,6 +565,7 @@ async function createRealXtermHarness(options?: {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const terminal = new XtermTerminal({
+    ...(options?.allowProposedApi ? { allowProposedApi: true } : {}),
     cols: 80,
     rows: options?.rows ?? 24,
     scrollback: options?.scrollback ?? 1000,

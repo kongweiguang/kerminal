@@ -240,9 +240,11 @@ describe("workspaceSession", () => {
       focusedPaneId: "",
       selectedMachineId: "",
       shellLayout: {
+        bottomToolPanelHeight: 120,
         collapsedMachineGroupIds: ["group-b", "", "group-a", "group-b"],
         leftPanelCollapsed: true,
         leftPanelWidth: 999,
+        leftToolPanelWidth: 999,
         toolPanelWidth: 120,
       },
       terminalPanes: [],
@@ -250,9 +252,11 @@ describe("workspaceSession", () => {
     });
 
     expect(session.shellLayout).toEqual({
+      bottomToolPanelHeight: 180,
       collapsedMachineGroupIds: ["group-a", "group-b"],
       leftPanelCollapsed: true,
       leftPanelWidth: 520,
+      leftToolPanelWidth: 620,
       toolPanelWidth: 300,
     });
   });

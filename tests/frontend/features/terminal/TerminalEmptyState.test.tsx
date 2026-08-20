@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TerminalEmptyState } from "../../../../src/features/terminal/TerminalEmptyState";
@@ -36,5 +40,16 @@ describe("TerminalEmptyState", () => {
     expect(onCreateTerminal).not.toHaveBeenCalled();
     expect(onOpenConnection).not.toHaveBeenCalled();
     expect(onOpenAgentTool).not.toHaveBeenCalled();
+  });
+
+  it("uses the terminal glass surface when a shell background is visible", () => {
+    const { container } = render(<TerminalEmptyState backgroundImageVisible />);
+
+    expect(container.firstElementChild).toHaveClass(
+      "kerminal-terminal-surface",
+    );
+    expect(container.firstElementChild).not.toHaveClass(
+      "kerminal-solid-surface",
+    );
   });
 });

@@ -1,5 +1,5 @@
 // @author kongweiguang
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
@@ -11,8 +11,6 @@ import {
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import { terminalFontWeightValue } from "../settings/contracts/index";
-import { xtermThemeFor } from "../settings/contracts/index";
 import type { TerminalCommandBlockAction } from "./TerminalCommandBlockRail";
 import {
   splitDirectionForMenuAction,
@@ -43,7 +41,6 @@ import {
   resolveTerminalContentBottomLine,
   resolveTerminalPromptLine,
   resolveTerminalRowHeight,
-  stableJsonDependencyKey,
   type ConnectionState,
   type TerminalGhostSuggestion,
 } from "./XtermPane.helpers";
@@ -63,6 +60,12 @@ import { resolveSafeTerminalRendererType } from "./terminalRendererPlatform";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
+import {
+  useTerminalKeywordHighlightHotUpdate,
+  useTerminalWebLinkDecorationHotUpdate,
+  useXtermPaneAppearanceRuntime,
+  useXtermPaneTerminalOptionsHotUpdate,
+} from "./useXtermPaneAppearanceRuntime";
 import { useXtermPaneSearch } from "./XtermPane.search";
 import { requestAgentSend } from "../agent-workflow/state/index";
 import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
@@ -74,8 +77,13 @@ import type { XtermPaneProps } from "./XtermPane.types";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
 const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
+/**
+ * 管理单个 xterm 会话及其渲染生命周期；背景图仅改变 canvas 底色透明度，
+ * 不能重建 PTY 或终端实例，否则切换外观会丢失正在运行的会话。
+ */
 export function XtermPane({
   args,
+  backgroundImageVisible = false,
   currentCwd,
   cwd,
   enableAgentSendActions = true,
@@ -161,6 +169,7 @@ export function XtermPane({
     terminalRuntimeLifecycleControllerRef.current.decisionRef;
   const [commandBlockNotice, setCommandBlockNotice] =
     useTransientTerminalNotice();
+  const [terminalNotice, setTerminalNotice] = useTransientTerminalNotice();
   const [commandBlockViews, setCommandBlockViews] = useState<
     TerminalCommandBlockView[]
   >([]);
@@ -195,36 +204,25 @@ export function XtermPane({
     readPaneActivity,
     () => EMPTY_TERMINAL_PANE_CHROME_SNAPSHOT,
   );
-  const terminalTheme = useMemo(
-    () =>
-      xtermThemeFor(
-        resolvedTheme,
-        terminalColorSchemeOverride ??
-          (resolvedTheme === "light" ? terminalAppearance.lightColorScheme : terminalAppearance.darkColorScheme),
-      ),
-    [
-      resolvedTheme,
-      terminalColorSchemeOverride,
-      terminalAppearance.darkColorScheme,
-      terminalAppearance.lightColorScheme,
-    ],
-  );
-  const terminalThemeRef = useRef(terminalTheme);
-  const terminalFontWeight = useMemo(
-    () => terminalFontWeightValue(terminalAppearance.fontWeight),
-    [terminalAppearance.fontWeight],
-  );
-  const argsDependencyKey = useMemo(
-    () => stableJsonDependencyKey(args),
-    [args],
-  );
-  const envDependencyKey = useMemo(() => stableJsonDependencyKey(env), [env]);
-  const targetDependencyKey = useMemo(
-    () => stableJsonDependencyKey(target),
-    [target],
-  );
-  const runtimeInstallParamsRef = useRef({ args, env, target, terminalAppearance, terminalFontWeight, terminalTheme });
-  runtimeInstallParamsRef.current = { args, env, target, terminalAppearance, terminalFontWeight, terminalTheme };
+  const {
+    argsDependencyKey,
+    envDependencyKey,
+    runtimeInstallParamsRef,
+    targetDependencyKey,
+    terminalFontWeight,
+    terminalKeywordHighlightControllerRef,
+    terminalTheme,
+    terminalThemeRef,
+    terminalWebLinkDecorationControllerRef,
+  } = useXtermPaneAppearanceRuntime({
+    args,
+    backgroundImageVisible,
+    env,
+    resolvedTheme,
+    target,
+    terminalAppearance,
+    terminalColorSchemeOverride,
+  });
   const syncCommandBlockViews = useCallback(() => {
     if (!shellAssistEnabled) {
       setCommandBlockViews((current) => (current.length === 0 ? current : []));
@@ -380,6 +378,7 @@ export function XtermPane({
         profileId,
         promptLineRef,
         reconnectSessionRef,
+        resolvedTheme: runtimeInstallParamsRef.current.resolvedTheme,
         remoteCommand,
         remoteHostId,
         searchAddonRef,
@@ -393,6 +392,7 @@ export function XtermPane({
         setLogNotice,
         setLogState,
         setSearchResults,
+        setTerminalNotice,
         shellIntegrationCommandBlockProtocolRef,
         shell,
         startupMessage,
@@ -404,11 +404,13 @@ export function XtermPane({
         terminalAppearanceRef,
         terminalFontWeight: runtimeInstallParamsRef.current.terminalFontWeight,
         terminalRef,
+        terminalKeywordHighlightControllerRef,
         terminalRendererControllerRef,
         terminalRuntimeLifecycleControllerRef,
         terminalRuntimeLifecycleRef,
         terminalSurfaceCoordinatorRef,
         terminalTheme: runtimeInstallParamsRef.current.terminalTheme,
+        terminalWebLinkDecorationControllerRef,
         transientStartupMessage,
         visibleRef,
       }),
@@ -421,16 +423,20 @@ export function XtermPane({
       profileId,
       remoteCommand,
       remoteHostId,
+      runtimeInstallParamsRef,
       shell,
       shellAssistEnabled,
       setCommandBlockNotice,
       setInlineTuiActive,
       setSearchResults,
       setSuggestionMenu,
+      setTerminalNotice,
       startupMessage,
       suggestionMenuIntentRef,
       syncCommandBlockViews,
       targetDependencyKey,
+      terminalKeywordHighlightControllerRef,
+      terminalWebLinkDecorationControllerRef,
       terminalRuntimeLifecycleRef,
       transientStartupMessage,
     ],
@@ -474,48 +480,26 @@ export function XtermPane({
     }
   }, [focusRequestToken]);
 
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      return;
-    }
-
-    const previousAppearance = terminalAppearanceRef.current;
-    const previousTerminalTheme = terminalThemeRef.current;
-    terminalAppearanceRef.current = terminalAppearance;
-    terminalThemeRef.current = terminalTheme;
-    terminal.options.cursorBlink = terminalAppearance.cursorBlink;
-    terminal.options.cursorStyle = terminalAppearance.cursorStyle;
-    terminal.options.fontFamily = terminalAppearance.fontFamily;
-    terminal.options.fontSize = terminalAppearance.fontSize;
-    terminal.options.fontWeight = terminalFontWeight;
-    terminal.options.fontWeightBold = 700;
-    terminal.options.lineHeight = terminalAppearance.lineHeight;
-    terminal.options.macOptionIsMeta = terminalAppearance.macOptionIsMeta;
-    terminal.options.scrollback = terminalAppearance.scrollback;
-    terminal.options.theme = terminalTheme;
-    terminalRuntimeLifecycleControllerRef.current?.markRendererType(
-      effectiveRendererType,
-    );
-    terminalRendererRegistry.updateMode(effectiveRendererType);
-    (terminal.options as { modifyOtherKeys?: number }).modifyOtherKeys =
-      inputCompatibilityMode === "agentTui" ? 2 : 0;
-    if (containerRef.current) {
-      containerRef.current.style.fontFamily = terminalAppearance.fontFamily;
-    }
-    if (
-      previousAppearance !== terminalAppearance ||
-      previousTerminalTheme !== terminalTheme
-    ) {
-      terminalSurfaceCoordinatorRef.current?.(true);
-    }
-  }, [
-    inputCompatibilityMode,
+  useXtermPaneTerminalOptionsHotUpdate({
+    containerRef,
     effectiveRendererType,
+    inputCompatibilityMode,
     terminalAppearance,
+    terminalAppearanceRef,
     terminalFontWeight,
+    terminalRef,
+    terminalRuntimeLifecycleControllerRef,
+    terminalSurfaceCoordinatorRef,
     terminalTheme,
-  ]);
+    terminalThemeRef,
+  });
+  useTerminalKeywordHighlightHotUpdate(terminalKeywordHighlightControllerRef, resolvedTheme, terminalAppearance, visible);
+  useTerminalWebLinkDecorationHotUpdate(
+    terminalWebLinkDecorationControllerRef,
+    resolvedTheme,
+    terminalTheme,
+    visible,
+  );
 
   useEffect(() => {
     if (!contextMenu) {
@@ -770,6 +754,7 @@ export function XtermPane({
   return (
     <XtermPaneView
       activityRuntimeRef={activityRuntimeRef}
+      backgroundImageVisible={backgroundImageVisible}
       agentSendActionsEnabled={enableAgentSendActions}
       canSplit={Boolean(onSplitPane)}
       commandBlockNotice={commandBlockNotice}
@@ -791,6 +776,7 @@ export function XtermPane({
       shellAssistEnabled={shellAssistEnabled && !inlineTuiActive}
       suggestionOverlay={suggestionMenuRuntime.overlay}
       terminalAppearance={terminalAppearance}
+      terminalNotice={terminalNotice}
       terminalRef={terminalRef}
       title={title}
     />

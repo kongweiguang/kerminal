@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { cn } from "../../lib/cn";
@@ -6,6 +8,7 @@ import {
   normalizeAppSettings,
   type KeybindingPlatform,
   type ResolvedTheme,
+  type TerminalKeywordHighlightSettings,
   type ThemeMode,
 } from "./settingsModel";
 import { createSettingsDraftController } from "./settingsDraftController";
@@ -16,6 +19,7 @@ import { CommandSuggestionSettingsSection } from "./settings-tool-content/comman
 import { DesktopSettingsSection } from "./settings-tool-content/desktop-section";
 import { ExternalLaunchSettingsSection } from "./settings-tool-content/external-launch-section";
 import { KeybindingsSettingsSection } from "./settings-tool-content/keybindings-section";
+import { KeywordHighlightsSettingsSection } from "./settings-tool-content/keyword-highlights-section";
 import { McpSkillsSettingsSection } from "./settings-tool-content/mcp-section";
 import {
   settingsSearchEntries,
@@ -42,6 +46,7 @@ const defaultVisibleSettingsSectionId =
 export function SettingsToolContent({
   externalChangeNotice,
   initialSectionId,
+  onConfirmedSettingsChange,
   onSettingsChange,
   resolvedTheme,
   saveError,
@@ -132,6 +137,25 @@ export function SettingsToolContent({
         backgroundImagePath,
       });
     });
+  };
+
+  /**
+   * 规则表单使用确认式保存：真实应用等待 TOML 成功后才返回终端设置；测试或旧调用
+   * 方未提供该入口时退化为现有同步更新行为，保持 SettingsToolContent 的兼容性。
+   */
+  const saveKeywordHighlights = async (
+    keywordHighlights: TerminalKeywordHighlightSettings,
+  ): Promise<TerminalKeywordHighlightSettings> => {
+    const nextSettings = normalizeAppSettings({
+      ...normalizedSettings,
+      terminal: { ...normalizedSettings.terminal, keywordHighlights },
+    });
+    if (!onConfirmedSettingsChange) {
+      onSettingsChange(nextSettings);
+      return nextSettings.terminal.keywordHighlights;
+    }
+    const storedSettings = await onConfirmedSettingsChange(nextSettings);
+    return normalizeAppSettings(storedSettings).terminal.keywordHighlights;
   };
 
   const navigateToSearchResult = (result: SettingsSearchEntry) => {
@@ -269,6 +293,17 @@ export function SettingsToolContent({
             }
             resolvedTheme={previewResolvedTheme}
             updateTerminal={updateTerminal}
+          />
+        ) : null}
+
+        {activeSectionId === "settings-keyword-highlights" ? (
+          <KeywordHighlightsSettingsSection
+            onChange={(keywordHighlights) =>
+              updateTerminal({ keywordHighlights })
+            }
+            onSave={saveKeywordHighlights}
+            resolvedTheme={previewResolvedTheme}
+            terminal={normalizedSettings.terminal}
           />
         ) : null}
 

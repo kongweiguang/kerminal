@@ -41,6 +41,8 @@ export function restoreWorkspaceSessionState(
     activeTabId: session.activeTabId,
     activeTool: null,
     activeToolByTabId: {},
+    openTools: [],
+    openToolsByTabId: {},
     focusedPaneId: session.focusedPaneId,
     machineGroups,
     removedSidebarMachineIds,

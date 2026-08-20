@@ -547,8 +547,10 @@ function KerminalShellContextWorkspace(
 /** 从现有 Workspace Store 读取真实状态，并把 Shell 特有的设置入口注入 overlay。 */
 export function KerminalShellContextWorkspaceStoreBridge({
   onOpenSettings,
+  onOpenTool,
 }: {
   readonly onOpenSettings: () => void;
+  readonly onOpenTool: (toolId: ToolId) => void;
 }) {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const focusedPaneId = useWorkspaceStore((state) => state.focusedPaneId);
@@ -560,7 +562,6 @@ export function KerminalShellContextWorkspaceStoreBridge({
   const selectedMachineId = useWorkspaceStore(
     (state) => state.selectedMachineId,
   );
-  const setActiveTool = useWorkspaceStore((state) => state.setActiveTool);
   const splitFocusedPane = useWorkspaceStore((state) => state.splitFocusedPane);
   const terminalPanes = useWorkspaceStore((state) => state.terminalPanes);
   const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
@@ -573,7 +574,7 @@ export function KerminalShellContextWorkspaceStoreBridge({
       machineGroups={machineGroups}
       onFocusPane={focusPane}
       onOpenSettings={onOpenSettings}
-      onOpenTool={setActiveTool}
+      onOpenTool={onOpenTool}
       onSelectMachine={selectMachine}
       onSelectTab={selectTab}
       onSplitPane={splitFocusedPane}

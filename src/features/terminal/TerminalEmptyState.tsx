@@ -1,14 +1,28 @@
+// @author kongweiguang
+
 import kerminalLogoUrl from "../../assets/kerminal-logo.svg";
+import { cn } from "../../lib/cn";
 
 export interface TerminalEmptyStateProps {
+  backgroundImageVisible?: boolean;
   onCreateTerminal?: () => void;
   onOpenAgentTool?: () => void;
   onOpenConnection?: () => void;
 }
 
-export function TerminalEmptyState(_props: TerminalEmptyStateProps) {
+/** 空工作区沿用终端玻璃表面，避免启用背景时中央仍被整块实色占满。 */
+export function TerminalEmptyState({
+  backgroundImageVisible = false,
+}: TerminalEmptyStateProps) {
   return (
-    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-[var(--radius-card)] border p-6 text-zinc-700 dark:text-zinc-200">
+    <div
+      className={cn(
+        "flex h-full items-center justify-center rounded-[var(--radius-card)] border p-6 text-zinc-700 dark:text-zinc-200",
+        backgroundImageVisible
+          ? "kerminal-terminal-surface"
+          : "kerminal-solid-surface",
+      )}
+    >
       <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
           <img

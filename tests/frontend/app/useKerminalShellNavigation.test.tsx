@@ -34,13 +34,13 @@ describe("useKerminalShellNavigation", () => {
 
     act(() => result.current.openSftpForMachine("host-1"));
     expect(options.selectMachine).toHaveBeenCalledWith("host-1");
-    expect(options.setActiveTool).toHaveBeenCalledWith("sftp");
+    expect(options.openTool).toHaveBeenCalledWith("sftp");
 
     act(() => result.current.openSftpTransferWorkbench("host-2"));
     expect(options.openSftpTransferTab).toHaveBeenCalledWith({
       rightHostId: "host-2",
     });
-    expect(options.setActiveTool).toHaveBeenLastCalledWith(null);
+    expect(options.closeTool).toHaveBeenLastCalledWith("sftp");
   });
 
   it("routes a pinned container to its owning host and container detail", () => {
@@ -55,7 +55,7 @@ describe("useKerminalShellNavigation", () => {
       apiContainer.id,
     );
     expect(options.setMachineSidebarView).toHaveBeenCalledWith("containers");
-    expect(options.setActiveTool).toHaveBeenCalledWith(null);
+    expect(options.closeTool).toHaveBeenCalledWith("containers");
   });
 
   it("ignores a machine that is not a complete container binding", () => {
@@ -69,7 +69,7 @@ describe("useKerminalShellNavigation", () => {
   });
 
   it("opens container logs through the host command terminal and clears sidebar state", () => {
-    const options = createOptions();
+    const options = createOptions({ activeTool: "logs" });
     const { result } = renderHook(() => useKerminalShellNavigation(options));
 
     act(() =>
@@ -84,23 +84,23 @@ describe("useKerminalShellNavigation", () => {
       remoteCommand: "podman logs -f --tail 200 'container with space'",
       title: `${apiContainer.name} logs`,
     });
-    expect(options.setActiveTool).toHaveBeenCalledWith(null);
+    expect(options.closeTool).toHaveBeenCalledWith("logs");
     expect(options.setHostContainersHostId).toHaveBeenCalledWith(null);
     expect(options.setHostContainersInitialContainerId).toHaveBeenCalledWith(undefined);
   });
 
   it("switches to a container tab before collapsing that new tab's right panel", () => {
-    const options = createOptions();
+    const options = createOptions({ activeTool: "system" });
     const { result } = renderHook(() => useKerminalShellNavigation(options));
 
     act(() => result.current.enterHostContainer(apiContainer));
 
     expect(options.openDockerContainerTerminal).toHaveBeenCalledWith(apiContainer);
-    expect(options.setActiveTool).toHaveBeenCalledWith(null);
+    expect(options.closeTool).toHaveBeenCalledWith("system");
     expect(
       vi.mocked(options.openDockerContainerTerminal).mock.invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(options.setActiveTool).mock.invocationCallOrder[0],
+      vi.mocked(options.closeTool).mock.invocationCallOrder[0],
     );
   });
 });
@@ -113,7 +113,8 @@ function createOptions(overrides: Record<string, unknown> = {}) {
     openSftpTransferTab: vi.fn(),
     openSshCommandTerminal: vi.fn(),
     selectMachine: vi.fn(),
-    setActiveTool: vi.fn(),
+    closeTool: vi.fn(),
+    openTool: vi.fn(),
     setHostContainersHostId: vi.fn(),
     setHostContainersInitialContainerId: vi.fn(),
     setMachineSidebarView: vi.fn(),

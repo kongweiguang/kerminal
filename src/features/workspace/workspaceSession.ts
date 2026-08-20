@@ -49,12 +49,18 @@ export interface WorkspaceSessionSnapshot {
 }
 
 export interface WorkspaceShellLayout {
+  bottomToolPanelHeight?: number;
   collapsedMachineGroupIds?: string[];
   leftPanelCollapsed?: boolean;
   leftPanelWidth?: number;
+  leftToolPanelWidth?: number;
   toolPanelWidth?: number;
 }
 
+/**
+ * 将外部 session 收敛为可恢复快照；Shell 尺寸与终端资源共享同一容错边界，
+ * 单个非法尺寸只被丢弃或夹紧，不能阻断用户其余会话恢复。
+ */
 export function normalizeWorkspaceSessionSnapshot(
   value: unknown,
 ): WorkspaceSessionSnapshot {
@@ -164,6 +170,7 @@ export function decodeWorkspaceSessionSnapshot(
   return normalized;
 }
 
+/** Shell 布局只接受有限尺寸，避免手改文件后把终端压缩成不可操作区域。 */
 function normalizeWorkspaceShellLayout(
   value: unknown,
 ): WorkspaceShellLayout | undefined {
@@ -181,21 +188,42 @@ function normalizeWorkspaceShellLayout(
     ...(typeof value.leftPanelCollapsed === "boolean"
       ? { leftPanelCollapsed: value.leftPanelCollapsed }
       : {}),
-    ...normalizePanelWidthProperty(value.leftPanelWidth, "leftPanelWidth", {
+    ...normalizeShellLayoutSizeProperty(value.leftPanelWidth, "leftPanelWidth", {
       max: 520,
       min: 220,
     }),
-    ...normalizePanelWidthProperty(value.toolPanelWidth, "toolPanelWidth", {
+    ...normalizeShellLayoutSizeProperty(value.toolPanelWidth, "toolPanelWidth", {
       max: 620,
       min: 300,
     }),
+    ...normalizeShellLayoutSizeProperty(
+      value.leftToolPanelWidth,
+      "leftToolPanelWidth",
+      {
+        max: 620,
+        min: 300,
+      },
+    ),
+    ...normalizeShellLayoutSizeProperty(
+      value.bottomToolPanelHeight,
+      "bottomToolPanelHeight",
+      {
+        max: 720,
+        min: 180,
+      },
+    ),
   };
 
   return Object.keys(shellLayout).length > 0 ? shellLayout : undefined;
 }
 
-function normalizePanelWidthProperty<
-  Key extends "leftPanelWidth" | "toolPanelWidth",
+/** 同一数值归一器处理宽度和高度，并保留字段级上下限的类型约束。 */
+function normalizeShellLayoutSizeProperty<
+  Key extends
+    | "bottomToolPanelHeight"
+    | "leftPanelWidth"
+    | "leftToolPanelWidth"
+    | "toolPanelWidth",
 >(
   value: unknown,
   key: Key,
@@ -205,8 +233,8 @@ function normalizePanelWidthProperty<
     return {};
   }
 
-  const width = Math.min(Math.max(Math.round(value), bounds.min), bounds.max);
-  return { [key]: width } as Pick<WorkspaceShellLayout, Key>;
+  const size = Math.min(Math.max(Math.round(value), bounds.min), bounds.max);
+  return { [key]: size } as Pick<WorkspaceShellLayout, Key>;
 }
 
 export function maxGeneratedTerminalCounters(session: WorkspaceSessionSnapshot) {

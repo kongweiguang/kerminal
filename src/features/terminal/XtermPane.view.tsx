@@ -29,6 +29,7 @@ export interface XtermPaneContextMenuState {
 interface XtermPaneViewProps {
   activityRuntimeRef: RefObject<XtermPaneActivityRuntime | null>;
   agentSendActionsEnabled: boolean;
+  backgroundImageVisible: boolean;
   commandBlockNotice: string | null;
   commandBlockViews: TerminalCommandBlockView[];
   connectionState: ConnectionState;
@@ -48,17 +49,20 @@ interface XtermPaneViewProps {
   shellAssistEnabled: boolean;
   suggestionOverlay: ReactNode;
   terminalAppearance: TerminalAppearance;
+  terminalNotice: string | null;
   terminalRef: RefObject<XtermTerminal | null>;
   title: string;
   canSplit: boolean;
 }
 
 /**
- * 终端窗格的纯渲染组合层；所有终端资源和动作仍由 XtermPane 控制。
+ * 组合稳定的 xterm host 与可选叠层；反馈只改变 chrome，不替换 terminal DOM，
+ * 避免链接、选择区和 PTY 会话在提示出现时被重建。
  */
 export function XtermPaneView({
   activityRuntimeRef,
   agentSendActionsEnabled,
+  backgroundImageVisible,
   canSplit,
   commandBlockNotice,
   commandBlockViews,
@@ -79,6 +83,7 @@ export function XtermPaneView({
   shellAssistEnabled,
   suggestionOverlay,
   terminalAppearance,
+  terminalNotice,
   terminalRef,
   title,
 }: XtermPaneViewProps) {
@@ -86,7 +91,15 @@ export function XtermPaneView({
     shellAssistEnabled && terminalAppearance.showCommandBlockRail;
 
   return (
-    <div className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]" onContextMenu={onContextMenu}>
+    <div
+      className={
+        backgroundImageVisible
+          ? "kerminal-xterm-wallpaper relative min-h-0 flex-1 overflow-hidden bg-transparent"
+          : "relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]"
+      }
+      data-background-image-visible={backgroundImageVisible || undefined}
+      onContextMenu={onContextMenu}
+    >
       {showCommandBlockRail ? (
         <TerminalCommandBlockRail
           blocks={commandBlockViews}
@@ -133,6 +146,7 @@ export function XtermPaneView({
         logNotice={logNotice}
         logPath={logPath}
         shellAssistEnabled={shellAssistEnabled}
+        terminalNotice={terminalNotice}
       />
       {search.open ? (
         <TerminalSearchPanel

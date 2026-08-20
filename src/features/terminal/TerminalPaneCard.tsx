@@ -25,6 +25,7 @@ import type { TerminalRuntimeSlotChangeHandler } from "./terminalRuntimeSlots";
 import type { ConnectionState } from "./XtermPane.helpers";
 
 interface TerminalPaneCardProps {
+  backgroundImageVisible?: boolean;
   dragging?: boolean;
   focused: boolean;
   machineGroups?: MachineGroup[];
@@ -55,7 +56,9 @@ interface TerminalPaneCardProps {
   resolvePaneOutputHistory?: (paneId: string) => string | undefined;
 }
 
+/** 渲染终端卡片外壳，并把 Shell 背景策略交给实际 xterm runtime。 */
 export function TerminalPaneCard({
+  backgroundImageVisible = false,
   dragging = false,
   focused,
   machineGroups = [],
@@ -218,6 +221,7 @@ export function TerminalPaneCard({
       ) : model.renderKind === "runtime" ? (
         <XtermPane
           args={pane.args}
+          backgroundImageVisible={backgroundImageVisible}
           currentCwd={pane.currentCwd}
           cwd={pane.cwd}
           env={pane.env}

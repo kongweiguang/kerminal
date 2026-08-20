@@ -90,7 +90,9 @@ export interface BroadcastCommandResult {
 
 interface TerminalWorkspaceProps {
   activeTabId: string;
+  backgroundImageVisible?: boolean;
   broadcastDraft: string;
+  contentLeftInset?: number;
   contentRightInset?: number;
   focusedPaneId: string;
   interfaceDensity?: InterfaceDensity;
@@ -150,9 +152,15 @@ interface TerminalWorkspaceProps {
   workspaceFileDirtyState?: WorkspaceFileDirtyState;
 }
 
+/**
+ * 组合标签、广播栏和活动终端内容；左右 inset 只施加到标签栏下方，既让导航横跨
+ * 停靠面板上方，也避免面板覆盖实际终端与广播交互区。
+ */
 export function TerminalWorkspace({
   activeTabId,
+  backgroundImageVisible = false,
   broadcastDraft,
+  contentLeftInset = 0,
   contentRightInset = 0,
   focusedPaneId,
   interfaceDensity = "comfortable",
@@ -304,8 +312,11 @@ export function TerminalWorkspace({
       : "p-2";
   const terminalInset = compactDensity ? 6 : spaciousDensity ? 12 : 8;
   const contentInsetStyle =
-    contentRightInset > 0
-      ? ({ marginRight: contentRightInset } satisfies CSSProperties)
+    contentLeftInset > 0 || contentRightInset > 0
+      ? ({
+          marginLeft: contentLeftInset,
+          marginRight: contentRightInset,
+        } satisfies CSSProperties)
       : undefined;
   const tabBarStyle =
     leftTitleBarInset > 0
@@ -710,6 +721,7 @@ export function TerminalWorkspace({
 
       <TerminalWorkspaceContent
         activeTab={activeTab}
+        backgroundImageVisible={backgroundImageVisible}
         contentInsetStyle={contentInsetStyle}
         focusedPaneId={focusedPaneId}
         machineGroups={machineGroups}

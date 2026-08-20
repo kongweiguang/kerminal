@@ -1,6 +1,9 @@
+// @author kongweiguang
+
 import type { ITheme } from "@xterm/xterm";
 import type { ResolvedTheme, TerminalColorScheme } from "./settingsModel";
 
+/** 返回配色方案的原始不透明主题，供设置预览和普通终端表面复用。 */
 export function xtermThemeFor(
   theme: ResolvedTheme,
   colorScheme: TerminalColorScheme = "kerminal",
@@ -16,6 +19,21 @@ export function xtermThemeFor(
   }
 
   return theme === "light" ? kerminalLightTheme : kerminalDarkTheme;
+}
+
+/**
+ * 背景图启用时只移除 xterm 自身 canvas 的实色底，不改变文字和 ANSI 色；
+ * 可见性仍由终端卡片表面控制，避免把文字也一起做 CSS opacity 淡化。
+ */
+export function xtermThemeForTerminalSurface(
+  theme: ResolvedTheme,
+  colorScheme: TerminalColorScheme,
+  backgroundImageVisible: boolean,
+): ITheme {
+  const terminalTheme = xtermThemeFor(theme, colorScheme);
+  return backgroundImageVisible
+    ? { ...terminalTheme, background: "rgba(0, 0, 0, 0)" }
+    : terminalTheme;
 }
 
 const kerminalLightTheme: ITheme = {

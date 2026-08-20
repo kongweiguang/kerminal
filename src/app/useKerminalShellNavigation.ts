@@ -2,7 +2,7 @@
 
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
-import type { MachineGroup } from "../features/workspace/types";
+import type { MachineGroup, ToolId } from "../features/workspace/types";
 import type { WorkspaceState } from "../features/workspace/workspaceStore";
 import type { DockerContainerSummary } from "../lib/dockerApi";
 import { shellQuote } from "./KerminalShell.contextWorkspaceShellHelpers";
@@ -14,7 +14,8 @@ interface UseKerminalShellNavigationOptions {
   openSftpTransferTab: WorkspaceState["openSftpTransferTab"];
   openSshCommandTerminal: WorkspaceState["openSshCommandTerminal"];
   selectMachine: WorkspaceState["selectMachine"];
-  setActiveTool: WorkspaceState["setActiveTool"];
+  closeTool: (toolId: ToolId) => void;
+  openTool: (toolId: ToolId) => void;
   setHostContainersHostId: Dispatch<SetStateAction<string | null>>;
   setHostContainersInitialContainerId: Dispatch<SetStateAction<string | undefined>>;
   setMachineSidebarView: Dispatch<SetStateAction<MachineSidebarViewMode>>;
@@ -28,7 +29,8 @@ export function useKerminalShellNavigation({
   openSftpTransferTab,
   openSshCommandTerminal,
   selectMachine,
-  setActiveTool,
+  closeTool,
+  openTool,
   setHostContainersHostId,
   setHostContainersInitialContainerId,
   setMachineSidebarView,
@@ -45,17 +47,17 @@ export function useKerminalShellNavigation({
   const openSftpForMachine = useCallback(
     (machineId: string) => {
       selectMachine(machineId);
-      setActiveTool("sftp");
+      openTool("sftp");
     },
-    [selectMachine, setActiveTool],
+    [openTool, selectMachine],
   );
 
   const openSftpTransferWorkbench = useCallback(
     (machineId?: string) => {
       openSftpTransferTab(machineId ? { rightHostId: machineId } : undefined);
-      setActiveTool(null);
+      closeTool("sftp");
     },
-    [openSftpTransferTab, setActiveTool],
+    [closeTool, openSftpTransferTab],
   );
 
   const openHostContainersSidebar = useCallback(
@@ -65,13 +67,13 @@ export function useKerminalShellNavigation({
       setHostContainersInitialContainerId(initialContainerId);
       setMachineSidebarView("containers");
       if (activeTool === "containers") {
-        setActiveTool(null);
+        closeTool("containers");
       }
     },
     [
       activeTool,
       selectMachine,
-      setActiveTool,
+      closeTool,
       setHostContainersHostId,
       setHostContainersInitialContainerId,
       setMachineSidebarView,
@@ -99,9 +101,11 @@ export function useKerminalShellNavigation({
   const enterHostContainer = useCallback(
     (container: DockerContainerSummary) => {
       openDockerContainerTerminal(container);
-      setActiveTool(null);
+      if (activeTool) {
+        closeTool(activeTool);
+      }
     },
-    [openDockerContainerTerminal, setActiveTool],
+    [activeTool, closeTool, openDockerContainerTerminal],
   );
 
   const openHostContainerLogs = useCallback(
@@ -111,13 +115,16 @@ export function useKerminalShellNavigation({
         remoteCommand: `${runtimeBin} logs -f --tail 200 ${shellQuote(container.id)}`,
         title: `${container.name} logs`,
       });
-      setActiveTool(null);
+      if (activeTool) {
+        closeTool(activeTool);
+      }
       setHostContainersHostId(null);
       setHostContainersInitialContainerId(undefined);
     },
     [
       openSshCommandTerminal,
-      setActiveTool,
+      activeTool,
+      closeTool,
       setHostContainersHostId,
       setHostContainersInitialContainerId,
     ],

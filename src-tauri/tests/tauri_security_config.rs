@@ -56,6 +56,7 @@ fn tauri_config_enables_strict_production_csp_and_dev_csp() {
     assert_eq!(security["capabilities"], serde_json::json!(["default"]));
 }
 
+/// 主窗口只获得终端链接需要的 HTTP(S) opener scope，不顺带开放其它 scheme。
 #[test]
 fn default_capability_grants_window_access_native_plugin_and_updater_permissions_to_main_window() {
     let capability = read_json(manifest_dir().join("capabilities/default.json"));
@@ -71,7 +72,10 @@ fn default_capability_grants_window_access_native_plugin_and_updater_permissions
                 "identifier": "opener:allow-open-url",
                 "allow": [
                     {
-                        "url": "https://github.com/kongweiguang/kerminal"
+                        "url": "http://*"
+                    },
+                    {
+                        "url": "https://*"
                     }
                 ]
             },
@@ -97,7 +101,7 @@ fn default_capability_grants_window_access_native_plugin_and_updater_permissions
             assert_eq!(permission_value["identifier"], "opener:allow-open-url");
             assert_eq!(
                 permission_value["allow"],
-                serde_json::json!([{ "url": "https://github.com/kongweiguang/kerminal" }])
+                serde_json::json!([{ "url": "http://*" }, { "url": "https://*" }])
             );
             continue;
         };
@@ -210,8 +214,9 @@ fn configured_bundle_icons_exist() {
     }
 }
 
+/// opener 必须继续由桌面组合根注册，前端依赖也必须存在。
 #[test]
-fn opener_plugin_is_registered_with_limited_github_scope() {
+fn opener_plugin_is_registered_with_http_only_scope() {
     let manifest = manifest_dir();
     let cargo_toml = read_text(manifest.join("Cargo.toml"));
     let lib_rs = read_text(manifest.join("src/lib.rs"));

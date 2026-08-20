@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeToolForTab,
+  setOpenToolsForCurrentTabState,
   setActiveToolForCurrentTabState,
   withClosedToolPanelTab,
   withToolPanelTabTransition,
@@ -97,15 +98,54 @@ describe("workspaceToolPanelState", () => {
       activeToolByTabId: { "tab-b": "agentLauncher" },
     });
   });
+
+  it("preserves an ordered multi-panel set independently for each tab", () => {
+    const tabA = {
+      ...state("tab-a"),
+      ...setOpenToolsForCurrentTabState(
+        state("tab-a"),
+        ["logs", "sftp", "system"],
+        "system",
+      ),
+    };
+    const tabB = withToolPanelTabTransition(tabA, { activeTabId: "tab-b" });
+    const closedSftp = setOpenToolsForCurrentTabState(
+      { ...tabA, ...tabB },
+      ["logs", "system"],
+      "system",
+    );
+
+    expect(tabB.openTools).toEqual(["logs", "sftp", "system"]);
+    expect(closedSftp.openToolsByTabId).toMatchObject({
+      "tab-a": ["logs", "sftp", "system"],
+      "tab-b": ["logs", "system"],
+    });
+    expect(
+      withToolPanelTabTransition(
+        { ...tabA, ...tabB, ...closedSftp },
+        { activeTabId: "tab-a" },
+      ).openTools,
+    ).toEqual(["logs", "sftp", "system"]);
+  });
 });
 
+/** 旧单面板 fixture 同时补出等价打开集合，验证迁移路径与新状态保持一致。 */
 function state(
   activeTabId: string,
   activeToolByTabId: WorkspaceToolPanelState["activeToolByTabId"] = {},
 ): WorkspaceToolPanelState {
+  const openToolsByTabId = Object.fromEntries(
+    Object.entries(activeToolByTabId).map(([tabId, toolId]) => [
+      tabId,
+      toolId ? [toolId] : [],
+    ]),
+  );
+  const activeTool = activeToolForTab(activeToolByTabId, activeTabId);
   return {
     activeTabId,
-    activeTool: activeToolForTab(activeToolByTabId, activeTabId),
+    activeTool,
     activeToolByTabId,
+    openTools: activeTool ? [activeTool] : [],
+    openToolsByTabId,
   };
 }

@@ -208,9 +208,11 @@ describe("buildWorkspaceSessionSnapshot", () => {
       removedSidebarMachineIds: ["local-hidden"],
       selectedMachineId: "local-pwsh",
       shellLayout: {
+        bottomToolPanelHeight: 280,
         collapsedMachineGroupIds: ["remote-group"],
         leftPanelCollapsed: true,
         leftPanelWidth: 288,
+        leftToolPanelWidth: 340,
         toolPanelWidth: 360,
       },
       terminalPanes,
@@ -229,9 +231,11 @@ describe("buildWorkspaceSessionSnapshot", () => {
       removedSidebarMachineIds: ["local-hidden"],
       selectedMachineId: "local-pwsh",
       shellLayout: {
+        bottomToolPanelHeight: 280,
         collapsedMachineGroupIds: ["remote-group"],
         leftPanelCollapsed: true,
         leftPanelWidth: 288,
+        leftToolPanelWidth: 340,
         toolPanelWidth: 360,
       },
       terminalTabGroupPreferences: {

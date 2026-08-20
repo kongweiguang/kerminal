@@ -18,6 +18,14 @@ describe("settingsModel", () => {
     expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
     expect(defaultAppSettings.terminal.showCommandBlockRail).toBe(true);
     expect(normalizeAppSettings().terminal.showCommandBlockRail).toBe(true);
+    expect(defaultAppSettings.terminal.keywordHighlights).toEqual({
+      enabled: true,
+      rules: [],
+    });
+    expect(normalizeAppSettings().terminal.keywordHighlights).toEqual({
+      enabled: true,
+      rules: [],
+    });
     expect(defaultAppSettings.sftp).toMatchObject({
       packetBytes: 256 * 1024,
       pipelineDepth: 8,

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import appCss from "../../../src/App.css?raw";
 
@@ -53,6 +55,18 @@ describe("App CSS token contract", () => {
     expect(appCss).toMatch(/--surface-solid:\s*var\(--surface-content\)/);
     expect(appCss).toMatch(
       /\.kerminal-solid-surface\s*\{[\s\S]*?box-shadow:\s*none/,
+    );
+  });
+
+  it("keeps every desktop tool-panel placement on one wallpaper-aware material", () => {
+    expect(appCss).toMatch(
+      /\[data-background-image-visible="true"\]\s+\.kerminal-tool-panel-surface\s*\{[\s\S]*?background:\s*color-mix\([\s\S]*?transparent[\s\S]*?backdrop-filter:\s*blur\(18px\)/,
+    );
+    expect(appCss).toMatch(
+      /\.kerminal-tool-panel-host\[data-compositor="surface-parent"\][\s\S]*?>\s*\.kerminal-material-nav\s*\{[\s\S]*?background:\s*transparent[\s\S]*?backdrop-filter:\s*none/,
+    );
+    expect(appCss).toMatch(
+      /\[data-panel-resizing\^="tools-"\]\s+\.kerminal-tool-panel-surface,[\s\S]*?data-floating-tool-panel-dragging="true"[\s\S]*?backdrop-filter:\s*none/,
     );
   });
 });

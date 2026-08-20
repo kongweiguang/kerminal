@@ -9,6 +9,8 @@ import type {
   SftpPerformanceSettings,
   TerminalAppearance,
 } from "./settingsModel";
+import { defaultToolRailSettings } from "../tool-panel";
+import { defaultTerminalKeywordHighlightSettings } from "./terminalKeywordHighlightModel";
 import {
   SFTP_GLOBAL_TRANSFERS_DEFAULT,
   SFTP_HOST_TRANSFERS_DEFAULT,
@@ -50,6 +52,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
     feedbackRetentionDays:
       TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT,
   },
+  keywordHighlights: defaultTerminalKeywordHighlightSettings,
   lightColorScheme: "kerminal",
   lineHeight: 1.35,
   macOptionIsMeta: false,
@@ -264,5 +267,6 @@ export const defaultAppSettings: AppSettings = {
   keybindings: defaultKeybindings,
   sftp: defaultSftpPerformanceSettings,
   terminal: defaultTerminalAppearance,
+  toolRail: defaultToolRailSettings,
   themeMode: "dark",
 };

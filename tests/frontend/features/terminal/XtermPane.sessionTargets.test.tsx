@@ -634,6 +634,7 @@ describe("XtermPane session targets and appearance", () => {
     });
 
     expect(mocks.terminalInstances[0].options).toMatchObject({
+      allowTransparency: true,
       cursorBlink: false,
       cursorStyle: "bar",
       fontFamily: "Consolas, monospace",
@@ -648,6 +649,36 @@ describe("XtermPane session targets and appearance", () => {
       background: "#ffffff",
       foreground: "#24292f",
     });
+  });
+
+  it("keeps terminal text opaque while exposing the shell background image", async () => {
+    render(
+      <XtermPane
+        backgroundImageVisible
+        focused
+        paneId="pane-background"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="背景终端"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    expect(mocks.terminalInstances[0].options).toMatchObject({
+      allowTransparency: true,
+      theme: expect.objectContaining({
+        background: "rgba(0, 0, 0, 0)",
+      }),
+    });
+    expect(
+      screen.getByLabelText("背景终端 xterm 终端").parentElement?.parentElement,
+    ).toHaveAttribute("data-background-image-visible", "true");
+    expect(
+      screen.getByLabelText("背景终端 xterm 终端").parentElement?.parentElement,
+    ).toHaveClass("kerminal-xterm-wallpaper");
   });
 
   it("updates an existing xterm instance when terminal font settings change", async () => {

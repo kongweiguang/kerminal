@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   SettingsSaveState,
@@ -11,6 +13,7 @@ interface UseKerminalShellSettingsOptions {
   setSettings: (settings: AppSettings) => void;
 }
 
+/** 为普通设置和工具栏确认式保存提供同一份并发序列化与错误状态。 */
 export function useKerminalShellSettings({
   setSettings,
 }: UseKerminalShellSettingsOptions) {
@@ -55,33 +58,52 @@ export function useKerminalShellSettings({
     };
   }, [setSettings]);
 
-  const handleSettingsChange = useCallback(
-    (nextSettings: AppSettings) => {
+  /**
+   * 统一 settings 写入竞态：普通设置页保持原有乐观预览，工具栏编辑器则等待
+   * 持久化成功后再提交，避免取消或失败时 rail 已经半更新。
+   */
+  const persistSettings = useCallback(
+    async (nextSettings: AppSettings, optimistic: boolean) => {
       settingsSaveRequestRef.current += 1;
       const requestId = settingsSaveRequestRef.current;
-      setSettings(nextSettings);
+      if (optimistic) {
+        setSettings(nextSettings);
+      }
       setSettingsSaveState("saving");
       setSettingsSaveError(null);
 
-      updateSettings(nextSettings)
-        .then((storedSettings) => {
-          if (requestId !== settingsSaveRequestRef.current) {
-            return;
-          }
+      try {
+        const storedSettings = await updateSettings(nextSettings);
+        if (requestId === settingsSaveRequestRef.current) {
           setSettings(storedSettings);
           setSettingsSaveState("saved");
-        })
-        .catch((error: unknown) => {
-          if (requestId !== settingsSaveRequestRef.current) {
-            return;
-          }
+        }
+        return storedSettings;
+      } catch (error: unknown) {
+        if (requestId === settingsSaveRequestRef.current) {
           setSettingsSaveState("error");
           setSettingsSaveError(
             error instanceof Error ? error.message : String(error),
           );
-        });
+        }
+        throw error;
+      }
     },
     [setSettings],
+  );
+
+  /** 普通设置页的兼容入口，错误仍由既有设置状态展示，不产生未处理 rejection。 */
+  const handleSettingsChange = useCallback(
+    (nextSettings: AppSettings) => {
+      void persistSettings(nextSettings, true).catch(() => undefined);
+    },
+    [persistSettings],
+  );
+
+  /** 工具栏编辑器使用确认式保存，只有后端返回成功后才更新全局设置。 */
+  const handleConfirmedSettingsChange = useCallback(
+    (nextSettings: AppSettings) => persistSettings(nextSettings, false),
+    [persistSettings],
   );
 
   const handleSettingsDialogChange = useCallback(
@@ -110,6 +132,7 @@ export function useKerminalShellSettings({
 
   return {
     handleSettingsChange,
+    handleConfirmedSettingsChange,
     handleSettingsDialogChange,
     handleSettingsDialogClose,
     openSettingsTool,

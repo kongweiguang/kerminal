@@ -13,6 +13,7 @@ import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 
 interface XtermPaneProps {
   args?: string[];
+  backgroundImageVisible?: boolean;
   currentCwd?: string;
   cwd?: string;
   enableAgentSendActions?: boolean;

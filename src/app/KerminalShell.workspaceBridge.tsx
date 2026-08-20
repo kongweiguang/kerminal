@@ -52,6 +52,8 @@ import {
 } from "./KerminalShell.workspaceSelectors";
 
 type WorkspaceTerminalSurfaceProps = {
+  backgroundImageVisible: boolean;
+  contentLeftInset: number;
   contentRightInset: number;
   createdSftpHostTarget?: SftpTransferCreatedHostTarget;
   desktopNotifications: AppSettings["desktopNotifications"];
@@ -79,12 +81,15 @@ type MachineSidebarStoreBridgeProps = Omit<
 
 interface ToolPanelStoreBridgeProps {
   activeTool: ToolId | null;
+  activeTools?: readonly ToolId[];
   defaultRemoteGroupId?: string;
   defaultRemoteHostId?: string;
   machineGroups: MachineGroup[];
   onActiveToolChange: (toolId: ToolId) => void;
+  onOpenTool?: (toolId: ToolId) => void;
   onCreateTerminal?: (options?: AddTerminalTabOptions) => void;
   onFocusTab?: (tabId: string) => void;
+  onOpenToolRailCustomization?: () => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
   onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
@@ -97,6 +102,7 @@ interface ToolPanelStoreBridgeProps {
   onSplitPane?: (direction: TerminalSplitDirection) => void;
   resolvedTheme: ResolvedTheme;
   settings: AppSettings;
+  showRail?: boolean;
   snippetConfigRevision?: number;
   terminalAppearance: TerminalAppearance;
   workflowConfigRevision?: number;
@@ -124,7 +130,13 @@ function paneStatusForConnectionState(state: ConnectionState): MachineStatus {
   return "offline";
 }
 
+/**
+ * 将 Shell 设置与 workspace store 快照接入终端工作区；左右停靠宽度只作用于
+ * 导航栏下方内容，避免展示层读取全局布局或让工具面板挤占终端导航。
+ */
 export function WorkspaceTerminalSurface({
+  backgroundImageVisible,
+  contentLeftInset,
   contentRightInset,
   createdSftpHostTarget,
   desktopNotifications,
@@ -201,7 +213,9 @@ export function WorkspaceTerminalSurface({
   return (
     <TerminalWorkspace
       activeTabId={terminalWorkspace.activeTabId}
+      backgroundImageVisible={backgroundImageVisible}
       broadcastDraft={terminalWorkspace.broadcastDraft}
+      contentLeftInset={contentLeftInset}
       contentRightInset={contentRightInset}
       focusedPaneId={terminalWorkspace.focusedPaneId}
       interfaceDensity={interfaceDensity}

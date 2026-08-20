@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useEffect, useRef, useState } from "react";
 import { ModalShell } from "../../components/ui/modal-shell";
 import {
@@ -14,12 +16,14 @@ interface SettingsDialogProps {
   saveState?: SettingsSaveState;
   settings: AppSettings;
   onClose: () => void;
+  onConfirmedSettingsChange?: (settings: AppSettings) => Promise<AppSettings>;
   onSettingsChange: (settings: AppSettings) => void;
 }
 
 export function SettingsDialog({
   initialSectionId,
   onClose,
+  onConfirmedSettingsChange,
   onSettingsChange,
   open,
   saveError,
@@ -83,6 +87,22 @@ export function SettingsDialog({
     onSettingsChange(nextSettings);
   };
 
+  /**
+   * 需要局部草稿的设置等待持久化成功后再替换对话框快照；失败时不触碰草稿，
+   * 使关键词规则编辑器可以保留用户输入并直接重试。
+   */
+  const handleConfirmedSettingsChange = async (nextSettings: AppSettings) => {
+    if (!onConfirmedSettingsChange) {
+      handleSettingsChange(nextSettings);
+      return nextSettings;
+    }
+    const storedSettings = await onConfirmedSettingsChange(nextSettings);
+    setDraftSettings(storedSettings);
+    setDraftDirty(false);
+    setExternalChangeNotice(null);
+    return storedSettings;
+  };
+
   return (
     <ModalShell
       onClose={onClose}
@@ -94,6 +114,7 @@ export function SettingsDialog({
       <SettingsToolContent
         externalChangeNotice={externalChangeNotice}
         initialSectionId={initialSectionId}
+        onConfirmedSettingsChange={handleConfirmedSettingsChange}
         onSettingsChange={handleSettingsChange}
         saveError={saveError}
         saveState={saveState}

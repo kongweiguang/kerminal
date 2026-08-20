@@ -100,7 +100,9 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 interface RenderSettingsToolContentOptions {
   initialSectionId?: SettingsSectionId;
+  onConfirmedSettingsChange?: (settings: AppSettings) => Promise<AppSettings>;
   onSettingsChange?: (settings: AppSettings) => void;
+  resolvedTheme?: "light" | "dark";
   saveError?: string | null;
   saveState?: SettingsSaveState;
   settings?: AppSettings;
@@ -133,7 +135,9 @@ function installClipboardMock() {
 
 export function renderSettingsToolContent({
   initialSectionId,
+  onConfirmedSettingsChange,
   onSettingsChange = vi.fn(),
+  resolvedTheme,
   saveError,
   saveState,
   settings = defaultAppSettings,
@@ -141,7 +145,9 @@ export function renderSettingsToolContent({
   return render(
     <SettingsToolContent
       initialSectionId={initialSectionId}
+      onConfirmedSettingsChange={onConfirmedSettingsChange}
       onSettingsChange={onSettingsChange}
+      resolvedTheme={resolvedTheme}
       saveError={saveError}
       saveState={saveState}
       settings={settings}
@@ -151,17 +157,28 @@ export function renderSettingsToolContent({
 
 export function renderControlledSettings({
   initialSectionId,
+  onConfirmedSettingsChange,
   onSettingsChange,
+  settings: initialSettings = defaultAppSettings,
 }: {
   initialSectionId?: SettingsSectionId;
+  onConfirmedSettingsChange?: (settings: AppSettings) => Promise<AppSettings>;
   onSettingsChange: (settings: AppSettings) => void;
+  settings?: AppSettings;
 }): RenderResult {
   function ControlledSettings() {
-    const [settings, setSettings] = useState(defaultAppSettings);
+    const [settings, setSettings] = useState(initialSettings);
 
     return (
       <SettingsToolContent
         initialSectionId={initialSectionId}
+        onConfirmedSettingsChange={async (nextSettings) => {
+          const storedSettings = onConfirmedSettingsChange
+            ? await onConfirmedSettingsChange(nextSettings)
+            : nextSettings;
+          setSettings(storedSettings);
+          return storedSettings;
+        }}
         onSettingsChange={(nextSettings) => {
           setSettings(nextSettings);
           onSettingsChange(nextSettings);

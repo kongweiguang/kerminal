@@ -25,8 +25,8 @@ import {
   type TerminalOpenStateSlice,
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
-import type { Machine, SftpTransferWorkspaceTab, ToolId } from "./types";
-import type { ActiveToolByTabId } from "./workspaceToolPanelState";
+import type { Machine, SftpTransferWorkspaceTab } from "./types";
+import type { WorkspaceToolPanelState } from "./workspaceToolPanelState";
 import { withToolPanelTabTransition } from "./workspaceToolPanelState";
 
 export interface WorkspaceTerminalOpenActions {
@@ -63,9 +63,9 @@ export interface WorkspaceTerminalOpenCounterPort {
   };
 }
 
-interface WorkspaceTerminalOpenStore extends TerminalOpenStateSlice {
-  activeTool: ToolId | null;
-  activeToolByTabId: ActiveToolByTabId;
+interface WorkspaceTerminalOpenStore
+  extends TerminalOpenStateSlice,
+    WorkspaceToolPanelState {
   profiles: TerminalProfile[];
 }
 

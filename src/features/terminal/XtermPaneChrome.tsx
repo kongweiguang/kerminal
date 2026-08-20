@@ -1,7 +1,12 @@
+// @author kongweiguang
+
 import type { ConnectionState } from "./XtermPane.helpers";
 import { stateLabel } from "./XtermPane.helpers";
 
-/** xterm canvas 外围的低频状态提示，不参与终端输出渲染。 */
+/**
+ * 把连接、日志和瞬时操作反馈放在 xterm canvas 外围；通用提示不能复用命令块
+ * 开关，否则关闭 shell assist 时会吞掉 opener 等基础终端能力的错误反馈。
+ */
 export function XtermPaneChrome({
   commandBlockNotice,
   connectionState,
@@ -9,6 +14,7 @@ export function XtermPaneChrome({
   logNotice,
   logPath,
   shellAssistEnabled,
+  terminalNotice,
 }: {
   commandBlockNotice: string | null;
   connectionState: ConnectionState;
@@ -16,6 +22,7 @@ export function XtermPaneChrome({
   logNotice: string | null;
   logPath?: string;
   shellAssistEnabled: boolean;
+  terminalNotice: string | null;
 }) {
   return (
     <>
@@ -51,12 +58,25 @@ export function XtermPaneChrome({
           {logNotice}
         </div>
       ) : null}
+      {terminalNotice ? (
+        <div
+          aria-label="终端操作提示"
+          className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
+          role="status"
+          style={{ bottom: logNotice ? 40 : 12 }}
+          title={terminalNotice}
+        >
+          {terminalNotice}
+        </div>
+      ) : null}
       {shellAssistEnabled && commandBlockNotice ? (
         <div
           aria-label="命令块操作提示"
           className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
           role="status"
-          style={{ bottom: logNotice ? 40 : 12 }}
+          style={{
+            bottom: 12 + (logNotice ? 28 : 0) + (terminalNotice ? 28 : 0),
+          }}
           title={commandBlockNotice}
         >
           {commandBlockNotice}

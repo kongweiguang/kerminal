@@ -52,7 +52,7 @@ export function registerSessionAndToolTests() {
     render(<KerminalShell />);
 
     expect(
-      await screen.findByRole("complementary", { name: "工具面板" }),
+      await screen.findByRole("complementary", { name: "右侧工具栏" }),
     ).toHaveAttribute("aria-expanded", "false");
 
     act(() => {
@@ -74,9 +74,75 @@ export function registerSessionAndToolTests() {
     );
     await waitFor(() => {
       expect(
-        screen.getByRole("complementary", { name: "工具面板" }),
+        screen.getByRole("complementary", { name: "右侧工具栏" }),
       ).toHaveAttribute("aria-expanded", "false");
     });
+  });
+
+  it("keeps different panel directions open together and replaces only the same direction", async () => {
+    mocks.settingsApi.getSettings.mockResolvedValue({
+      ...defaultAppSettings,
+      toolRail: {
+        ...defaultAppSettings.toolRail,
+        panelPlacements: {
+          ...defaultAppSettings.toolRail.panelPlacements,
+          context: "left",
+          logs: "attached",
+          snippets: "center",
+          system: "bottom",
+        },
+      },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<KerminalShell />);
+
+    await waitFor(() => {
+      expect(
+        useWorkspaceStore.getState().settings.toolRail.panelPlacements.system,
+      ).toBe("bottom");
+    });
+    for (const toolName of ["当前上下文", "命令历史", "系统", "片段"]) {
+      await user.click(
+        screen.getByRole("button", { name: `打开 ${toolName}` }),
+      );
+    }
+
+    const visiblePanel = (placement: string) =>
+      container.querySelector<HTMLElement>(
+        `section[data-tool-panel-placement="${placement}"]:not([hidden])`,
+      );
+    await waitFor(() => {
+      expect(visiblePanel("attached")).toBeVisible();
+      expect(visiblePanel("left")).toBeVisible();
+      expect(visiblePanel("bottom")).toBeVisible();
+      expect(visiblePanel("center")).toBeVisible();
+    });
+    expect(screen.getByRole("button", { name: "收起 系统" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 Agent Launcher" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "打开 命令历史" }),
+      ).toHaveAttribute("aria-pressed", "false");
+      expect(
+        screen.getByRole("button", { name: "收起 Agent Launcher" }),
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(visiblePanel("left")).toBeVisible();
+      expect(visiblePanel("bottom")).toBeVisible();
+      expect(visiblePanel("center")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "收起 系统" }));
+    await waitFor(() => expect(visiblePanel("bottom")).toBeNull());
+    expect(visiblePanel("attached")).toBeVisible();
+    expect(visiblePanel("left")).toBeVisible();
+    expect(visiblePanel("center")).toBeVisible();
   });
 
   it("reaps local orphan PTY sessions before restoring saved terminal tabs", async () => {
@@ -222,7 +288,7 @@ export function registerSessionAndToolTests() {
       "right:db980b17-2ed0-44e5-b72a-6ecadf788439 locked:none",
     );
     expect(
-      screen.getByRole("complementary", { name: "工具面板" }),
+      screen.getByRole("complementary", { name: "右侧工具栏" }),
     ).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -511,7 +577,7 @@ export function registerSessionAndToolTests() {
       render(<KerminalShell />);
 
       const toolPanel = await screen.findByRole("complementary", {
-        name: "工具面板",
+        name: "右侧工具栏",
       });
       expect(
         screen.queryByRole("complementary", { name: "主机侧边栏" }),
@@ -542,7 +608,7 @@ export function registerSessionAndToolTests() {
       render(<KerminalShell />);
 
       const collapsedPanel = await screen.findByRole("complementary", {
-        name: "工具面板",
+        name: "右侧工具栏",
       });
       fireEvent.click(
         within(collapsedPanel).getByRole("button", {
@@ -566,7 +632,7 @@ export function registerSessionAndToolTests() {
         ).not.toBeInTheDocument();
       });
       expect(
-        screen.getByRole("complementary", { name: "工具面板" }),
+        screen.getByRole("complementary", { name: "右侧工具栏" }),
       ).toHaveAttribute("aria-expanded", "false");
     } finally {
       Object.defineProperty(window, "innerWidth", {

@@ -1,3 +1,5 @@
+/* @author kongweiguang */
+
 @import "tailwindcss" source(none);
 @import "./styles/context-menu.css";
 @import "./styles/sftp.css";
@@ -58,6 +60,7 @@
   --text-tertiary: rgb(var(--app-text-subtle) / 0.72);
   --accent-primary: rgb(var(--app-accent));
   --layer-chrome: 20;
+  --layer-workspace-window: 900;
   --layer-popover: 1000;
   --layer-palette: 1100;
   --layer-overlay: 1200;
@@ -372,13 +375,53 @@ button {
   background: color-mix(
     in srgb,
     rgb(var(--surface-nav-rgb)) calc(var(--app-nav-surface-opacity) * 100%),
-    var(--surface-page)
+    transparent
   );
   background-clip: padding-box;
   border-color: var(--border-subtle);
   box-shadow: none;
   backdrop-filter: blur(30px) saturate(180%);
   -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+
+/*
+ * 工具面板由外层统一拥有材质，内容宿主只负责布局。这样右停靠、左停靠和浮窗
+ * 不会因嵌套表面叠成黑块，也能让标题栏与内容处在同一个连续玻璃平面上。
+ */
+.kerminal-tool-panel-surface {
+  background: rgb(var(--surface-nav-rgb));
+  background-clip: padding-box;
+  border-color: var(--border-subtle);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.kerminal-tool-panel-host[data-compositor="surface-parent"]
+  > .kerminal-material-nav {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/*
+ * 壁纸模式只保留一层可读性染色。静止时使用适度模糊形成层级；调整停靠宽度或
+ * 拖动浮窗时暂时停用模糊，规避 WebView2 重采样残帧，但仍保持 alpha 透传。
+ */
+[data-background-image-visible="true"] .kerminal-tool-panel-surface {
+  background: var(--surface-nav-glass);
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-nav-rgb)) calc(var(--app-nav-surface-opacity) * 100%),
+    transparent
+  );
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+[data-panel-resizing^="tools-"] .kerminal-tool-panel-surface,
+.kerminal-tool-panel-surface[data-floating-tool-panel-dragging="true"] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 #root > [data-density][data-theme] > .kerminal-material-nav,
@@ -397,6 +440,10 @@ button {
 
 .kerminal-layer-popover {
   z-index: var(--layer-popover);
+}
+
+.kerminal-layer-workspace-window {
+  z-index: var(--layer-workspace-window);
 }
 
 .kerminal-layer-palette {
@@ -427,14 +474,55 @@ button {
   -webkit-backdrop-filter: blur(28px) saturate(170%);
 }
 
+/*
+ * 壁纸模式以连续画面作为工作区基底；若继续对整个工作区做 28px 模糊，
+ * 人物和构图会在进入终端卡片前就丢失，后续透明终端也无法恢复细节。
+ */
+[data-background-image-visible="true"] .kerminal-workspace-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .kerminal-shell-separator {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  width: 8px;
-  transform: translateX(-4px);
+  touch-action: none;
+  user-select: none;
+  width: 12px;
+  transform: translateX(-6px);
+  z-index: calc(var(--layer-chrome) + 1);
+}
+
+/* 底部面板复用同一分隔条语义，但横向命中区必须沿 Y 轴扩展。 */
+.kerminal-shell-separator[data-orientation="horizontal"] {
+  height: 12px;
+  width: 100%;
+  transform: translateY(-6px);
+}
+
+/*
+ * 右栏打开/收起保留柔和过渡，但拖动时必须让终端边界逐帧贴住分隔条。
+ * 否则每次 pointermove 都会重新开始 200ms margin 动画，形成明显延迟和残影。
+ */
+[data-panel-resizing] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+[data-panel-resizing="tools-bottom"] {
+  cursor: row-resize;
+}
+
+[data-panel-resizing="tools-right"] [data-terminal-workspace-inset] {
+  margin-right: var(--kerminal-live-right-inset) !important;
+  transition: none !important;
+}
+
+[data-panel-resizing^="tools-"] .kerminal-tool-panel-host {
+  contain: layout paint;
 }
 
 .kerminal-shell-sidebar {
@@ -513,6 +601,12 @@ button {
     both;
 }
 
+/* 可拖动工作区窗口的 transform 由运行时几何独占；入场只改变透明度，避免动画
+   fill-mode 覆盖内联 translate3d 并把浮窗固定到左上角。 */
+.kerminal-floating-window-enter {
+  animation: kerminal-floating-window-enter var(--motion-menu) ease-out both;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   [class*="backdrop-blur"] {
     backdrop-filter: none !important;
@@ -524,6 +618,7 @@ button {
   }
 
   .kerminal-material-nav,
+  .kerminal-tool-panel-surface,
   .kerminal-floating-surface,
   .kerminal-workspace-surface,
   .kerminal-context-menu,
@@ -550,6 +645,16 @@ button {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes kerminal-floating-window-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 

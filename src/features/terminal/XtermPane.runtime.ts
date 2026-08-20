@@ -46,8 +46,19 @@ import {
 import { createXtermPaneSessionRuntime } from "./XtermPane.sessionRuntime";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
 import { resolveSafeTerminalRendererType } from "./terminalRendererPlatform";
+import { createTerminalKeywordHighlightController } from "./terminalKeywordHighlightController";
+import { createTerminalWebLinksAddon } from "./terminalWebLinks";
+import {
+  createTerminalWebLinkDecorationController,
+  terminalWebLinkDecorationColorForTheme,
+} from "./terminalWebLinkDecorationController";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const TERMINAL_RENDERER_FEATURE_GATES = resolveRuntimeTerminalRendererFeatureGates();
+/**
+ * 安装 xterm 与 PTY 的长期运行资源。透明能力和 proposed decoration API 都必须
+ * 在构造时开启：前者避免背景切换重建会话，后者承载关键词及 URL 的 marker 装饰；
+ * 只在独立 controller 内消费 proposed API，缩小后续 xterm 升级的影响面。
+ */
 export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   const {
     activityRuntimeRef,
@@ -75,6 +86,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     profileId,
     promptLineRef,
     reconnectSessionRef,
+    resolvedTheme,
     remoteCommand,
     remoteHostId,
     searchAddonRef,
@@ -88,6 +100,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     setLogState,
     setSearchResults,
     setSuggestionMenu,
+    setTerminalNotice,
     shellIntegrationCommandBlockProtocolRef,
     shell,
     shellAssistEnabled = true,
@@ -99,11 +112,13 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     terminalAppearanceRef,
     terminalFontWeight,
     terminalRef,
+    terminalKeywordHighlightControllerRef,
     terminalRendererControllerRef,
     terminalRuntimeLifecycleControllerRef,
     terminalRuntimeLifecycleRef,
     terminalSurfaceCoordinatorRef,
     terminalTheme,
+    terminalWebLinkDecorationControllerRef,
     transientStartupMessage,
     visibleRef,
   } = params;
@@ -121,7 +136,10 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   setCommandBlockNotice(null);
   setGhostSuggestion(null);
   setSuggestionMenu(null);
+  setTerminalNotice(null);
   const terminal = new XtermTerminal({
+    allowProposedApi: true,
+    allowTransparency: true,
     cols: 80,
     cursorBlink: terminalAppearance.cursorBlink,
     cursorInactiveStyle: "outline",
@@ -139,6 +157,10 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   });
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon({ highlightLimit: 1000 });
+  const webLinksAddon = createTerminalWebLinksAddon({
+    onOpenError: () =>
+      setTerminalNotice("链接打开失败，请检查系统默认浏览器设置"),
+  });
   const addonDisposalErrors = createXtermAddonDisposalErrorState();
   fitAddonRef.current = fitAddon;
   searchAddonRef.current = searchAddon;
@@ -251,6 +273,9 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   terminal.loadAddon(
     wrapXtermAddonForDisposal(searchAddon, addonDisposalErrors),
   );
+  terminal.loadAddon(
+    wrapXtermAddonForDisposal(webLinksAddon, addonDisposalErrors),
+  );
   const terminalInlineSshAuthPrompt = createTerminalInlineSshAuthPrompt({
     markUserInteraction: () => terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction(),
     terminal,
@@ -273,6 +298,26 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     resizeSession: resizeTerminal,
   });
   terminalRef.current = terminal;
+  const terminalKeywordHighlightController =
+    createTerminalKeywordHighlightController({
+      resolvedTheme,
+      settings: terminalAppearance.keywordHighlights,
+      terminal,
+      visible: visibleRef?.current ?? true,
+    });
+  terminalKeywordHighlightControllerRef.current =
+    terminalKeywordHighlightController;
+  const terminalWebLinkDecorationController =
+    createTerminalWebLinkDecorationController({
+      foregroundColor: terminalWebLinkDecorationColorForTheme(
+        terminalTheme,
+        resolvedTheme,
+      ),
+      terminal,
+      visible: visibleRef?.current ?? true,
+    });
+  terminalWebLinkDecorationControllerRef.current =
+    terminalWebLinkDecorationController;
   const activityRuntime = createXtermPaneActivityRuntime({
     connectionState: "connecting",
     container,
@@ -587,6 +632,23 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     runCleanup(() => activityRuntime.dispose());
     if (activityRuntimeRef.current === activityRuntime) {
       activityRuntimeRef.current = null;
+    }
+
+    // 视觉 controller 持有 xterm 事件、marker 和 decoration，必须在 core 与
+    // renderer 仍存活时完整释放，避免 terminal.dispose 后回调访问已销毁 buffer。
+    runCleanup(() => terminalWebLinkDecorationController.dispose());
+    if (
+      terminalWebLinkDecorationControllerRef.current ===
+      terminalWebLinkDecorationController
+    ) {
+      terminalWebLinkDecorationControllerRef.current = null;
+    }
+    runCleanup(() => terminalKeywordHighlightController.dispose());
+    if (
+      terminalKeywordHighlightControllerRef.current ===
+      terminalKeywordHighlightController
+    ) {
+      terminalKeywordHighlightControllerRef.current = null;
     }
 
     // 先让 renderer controller 在 core 与 DOM 仍存活时释放 WebGL/context，

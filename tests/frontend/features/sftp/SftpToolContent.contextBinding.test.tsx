@@ -206,6 +206,28 @@ describe("SftpToolContent target binding", () => {
     expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(1);
   });
 
+  it("同目标目录读取在面板暂时收起后仍提交终态", async () => {
+    const request = deferred<ReturnType<typeof listing>>();
+    sftpApiMocks.listSftpDirectory.mockReturnValue(request.promise);
+    const { rerender } = render(
+      <SftpToolContent active selectedMachine={sshMachine} />,
+    );
+    await waitFor(() =>
+      expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(<SftpToolContent active={false} selectedMachine={sshMachine} />);
+    await act(async () => {
+      request.resolve(listing("prod-api", "/"));
+      await request.promise;
+    });
+
+    rerender(<SftpToolContent active selectedMachine={sshMachine} />);
+    expect(await screen.findByText("prod-api.txt")).toBeInTheDocument();
+    expect(screen.queryByText("正在读取远程目录...")).not.toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(1);
+  });
+
   it("does not reload or update the new target after an old mutation finishes", async () => {
     const user = userEvent.setup();
     const createRequest = deferred<boolean>();

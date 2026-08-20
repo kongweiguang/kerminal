@@ -20,6 +20,8 @@ import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 import type { TerminalPaneRuntimeLifecycleDecision } from "./terminalPaneRuntimeLifecycle";
 import type { TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
 import type { TerminalRendererController } from "./terminalRenderer";
+import type { TerminalKeywordHighlightController } from "./terminalKeywordHighlightController";
+import type { TerminalWebLinkDecorationController } from "./terminalWebLinkDecorationController";
 import type { XtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import type { XtermPaneSuggestionMenuView } from "./XtermPane.ghostSuggestions";
 import type {
@@ -83,6 +85,7 @@ export interface InstallXtermPaneRuntimeParams
   profileId: XtermPaneProps["profileId"];
   promptLineRef: MutableRefObject<number | undefined>;
   reconnectSessionRef: MutableRefObject<(() => Promise<void>) | null>;
+  resolvedTheme: XtermPaneProps["resolvedTheme"];
   remoteCommand: XtermPaneProps["remoteCommand"];
   remoteHostId: XtermPaneProps["remoteHostId"];
   searchAddonRef: MutableRefObject<SearchAddon | null>;
@@ -95,6 +98,7 @@ export interface InstallXtermPaneRuntimeParams
   setLogNotice: Dispatch<SetStateAction<string | null>>;
   setLogState: Dispatch<SetStateAction<TerminalSessionLogState>>;
   setSearchResults: Dispatch<SetStateAction<XtermPaneSearchResults>>;
+  setTerminalNotice: (notice: string | null) => void;
   shell: XtermPaneProps["shell"];
   shellAssistEnabled?: boolean;
   shellIntegrationCommandBlockProtocolRef: MutableRefObject<boolean>;
@@ -107,6 +111,12 @@ export interface InstallXtermPaneRuntimeParams
   >;
   terminalFontWeight: FontWeight;
   terminalRef: MutableRefObject<XtermTerminal | null>;
+  terminalKeywordHighlightControllerRef: MutableRefObject<
+    TerminalKeywordHighlightController | null
+  >;
+  terminalWebLinkDecorationControllerRef: MutableRefObject<
+    TerminalWebLinkDecorationController | null
+  >;
   terminalRendererControllerRef: MutableRefObject<
     TerminalRendererController | null
   >;

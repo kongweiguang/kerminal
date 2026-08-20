@@ -8,17 +8,23 @@ import type {
   WorkspaceFileAccess,
   WorkspaceFileSource,
 } from "./types";
-import type { ActiveToolByTabId } from "./workspaceToolPanelState";
+import type {
+  ActiveToolByTabId,
+  OpenToolsByTabId,
+} from "./workspaceToolPanelState";
 
 interface WorkspaceShellInteractionState {
   activeTool: ToolId | null;
   activeToolByTabId: ActiveToolByTabId;
+  openTools: ToolId[];
+  openToolsByTabId: OpenToolsByTabId;
   broadcastDraft: string;
   machineSearch: string;
 }
 
 interface WorkspaceShellInteractionActions {
   setActiveTool: (toolId: ToolId | null) => void;
+  setOpenTools: (toolIds: ToolId[], activeTool?: ToolId | null) => void;
   setBroadcastDraft: (draft: string) => void;
   setMachineSearch: (query: string) => void;
 }

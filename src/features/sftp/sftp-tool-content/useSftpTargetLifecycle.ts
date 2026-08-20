@@ -139,8 +139,9 @@ export function bindSftpTargetDirectoryLoader(
 }
 
 /**
- * 为一次挂载维护单调代次。调用方必须在远端 Promise 完成后用
- * `isCurrent` 校验，写动作则始终使用令牌中的冻结目标。
+ * 为一次资源挂载维护单调代次。`active` 只阻止隐藏面板发起新 I/O；同目标
+ * 已经在途的请求仍可提交终态，避免面板暂时收起后永久遗留 loading。
+ * 目标切换或真实卸载仍会更换代次，写动作始终使用令牌中的冻结目标。
  */
 export function useSftpTargetLifecycle({
   active,
@@ -151,7 +152,9 @@ export function useSftpTargetLifecycle({
 }) {
   const bindingKey = sftpFileTargetBindingKey(target);
   const stateRef = useRef<SftpTargetLifecycleState | null>(null);
+  const activeRef = useRef(active);
   const targetRef = useRef(target);
+  activeRef.current = active;
   targetRef.current = target;
   const previous = stateRef.current;
   if (!previous || previous.bindingKey !== bindingKey) {
@@ -169,12 +172,12 @@ export function useSftpTargetLifecycle({
   useEffect(() => {
     const mounted = stateRef.current;
     if (mounted?.bindingKey === bindingKey) {
-      mounted.active = active;
+      mounted.active = activeRef.current;
       // StrictMode 会执行 cleanup/setup 重放；setup 必须恢复目标，才能再次发起首次目录读取。
       mounted.target = targetRef.current;
     }
     return () => {
-      // 卸载时同步失效所有仍在飞行的 Promise；远端副作用可以结束，但不能再回写 UI。
+      // 资源切换或卸载时同步失效在途 Promise；单纯隐藏由 render 更新 active，不更换代次。
       const current = stateRef.current;
       if (current?.bindingKey === bindingKey) {
         current.active = false;
@@ -182,7 +185,7 @@ export function useSftpTargetLifecycle({
         current.target = null;
       }
     };
-  }, [active, bindingKey]);
+  }, [bindingKey]);
 
   const captureTarget = useCallback(
     (expectedTarget?: SftpFileTarget | null): SftpTargetBindingToken | null => {
@@ -213,8 +216,7 @@ export function useSftpTargetLifecycle({
     }
     const current = stateRef.current;
     return Boolean(
-      current?.active &&
-      current.bindingKey === binding.bindingKey &&
+      current?.bindingKey === binding.bindingKey &&
       current.generation === binding.generation &&
       current.target &&
       sftpFileTargetBindingKey(current.target) ===

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { InterfaceDensity } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup, ToolId } from "../features/workspace/types";
 import type { RemoteHost } from "../lib/remoteHostApi";
@@ -48,11 +50,13 @@ interface BuildKerminalShellViewModelOptions {
   profileLoadError: string | null;
   remoteHostLoadError: string | null;
   settingsLoadError: string | null;
+  toolPanelDocked?: boolean;
   windowChrome: WindowChromeModel;
 }
 
 /**
- * 汇总主壳所需的稳定派生状态，使 composition root 不承载目标选择、错误优先级和窗口布局规则。
+ * 汇总主壳所需的稳定派生状态；浮层模式只保留 rail 宽度，避免标题栏材质遮到
+ * 工作区，同时不让 composition root 承载具体尺寸分支。
  */
 export function buildKerminalShellViewModel({
   activeTool,
@@ -66,6 +70,7 @@ export function buildKerminalShellViewModel({
   profileLoadError,
   remoteHostLoadError,
   settingsLoadError,
+  toolPanelDocked = true,
   windowChrome,
 }: BuildKerminalShellViewModelOptions) {
   return {
@@ -85,7 +90,7 @@ export function buildKerminalShellViewModel({
     }),
     reserveRightTitleBarControls: windowChrome.controlMode === "custom",
     rightToolRailTitleBarFillWidth:
-      activeTool === null || compactShell
+      activeTool === null || compactShell || !toolPanelDocked
         ? 44
         : interfaceDensity === "spacious"
           ? 56
@@ -113,6 +118,7 @@ export function useKerminalShellViewModel(
     profileLoadError,
     remoteHostLoadError,
     settingsLoadError,
+    toolPanelDocked = true,
     windowChrome,
   } = options;
   return useMemo(
@@ -129,6 +135,7 @@ export function useKerminalShellViewModel(
         profileLoadError,
         remoteHostLoadError,
         settingsLoadError,
+        toolPanelDocked,
         windowChrome,
       }),
     [
@@ -143,6 +150,7 @@ export function useKerminalShellViewModel(
       profileLoadError,
       remoteHostLoadError,
       settingsLoadError,
+      toolPanelDocked,
       windowChrome,
     ],
   );

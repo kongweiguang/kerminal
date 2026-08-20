@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe } from "vitest";
 import "../support/app/KerminalShell.testSupport.tsx";
 
@@ -14,11 +16,15 @@ const { registerChromeAndRestoreTests } = await import(
 const { registerRemoteHostTests } = await import(
   "./kerminal-shell/remote-hosts"
 );
+const { registerPanelDirectionTests } = await import(
+  "./kerminal-shell/panel-directions"
+);
 
 describe("KerminalShell", () => {
   beforeEach(resetKerminalShellTestState);
 
   registerSessionAndToolTests();
   registerChromeAndRestoreTests();
+  registerPanelDirectionTests();
   registerRemoteHostTests();
 });

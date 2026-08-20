@@ -32,6 +32,7 @@ interface TerminalBroadcastBarProps {
   toolbarPaddingClass: string;
 }
 
+/** 广播栏与终端正文共享双侧 inset，确保左右面板并开时目标和输入仍可操作。 */
 export function TerminalBroadcastBar({
   analysis,
   draft,
@@ -66,9 +67,10 @@ export function TerminalBroadcastBar({
     <>
       <div
         className={cn(
-          "flex items-center gap-2 border-b border-[var(--border-subtle)] transition-[margin-right] duration-200 ease-out",
+          "flex items-center gap-2 border-b border-[var(--border-subtle)] transition-[margin-left,margin-right] duration-200 ease-out",
           toolbarPaddingClass,
         )}
+        data-terminal-workspace-inset
         style={style}
       >
         <TerminalBroadcastTargetSelector
@@ -109,7 +111,7 @@ export function TerminalBroadcastBar({
       {status || error ? (
         <div
           className={cn(
-            "border-b border-[var(--border-subtle)] px-3 py-2 text-sm transition-[margin-right] duration-200 ease-out",
+            "border-b border-[var(--border-subtle)] px-3 py-2 text-sm transition-[margin-left,margin-right] duration-200 ease-out",
             error
               ? "bg-rose-500/10 text-rose-700 dark:text-rose-100"
               : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",

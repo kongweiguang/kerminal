@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Suspense, type ComponentProps, type CSSProperties, type RefObject } from "react";
 import {
   CloseTabsConfirmationDialog,
@@ -15,7 +17,7 @@ import {
 } from "./KerminalShell.helpers";
 import {
   KerminalShellNotices,
-  ShellResponsiveToolPanel,
+  ShellResponsiveToolPanels,
   ShellToolRail,
   ShellWindowChrome,
 } from "./KerminalShell.view";
@@ -32,12 +34,15 @@ import {
   WorkspaceTerminalSurface,
 } from "./KerminalShell.workspaceBridge";
 import { KerminalShellContextWorkspaceStoreBridge } from "./KerminalShell.contextWorkspace";
+import { ToolRailCustomizationDialog } from "../features/tool-panel/ToolRailCustomizationDialog";
+import type { ResolvedOpenToolPanels } from "../features/tool-panel";
 
 interface ShellFrameProps {
   backgroundStyle: CSSProperties;
   density: string;
   desktopPlatform: DesktopPlatform;
   gridTemplateColumns: string;
+  gridTemplateRows: string;
   language: string;
   lang: string;
   resolvedTheme: ResolvedTheme;
@@ -47,6 +52,8 @@ interface ShellFrameProps {
 
 export interface KerminalShellLayoutProps {
   activeTool: ToolId | null;
+  activeTools: readonly ToolId[];
+  bottomSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
   compactShell: boolean;
   contextWorkspaceProps: ComponentProps<
     typeof KerminalShellContextWorkspaceStoreBridge
@@ -54,6 +61,7 @@ export interface KerminalShellLayoutProps {
   deleteDialogProps: ComponentProps<typeof DeleteConfirmationDialog>;
   frame: ShellFrameProps;
   leftSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
+  leftToolSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
   machineSidebarProps: ComponentProps<typeof MachineSidebarStoreBridge> | null;
   noticesProps: ComponentProps<typeof KerminalShellNotices>;
   remoteGroupDialogProps:
@@ -66,6 +74,8 @@ export interface KerminalShellLayoutProps {
   settingsDialogProps: ComponentProps<typeof LazySettingsDialog> | null;
   shellWindowChromeProps: ComponentProps<typeof ShellWindowChrome>;
   tabsConfirmationProps: ComponentProps<typeof CloseTabsConfirmationDialog>;
+  toolRailCustomizationProps: ComponentProps<typeof ToolRailCustomizationDialog>;
+  openToolPanels: ResolvedOpenToolPanels;
   toolPanelProps: ComponentProps<typeof ToolPanelStoreBridge>;
   workspaceFileConfirmationProps: ComponentProps<
     typeof CloseWorkspaceFileTabsConfirmationDialog
@@ -74,20 +84,27 @@ export interface KerminalShellLayoutProps {
   onActiveToolChange: ComponentProps<
     typeof ShellToolRail
   >["onActiveToolChange"];
-  onCloseToolPanel: () => void;
+  onOpenToolRailCustomization: () => void;
+  onOpenTool: (toolId: ToolId) => void;
+  onCloseToolPanel: (toolId: ToolId) => void;
 }
 
 /** 主 Shell 的纯布局层；状态、副作用和业务编排仍由 KerminalShell 持有。 */
 export function KerminalShellLayout({
   activeTool,
+  activeTools,
+  bottomSeparatorProps,
   compactShell,
   contextWorkspaceProps,
   deleteDialogProps,
   frame,
   leftSeparatorProps,
+  leftToolSeparatorProps,
   machineSidebarProps,
   noticesProps,
   onActiveToolChange,
+  onOpenToolRailCustomization,
+  onOpenTool,
   onCloseToolPanel,
   remoteGroupDialogProps,
   remoteHostDialogProps,
@@ -95,6 +112,8 @@ export function KerminalShellLayout({
   settingsDialogProps,
   shellWindowChromeProps,
   tabsConfirmationProps,
+  toolRailCustomizationProps,
+  openToolPanels,
   toolPanelProps,
   workspaceFileConfirmationProps,
   workspaceTerminalProps,
@@ -108,6 +127,9 @@ export function KerminalShellLayout({
       )}
       data-desktop-platform={frame.desktopPlatform}
       data-density={frame.density}
+      data-background-image-visible={
+        workspaceTerminalProps.backgroundImageVisible || undefined
+      }
       data-language={frame.language}
       data-theme={frame.resolvedTheme}
       data-window-frame={frame.windowFrameState}
@@ -115,30 +137,52 @@ export function KerminalShellLayout({
       style={{
         ...frame.backgroundStyle,
         gridTemplateColumns: frame.gridTemplateColumns,
-        gridTemplateRows: "36px minmax(0, 1fr)",
+        gridTemplateRows: frame.gridTemplateRows,
       }}
     >
       <ShellWindowChrome {...shellWindowChromeProps} />
       {machineSidebarProps ? (
-        <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
+        <div className="col-[1/2] row-[2/5] h-full overflow-hidden">
           <MachineSidebarStoreBridge {...machineSidebarProps} />
         </div>
       ) : null}
       <ShellResizeSeparator {...leftSeparatorProps} />
+      <ShellResizeSeparator {...leftToolSeparatorProps} />
       <div
         className="relative z-0 h-full min-w-0 flex-1 overflow-hidden"
-        style={{ gridColumn: "3 / 6", gridRow: "1 / 3" }}
+        style={{ gridColumn: "3 / 8", gridRow: "1 / 3" }}
       >
         <WorkspaceTerminalSurface {...workspaceTerminalProps} />
       </div>
       <ShellResizeSeparator {...rightSeparatorProps} />
-      <ShellResponsiveToolPanel
+      <ShellResizeSeparator {...bottomSeparatorProps} />
+      <ShellResponsiveToolPanels
         activeTool={activeTool}
+        activeTools={activeTools}
         compact={compactShell}
         onClose={onCloseToolPanel}
-        panel={<ToolPanelStoreBridge {...toolPanelProps} />}
-        rail={<ShellToolRail onActiveToolChange={onActiveToolChange} />}
+        openPanels={openToolPanels}
+        rail={
+          <ShellToolRail
+            activeTool={activeTool}
+            activeTools={activeTools}
+            interfaceDensity={toolPanelProps.settings.interfaceDensity}
+            onActiveToolChange={onActiveToolChange}
+            onOpenToolRailCustomization={onOpenToolRailCustomization}
+            onOpenTool={onOpenTool}
+            toolRailSettings={toolPanelProps.settings.toolRail}
+          />
+        }
+        renderPanel={(toolId) => (
+          <ToolPanelStoreBridge
+            {...toolPanelProps}
+            activeTool={toolId}
+            activeTools={activeTools}
+            showRail={false}
+          />
+        )}
       />
+      <ToolRailCustomizationDialog {...toolRailCustomizationProps} />
       {settingsDialogProps ? (
         <Suspense fallback={<DialogLazyFallback />}>
           <LazySettingsDialog {...settingsDialogProps} />

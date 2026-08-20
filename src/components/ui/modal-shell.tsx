@@ -75,6 +75,16 @@ function hasHeightConstraintClassName(className?: string) {
 }
 
 /**
+ * 展开的组合框拥有第一层 Escape 语义；ModalShell 的 window capture 监听必须先让
+ * 内层浮层收起，否则一次按键会同时关闭下拉和整个弹框。
+ */
+function hasExpandedCombobox(panel: HTMLElement | null) {
+  return Boolean(
+    panel?.querySelector('[role="combobox"][aria-expanded="true"]'),
+  );
+}
+
+/**
  * 全屏 overlay 共用的顶部窗口拖拽条。
  *
  * Tauri 会为 `data-tauri-drag-region` 注入拖拽和双击最大化逻辑；
@@ -91,6 +101,10 @@ export function WindowDragStrip() {
   );
 }
 
+/**
+ * 统一管理 portal 弹框的堆栈、滚动锁和焦点；内层组合框展开时保留其 Escape
+ * 优先级，避免捕获阶段越权关闭父弹框。
+ */
 export function ModalShell({
   backdrop = "glass",
   bodyClassName,
@@ -171,6 +185,9 @@ export function ModalShell({
         return;
       }
       if (event.key === "Escape") {
+        if (hasExpandedCombobox(panelRef.current)) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         closeRef.current();

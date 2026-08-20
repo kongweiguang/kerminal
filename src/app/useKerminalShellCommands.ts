@@ -34,37 +34,36 @@ const nativeTextEditCommandByAction: Partial<
 
 export function useKerminalShellCommands({
   activeTabId,
-  activeTool,
   addTerminalTab,
+  closeAllTools,
   closePane,
   closeTerminalTab,
   focusPane,
   focusedPaneId,
   keybindings,
   openSettingsTool,
+  openTool,
   selectTab,
-  setActiveTool,
   splitFocusedPane,
   terminalTabs,
+  toggleTool,
 }: {
   activeTabId: string | null;
-  activeTool: ToolId | null;
   addTerminalTab: WorkspaceState["addTerminalTab"];
+  closeAllTools: () => void;
   closePane: WorkspaceState["closePane"];
   closeTerminalTab: WorkspaceState["closeTerminalTab"];
   focusPane: WorkspaceState["focusPane"];
   focusedPaneId: string | null;
   keybindings: AppSettings["keybindings"];
   openSettingsTool: (sectionId?: SettingsSectionId) => void;
+  openTool: (toolId: ToolId) => void;
   selectTab: WorkspaceState["selectTab"];
-  setActiveTool: WorkspaceState["setActiveTool"];
   splitFocusedPane: WorkspaceState["splitFocusedPane"];
   terminalTabs: WorkspaceState["terminalTabs"];
+  toggleTool: (toolId: ToolId) => void;
 }) {
-  const openLogsTool = useCallback(
-    () => setActiveTool("logs"),
-    [setActiveTool],
-  );
+  const openLogsTool = useCallback(() => openTool("logs"), [openTool]);
 
   const activateTool = useCallback(
     (toolId: ToolId) => {
@@ -72,9 +71,9 @@ export function useKerminalShellCommands({
         openSettingsTool();
         return;
       }
-      setActiveTool(activeTool === toolId ? null : toolId);
+      toggleTool(toolId);
     },
-    [activeTool, openSettingsTool, setActiveTool],
+    [openSettingsTool, toggleTool],
   );
 
   const selectRelativeTerminalTab = useCallback(
@@ -96,7 +95,7 @@ export function useKerminalShellCommands({
   );
 
   const focusTerminalWorkspace = useCallback(() => {
-    setActiveTool(null);
+    closeAllTools();
     if (!activeTabId) {
       addTerminalTab();
       return true;
@@ -113,7 +112,7 @@ export function useKerminalShellCommands({
     focusPane,
     focusedPaneId,
     selectTab,
-    setActiveTool,
+    closeAllTools,
   ]);
 
   const runKeybindingAction = useCallback(
@@ -206,17 +205,17 @@ export function useKerminalShellCommands({
       } else if (action === "splitVertical") {
         splitFocusedPane("vertical");
       } else if (action === "openLogs") {
-        setActiveTool("logs");
+        openTool("logs");
       } else if (action === "openAgentLauncher") {
-        setActiveTool("agentLauncher");
+        openTool("agentLauncher");
       } else if (action === "openSystem") {
-        setActiveTool("system");
+        openTool("system");
       } else if (action === "openSftp") {
-        setActiveTool("sftp");
+        openTool("sftp");
       } else if (action === "openPorts") {
-        setActiveTool("ports");
+        openTool("ports");
       } else if (action === "openSnippets") {
-        setActiveTool("snippets");
+        openTool("snippets");
       }
     },
     [
@@ -226,7 +225,7 @@ export function useKerminalShellCommands({
       closeTerminalTab,
       focusedPaneId,
       openSettingsTool,
-      setActiveTool,
+      openTool,
       splitFocusedPane,
     ],
   );

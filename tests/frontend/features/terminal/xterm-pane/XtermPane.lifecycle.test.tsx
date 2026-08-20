@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../../../../../src/features/settings/settingsModel";
@@ -8,6 +10,26 @@ import { TerminalPaneLayout } from "../../../../../src/features/terminal/Termina
 import type { TerminalLayoutNode, TerminalPane } from "../../../../../src/features/workspace/types";
 
 describe("XtermPane sessions and command blocks", () => {
+  it("enables the proposed xterm decoration API required by keyword highlights", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-keyword-highlights"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="Keyword highlights"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    expect(mocks.terminalInstances[0].options).toMatchObject({
+      allowProposedApi: true,
+    });
+  });
+
   it("clears a transient agent startup message when real output arrives", async () => {
     render(
       <XtermPane
