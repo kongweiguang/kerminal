@@ -156,7 +156,7 @@ pub(super) fn build_managed_forward_plan(
     })
 }
 
-/// 构建 OpenSSH 端口转发启动计划。
+/// 构建 OpenSSH 端口转发启动计划；认证分支直接返回清理与密钥输入状态，避免半初始化计划。
 pub fn build_forward_plan(
     host: &RemoteHost,
     executable: String,
@@ -169,10 +169,8 @@ pub fn build_forward_plan(
 
     let route = resolve_forward_route(request)?;
     let mut args = vec!["-N".to_owned(), "-T".to_owned(), "-a".to_owned()];
-    let cleanup_paths;
-    let secret_input_plan;
 
-    if host.ssh_options.jump_hosts.is_empty() {
+    let (cleanup_paths, secret_input_plan) = if host.ssh_options.jump_hosts.is_empty() {
         let auth = resolve_ssh_auth_plan(host, paths)?;
         let batch_mode = auth.method != SshAuthMethod::Password;
 
@@ -190,8 +188,7 @@ pub fn build_forward_plan(
         args.push(route.forward_arg);
         args.push(format!("{}@{}", host.username, host.host));
 
-        cleanup_paths = auth.cleanup_paths;
-        secret_input_plan = auth.secret_input_plan;
+        (auth.cleanup_paths, auth.secret_input_plan)
     } else {
         let paths = paths.ok_or_else(|| {
             AppError::InvalidInput(
@@ -210,10 +207,11 @@ pub fn build_forward_plan(
         args.push(route.forward_arg);
         args.extend(open_ssh.args);
 
-        cleanup_paths = open_ssh.cleanup_paths;
-        secret_input_plan =
-            (!open_ssh.secret_input_plan.entries.is_empty()).then_some(open_ssh.secret_input_plan);
-    }
+        (
+            open_ssh.cleanup_paths,
+            (!open_ssh.secret_input_plan.entries.is_empty()).then_some(open_ssh.secret_input_plan),
+        )
+    };
 
     let command_preview = command_preview(&executable, &args);
 

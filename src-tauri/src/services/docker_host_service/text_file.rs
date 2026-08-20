@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 use super::*;
 
 use crate::models::file_preview::{file_preview_response_encoding, is_binary_file_preview_content};
@@ -154,6 +156,7 @@ pub fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, Stri
     ))
 }
 
+/// 解码容器预览探针；长度校验后按固定双字节分组，避免为已知块宽度维护动态迭代器状态。
 fn decode_preview_probe_hex(value: &str) -> AppResult<Vec<u8>> {
     let value = value.trim();
     if value.is_empty() {
@@ -165,7 +168,9 @@ fn decode_preview_probe_hex(value: &str) -> AppResult<Vec<u8>> {
 
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let digits = std::str::from_utf8(pair)
                 .map_err(|_| AppError::Docker("容器文本文件字节探针不是有效十六进制".to_owned()))?;

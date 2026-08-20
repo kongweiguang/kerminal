@@ -1,4 +1,5 @@
 //! SFTP 目录浏览连接复用、空闲回收与一次重连。
+//! @author kongweiguang
 
 use super::*;
 
@@ -122,6 +123,7 @@ impl SftpBrowserTransportManager {
         });
     }
 
+    /// 在锁内暂时移出连接；失败时拆箱并恢复同一连接，避免丢失可复用的传输状态。
     async fn read_dir_locked(
         transport: &mut Option<SftpBrowserTransport>,
         endpoint: &SftpEndpoint,
@@ -142,7 +144,8 @@ impl SftpBrowserTransportManager {
                 *transport = Some(active);
                 Ok(entries)
             }
-            Err((active, error)) => {
+            Err(failure) => {
+                let (active, error) = *failure;
                 *transport = Some(active);
                 Err(error)
             }
@@ -156,12 +159,13 @@ struct SftpBrowserTransport {
     last_used_at: Instant,
 }
 
+/// 读取目录并始终返还连接所有权；仅装箱冷门错误路径，使成功路径保持零额外分配。
 async fn read_dir_with_browser_transport(
     transport: SftpBrowserTransport,
     endpoint: &SftpEndpoint,
     path: String,
     settings: SftpRuntimeSettings,
-) -> Result<(SftpBrowserTransport, Vec<SftpEntry>), (SftpBrowserTransport, AppError)> {
+) -> Result<(SftpBrowserTransport, Vec<SftpEntry>), Box<(SftpBrowserTransport, AppError)>> {
     let SftpBrowserTransport {
         connection,
         _opened_at,
@@ -176,15 +180,15 @@ async fn read_dir_with_browser_transport(
     };
     let entries = match result {
         Ok(Ok(entries)) => entries,
-        Ok(Err(error)) => return Err((transport, native_sftp_error(error))),
+        Ok(Err(error)) => return Err(Box::new((transport, native_sftp_error(error)))),
         Err(_) => {
-            return Err((
+            return Err(Box::new((
                 transport,
                 AppError::Sftp(format!(
                     "SFTP read_dir 超时（{seconds} 秒）: {}",
                     sftp_host_label(&endpoint.host)
                 )),
-            ));
+            )));
         }
     };
     let mut transport = transport;
