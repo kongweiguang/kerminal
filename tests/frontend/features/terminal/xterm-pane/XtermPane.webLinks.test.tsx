@@ -7,7 +7,7 @@ import { mocks } from "../../../support/terminal/XtermPane.testSupport.tsx";
 import { XtermPane } from "../../../../../src/features/terminal/XtermPane";
 
 describe("XtermPane web links", () => {
-  /** 真实 runtime 必须把官方 WebLinksAddon 注册进每个 xterm 实例。 */
+  /** 真实 runtime 必须把 Kerminal URL provider 注册进每个 xterm 实例。 */
   it("registers one URL link provider for the terminal lifecycle", async () => {
     render(
       <XtermPane

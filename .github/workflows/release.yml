@@ -250,9 +250,8 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 工具栏支持按工具自定义左侧、右侧和底部位置，并可在同一 Tab 中同时打开不同方向的工具面板。
-            - 终端新增可配置的关键词高亮与安全 Web 链接识别，规则和主题变更可在现有会话中即时生效。
-            - 优化背景图下的终端透明渲染、面板尺寸恢复与 SFTP 收起后的请求终态提交，保持会话和工作区状态稳定。
+            - 优化终端 Web 链接渲染：持续输出、滚动和悬停时复用稳定装饰，避免下划线闪烁或叠加。
+            - URL 点击改用 xterm 公共 link provider，继续支持跨行链接，并保持 Windows/Linux Ctrl、macOS Command 加左键打开的安全策略。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

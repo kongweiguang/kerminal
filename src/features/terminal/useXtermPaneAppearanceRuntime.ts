@@ -218,7 +218,7 @@ export function useXtermPaneTerminalOptionsHotUpdate({
 
 /**
  * 主题切换后用终端配色方案的 blue token 重画 URL，窗格隐藏时则立即释放装饰；
- * 独立热更新保证跟随系统主题不会重连 PTY，也不改变 WebLinksAddon 的点击状态。
+ * 独立热更新保证跟随系统主题不会重连 PTY，也不改变 URL provider 的点击状态。
  */
 export function useTerminalWebLinkDecorationHotUpdate(
   controllerRef: RefObject<TerminalWebLinkDecorationController | null>,

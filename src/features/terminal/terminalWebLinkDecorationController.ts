@@ -38,6 +38,13 @@ interface TerminalWebLinkDecorationControllerSnapshot {
   suspended: boolean;
 }
 
+interface TerminalWebLinkDecorationRecord {
+  decoration: IDecoration;
+  marker: IMarker;
+  width: number;
+  x: number;
+}
+
 export interface TerminalWebLinkDecorationController {
   dispose(): void;
   getSnapshot(): TerminalWebLinkDecorationControllerSnapshot;
@@ -219,6 +226,18 @@ export function styleTerminalWebLinkDecorationElement(
 }
 
 /**
+ * 使用 marker 的实时绝对行号生成稳定键；滚动回卷后 marker 会自行迁移，因此不能
+ * 缓存扫描时的旧行号，否则未变化的链接仍会被误判为需要重建。
+ */
+function terminalWebLinkDecorationKey(
+  row: number,
+  x: number,
+  width: number,
+): string {
+  return `${row}:${x}:${width}`;
+}
+
+/**
  * 为单个 xterm 创建 URL 持久装饰 controller；它只扫描 normal buffer 当前视口
  * 上下各一屏，并在 core dispose 前释放订阅、marker 与 decoration，控制长期开销。
  */
@@ -232,8 +251,9 @@ export function createTerminalWebLinkDecorationController({
   let currentVisible = visible;
   let disposed = false;
   let frameId: number | null = null;
-  const decorations: IDecoration[] = [];
-  const markers: IMarker[] = [];
+  let recreateDecorations = false;
+  const decorationRecords: TerminalWebLinkDecorationRecord[] = [];
+  const markers = new Set<IMarker>();
   const snapshot: TerminalWebLinkDecorationControllerSnapshot = {
     capped: false,
     decorationCount: 0,
@@ -244,12 +264,13 @@ export function createTerminalWebLinkDecorationController({
 
   /** 先释放装饰再释放共享 marker，避免 marker 回调访问已销毁的 DOM 装饰。 */
   const clearDecorations = () => {
-    for (const decoration of decorations.splice(0)) {
-      decoration.dispose();
+    for (const record of decorationRecords.splice(0)) {
+      record.decoration.dispose();
     }
-    for (const marker of markers.splice(0)) {
+    for (const marker of markers) {
       marker.dispose();
     }
+    markers.clear();
     snapshot.decorationCount = 0;
   };
 
@@ -265,8 +286,9 @@ export function createTerminalWebLinkDecorationController({
   };
 
   /**
-   * URL 识别和 WebLinksAddon 共用正则，视觉换行再拆成物理 cell 段；alternate
-   * buffer 不支持 proposed decoration，切换进去时主动清空而不是保留陈旧覆盖层。
+   * URL 识别和点击 provider 共用正则，视觉换行再拆成物理 cell 段；普通输出只对
+   * 位置发生变化的装饰做增删，避免 TUI 高频局部重绘让稳定 URL 的下划线闪烁。
+   * alternate buffer 不支持 proposed decoration，切换进去时仍主动清空。
    */
   const scanVisibleBuffer = () => {
     if (disposed) {
@@ -292,11 +314,33 @@ export function createTerminalWebLinkDecorationController({
       startRow,
       endRow,
     );
-    clearDecorations();
     snapshot.scanCount += 1;
     snapshot.capped = false;
 
+    const existingByKey = new Map<string, TerminalWebLinkDecorationRecord>();
     const markerByRow = new Map<number, IMarker>();
+    for (const marker of markers) {
+      if (!marker.isDisposed && marker.line >= 0 && !markerByRow.has(marker.line)) {
+        markerByRow.set(marker.line, marker);
+      }
+    }
+    if (!recreateDecorations) {
+      for (const record of decorationRecords) {
+        if (record.marker.isDisposed || record.decoration.isDisposed) {
+          continue;
+        }
+        existingByKey.set(
+          terminalWebLinkDecorationKey(
+            record.marker.line,
+            record.x,
+            record.width,
+          ),
+          record,
+        );
+      }
+    }
+
+    const nextRecords: TerminalWebLinkDecorationRecord[] = [];
     const cursorAbsoluteRow = normalBuffer.baseY + normalBuffer.cursorY;
     for (const logicalLine of logicalLines) {
       const ranges = findTerminalWebLinkRanges(logicalLine.text);
@@ -307,10 +351,22 @@ export function createTerminalWebLinkDecorationController({
           range.end,
         );
         for (const segment of segments) {
-          if (decorations.length >= TERMINAL_WEB_LINK_DECORATION_LIMIT) {
+          if (nextRecords.length >= TERMINAL_WEB_LINK_DECORATION_LIMIT) {
             snapshot.capped = true;
             break;
           }
+          const key = terminalWebLinkDecorationKey(
+            segment.row,
+            segment.x,
+            segment.width,
+          );
+          const existing = existingByKey.get(key);
+          if (existing) {
+            existingByKey.delete(key);
+            nextRecords.push(existing);
+            continue;
+          }
+
           let marker = markerByRow.get(segment.row);
           if (!marker || marker.isDisposed) {
             marker = terminal.registerMarker(segment.row - cursorAbsoluteRow);
@@ -318,7 +374,7 @@ export function createTerminalWebLinkDecorationController({
               continue;
             }
             markerByRow.set(segment.row, marker);
-            markers.push(marker);
+            markers.add(marker);
           }
           const decoration = terminal.registerDecoration?.({
             foregroundColor: currentForegroundColor,
@@ -336,7 +392,12 @@ export function createTerminalWebLinkDecorationController({
               currentForegroundColor,
             ),
           );
-          decorations.push(decoration);
+          nextRecords.push({
+            decoration,
+            marker,
+            width: segment.width,
+            x: segment.x,
+          });
         }
         if (snapshot.capped) {
           break;
@@ -346,10 +407,28 @@ export function createTerminalWebLinkDecorationController({
         break;
       }
     }
-    snapshot.decorationCount = decorations.length;
+
+    const retainedRecords = new Set(nextRecords);
+    for (const record of decorationRecords) {
+      if (!retainedRecords.has(record)) {
+        record.decoration.dispose();
+      }
+    }
+    decorationRecords.splice(0, decorationRecords.length, ...nextRecords);
+
+    const retainedMarkers = new Set(nextRecords.map((record) => record.marker));
+    for (const marker of markers) {
+      if (!retainedMarkers.has(marker)) {
+        marker.dispose();
+        markers.delete(marker);
+      }
+    }
+
+    recreateDecorations = false;
+    snapshot.decorationCount = decorationRecords.length;
     snapshot.capped =
       snapshot.capped ||
-      decorations.length >= TERMINAL_WEB_LINK_DECORATION_LIMIT;
+      decorationRecords.length >= TERMINAL_WEB_LINK_DECORATION_LIMIT;
   };
 
   const subscriptions: IDisposable[] = [
@@ -388,7 +467,7 @@ export function createTerminalWebLinkDecorationController({
     rescan() {
       scheduleScan();
     },
-    /** 主题和可见性热更新只重画 decoration，不重建终端或 WebLinksAddon。 */
+    /** 主题和可见性热更新只重画 decoration，不重建终端或点击 provider。 */
     update(options) {
       if (disposed) {
         return;
@@ -397,6 +476,7 @@ export function createTerminalWebLinkDecorationController({
       const visibilityChanged = currentVisible !== options.visible;
       currentForegroundColor = options.foregroundColor;
       currentVisible = options.visible;
+      recreateDecorations = recreateDecorations || colorChanged;
       if (!currentVisible) {
         clearDecorations();
         snapshot.suspended = true;

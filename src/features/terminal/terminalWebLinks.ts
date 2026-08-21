@@ -1,11 +1,21 @@
 // @author kongweiguang
 
-import { WebLinksAddon } from "@xterm/addon-web-links";
+import type {
+  IDisposable,
+  ILink,
+  ILinkProvider,
+  ITerminalAddon,
+  Terminal as XtermTerminal,
+} from "@xterm/xterm";
 import {
   resolveDesktopPlatform,
   type DesktopPlatform,
 } from "../../lib/desktopPlatform";
 import { desktopRuntime } from "../../lib/desktopRuntimeApi";
+import {
+  buildTerminalBufferLogicalLines,
+  terminalDecorationSegmentsForTextRange,
+} from "./terminalBufferDecorationModel";
 
 export type TerminalWebLinkOpenResult = "ignored" | "opened" | "rejected";
 
@@ -16,8 +26,8 @@ export interface TerminalWebLinkRange {
 }
 
 /**
- * 激活和持久着色必须使用同一个非 global 正则；WebLinksAddon 会自行追加 global
- * flag，而装饰 controller 会按需克隆，避免两套识别规则造成“看得见但点不到”。
+ * 激活和持久着色必须使用同一个非 global 正则；provider 与装饰 controller 都会
+ * 按需克隆，避免两套识别规则造成“看得见但点不到”。
  */
 const TERMINAL_WEB_LINK_REGEX =
   /https?:\/\/[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~\x5b\x5d`()<>]/i;
@@ -106,18 +116,99 @@ export async function openTerminalWebLink(
 }
 
 /**
- * 使用 xterm 官方 URL 解析器覆盖 ANSI、宽字符与自然换行场景；这里仅封装激活
- * 策略和错误出口，addon 的生命周期仍交给 xterm 统一释放。
+ * 将 xterm 请求的物理行扩展为完整逻辑行，再映射为原生 link provider 范围；
+ * 持久 decoration 已经负责下划线，因此 hover 只保留指针反馈，避免叠出第二条线。
+ */
+function provideTerminalWebLinks(
+  terminal: XtermTerminal,
+  bufferLineNumber: number,
+  options: TerminalWebLinkActivationOptions = {},
+): ILink[] | undefined {
+  const row = bufferLineNumber - 1;
+  const buffer = terminal.buffer.active;
+  if (row < 0 || row >= buffer.length) {
+    return undefined;
+  }
+  const logicalLine = buildTerminalBufferLogicalLines(
+    buffer,
+    terminal.cols,
+    row,
+    row + 1,
+  ).find((line) => line.startRow <= row && line.endRow >= row);
+  if (!logicalLine) {
+    return undefined;
+  }
+
+  const links: ILink[] = [];
+  for (const match of findTerminalWebLinkRanges(logicalLine.text)) {
+    if (!normalizeTerminalWebUrl(match.url)) {
+      continue;
+    }
+    const segments = terminalDecorationSegmentsForTextRange(
+      logicalLine.cells,
+      match.start,
+      match.end,
+    );
+    const first = segments[0];
+    const last = segments[segments.length - 1];
+    if (!first || !last) {
+      continue;
+    }
+    links.push({
+      activate: (event, candidate) => {
+        void openTerminalWebLink(event, candidate, options).catch((error) => {
+          options.onOpenError?.(error);
+        });
+      },
+      decorations: { pointerCursor: true, underline: false },
+      range: {
+        end: { x: last.x + last.width, y: last.row + 1 },
+        start: { x: first.x + 1, y: first.row + 1 },
+      },
+      text: match.url,
+    });
+  }
+  return links.length > 0 ? links : undefined;
+}
+
+/**
+ * 使用 xterm 公共 ILinkProvider API 管理 URL 命中和生命周期；不依赖 addon 内部实现，
+ * 从而可以显式声明 hover 不绘制下划线，同时保持 Ctrl/Command 激活策略不变。
+ */
+class TerminalWebLinksAddon implements ITerminalAddon {
+  private registration: IDisposable | null = null;
+
+  constructor(private readonly options: TerminalWebLinkActivationOptions) {}
+
+  /** 每个 xterm 实例只登记一个 provider，重复激活时先释放旧登记以避免双重命中。 */
+  activate(terminal: XtermTerminal): void {
+    this.registration?.dispose();
+    const provider: ILinkProvider = {
+      provideLinks: (bufferLineNumber, callback) =>
+        callback(
+          provideTerminalWebLinks(
+            terminal,
+            bufferLineNumber,
+            this.options,
+          ),
+        ),
+    };
+    this.registration = terminal.registerLinkProvider(provider);
+  }
+
+  /** 释放 provider 登记，确保终端销毁后不再保留 buffer 与错误回调。 */
+  dispose(): void {
+    this.registration?.dispose();
+    this.registration = null;
+  }
+}
+
+/**
+ * 创建遵循 Kerminal 持久下划线视觉契约的可点击 URL addon；具体 provider 在 xterm
+ * 激活阶段登记，以便继续由 terminal addon store 统一管理释放顺序。
  */
 export function createTerminalWebLinksAddon(
   options: TerminalWebLinkActivationOptions = {},
-): WebLinksAddon {
-  return new WebLinksAddon(
-    (event, candidate) => {
-      void openTerminalWebLink(event, candidate, options).catch((error) => {
-        options.onOpenError?.(error);
-      });
-    },
-    { urlRegex: TERMINAL_WEB_LINK_REGEX },
-  );
+): ITerminalAddon {
+  return new TerminalWebLinksAddon(options);
 }

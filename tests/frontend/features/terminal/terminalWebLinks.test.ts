@@ -1,7 +1,16 @@
 // @author kongweiguang
 
+import type {
+  IBuffer,
+  IBufferCell,
+  IBufferLine,
+  ILink,
+  ILinkProvider,
+  Terminal as XtermTerminal,
+} from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createTerminalWebLinksAddon,
   findTerminalWebLinkRanges,
   normalizeTerminalWebUrl,
   openTerminalWebLink,
@@ -21,8 +30,46 @@ function mouseEvent(
   };
 }
 
+/** 构造 provider 范围映射所需的单宽物理行。 */
+function textLine(text: string, isWrapped = false): IBufferLine {
+  const cells = Array.from(text, (chars) =>
+    ({
+      getChars: () => chars,
+      getWidth: () => 1,
+    }) as IBufferCell,
+  );
+  return {
+    getCell: (index: number) => cells[index],
+    isWrapped,
+    length: cells.length,
+  } as IBufferLine;
+}
+
+/** 构造只实现公开 link provider API 的 xterm，便于检查 hover 装饰与释放。 */
+function linkProviderTerminal(lines: IBufferLine[], cols = 80) {
+  const buffer = {
+    getLine: (index: number) => lines[index],
+    length: lines.length,
+  } as IBuffer;
+  let provider: ILinkProvider | null = null;
+  let registrationDisposed = false;
+  const terminal = {
+    buffer: { active: buffer },
+    cols,
+    registerLinkProvider(candidate: ILinkProvider) {
+      provider = candidate;
+      return { dispose: () => (registrationDisposed = true) };
+    },
+  } as unknown as XtermTerminal;
+  return {
+    getProvider: () => provider,
+    isRegistrationDisposed: () => registrationDisposed,
+    terminal,
+  };
+}
+
 describe("terminalWebLinks", () => {
-  /** 持久着色和 WebLinksAddon 共用的范围规则应忽略尾随标点并支持大小写 scheme。 */
+  /** 持久着色和点击 provider 共用的范围规则应忽略尾随标点并支持大小写 scheme。 */
   it("finds the exact clickable ranges used by URL decorations", () => {
     expect(
       findTerminalWebLinkRanges(
@@ -119,5 +166,45 @@ describe("terminalWebLinks", () => {
 
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  /** 持久下划线存在时 provider 只增加 pointer，跨行范围和原激活策略保持不变。 */
+  it("keeps hover underline disabled for persistent wrapped URL decorations", async () => {
+    const fake = linkProviderTerminal([
+      textLine("Docs https://example."),
+      textLine("com/path", true),
+    ]);
+    const openUrl = vi.fn().mockResolvedValue(undefined);
+    const addon = createTerminalWebLinksAddon({
+      openUrl,
+      platform: "windows",
+    });
+    addon.activate(fake.terminal);
+
+    let links: ILink[] | undefined;
+    fake.getProvider()?.provideLinks(1, (provided) => (links = provided));
+    expect(links).toHaveLength(1);
+    expect(links?.[0]).toMatchObject({
+      decorations: { pointerCursor: true, underline: false },
+      range: {
+        end: { x: 8, y: 2 },
+        start: { x: 6, y: 1 },
+      },
+      text: "https://example.com/path",
+    });
+
+    const event = new MouseEvent("click", {
+      button: 0,
+      cancelable: true,
+      ctrlKey: true,
+    });
+    const link = links?.[0];
+    link?.activate(event, link.text);
+    await vi.waitFor(() =>
+      expect(openUrl).toHaveBeenCalledWith("https://example.com/path"),
+    );
+
+    addon.dispose();
+    expect(fake.isRegistrationDisposed()).toBe(true);
   });
 });

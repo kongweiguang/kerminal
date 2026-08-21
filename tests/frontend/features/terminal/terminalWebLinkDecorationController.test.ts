@@ -252,6 +252,8 @@ describe("terminalWebLinkDecorationController lifecycle", () => {
     fake.decorations[0]?.render(element);
     expect(element.style.pointerEvents).toBe("none");
     expect(element.style.borderBottomColor).toBe("#60a5fa");
+    const stableDecorations = [...fake.decorations];
+    const stableMarkers = [...fake.markers];
 
     fake.writeParsed.emit();
     fake.scroll.emit(0);
@@ -259,12 +261,18 @@ describe("terminalWebLinkDecorationController lifecycle", () => {
     expect(scheduler.size).toBe(1);
     scheduler.flush();
     expect(controller.getSnapshot().scanCount).toBe(2);
+    expect(fake.decorations).toEqual(stableDecorations);
+    expect(fake.markers).toEqual(stableMarkers);
+    expect(stableDecorations.every((record) => !record.disposed)).toBe(true);
+    expect(stableMarkers.every((marker) => !marker.disposed)).toBe(true);
 
     controller.update({ foregroundColor: "#0a84ff", visible: true });
     scheduler.flush();
     expect(
       fake.decorations[fake.decorations.length - 1]?.options.foregroundColor,
     ).toBe("#0a84ff");
+    expect(stableDecorations.every((record) => record.disposed)).toBe(true);
+    expect(stableMarkers.every((marker) => !marker.disposed)).toBe(true);
 
     fake.namespace.active = fake.alternate;
     fake.bufferChange.emit(fake.alternate);
