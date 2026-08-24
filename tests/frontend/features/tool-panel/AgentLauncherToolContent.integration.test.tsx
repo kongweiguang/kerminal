@@ -2,10 +2,13 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExternalAgentId, ExternalAgentWorkspaceStatus } from "../../../../src/lib/agentLauncherApi";import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";
+import type { ExternalAgentId } from "../../../../src/lib/agentLauncherApi";
+import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";
 import { tools } from "../../../../src/features/workspace/workspaceData";
 import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";
 import { ToolPanel } from "../../../../src/features/tool-panel/ToolPanel";
+import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
+import { launchAgent, workspaceStatus } from "./agentLauncherTestSupport";
 
 const apiMocks = vi.hoisted(() => ({
   archiveAgentSession: vi.fn(),
@@ -34,6 +37,15 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   }) => record.session.agentId ?? record.session.agent_id,
   agentSessionRecordId: (record: { session: { agentSessionId?: string; agent_session_id?: string } }) =>
     record.session.agentSessionId ?? record.session.agent_session_id,
+  agentSessionRecordLaunchCommand: (record: {
+    session: { launch: { commandLabel?: string; command_label?: string; shell: string; args: string[] } };
+  }) =>
+    record.session.launch.commandLabel ??
+    record.session.launch.command_label ??
+    [record.session.launch.shell, ...record.session.launch.args].join(" ").trim(),
+  agentSessionRecordLauncherKey: (record: {
+    session: { launcherKey?: string; launcher_key?: string };
+  }) => record.session.launcherKey ?? record.session.launcher_key,
   agentSessionRecordStatus: (record: { session: { status?: string } }) =>
     record.session.status ?? "active",
   agentSessionRecordTarget: (record: { session: { target?: unknown } }) =>
@@ -154,14 +166,21 @@ describe("AgentLauncherToolContent", () => {
     apiMocks.createAgentSession.mockImplementation(
       async ({
         agentId,
+        launcherKey,
+        scope,
         target,
+        title,
       }: {
         agentId: string;
+        launcherKey?: string;
+        scope?: unknown;
         target?: unknown;
+        title?: string;
       }) => ({
         session: {
           agentId,
           agentSessionId: `ags-${agentId}`,
+          launcherKey,
           launch: {
             args: [],
             commandLabel: agentId,
@@ -169,8 +188,17 @@ describe("AgentLauncherToolContent", () => {
             shell: agentId,
           },
           sessionRoot: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
+          scope,
           target,
-          title: agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex",
+          title:
+            title ??
+            (agentId === "claude"
+              ? "Claude"
+              : agentId === "pi"
+                ? "PI Agent"
+                : agentId === "custom"
+                  ? "Custom"
+                  : "Codex"),
           workspaceRoot: "C:/Users/me/.kerminal",
         },
       }),
@@ -181,10 +209,16 @@ describe("AgentLauncherToolContent", () => {
         agentSessionId: string;
         customCommand?: string;
       }) => {
-        const command = request.customCommand ?? request.agentId;
+        const command =
+          request.customCommand ??
+          (request.agentId === "pi"
+            ? "pi --approve --mcp-config .mcp.json"
+            : request.agentId);
         const title =
           request.agentId === "claude"
             ? "Claude"
+            : request.agentId === "pi"
+              ? "PI Agent"
             : request.agentId === "custom"
               ? "Custom"
               : "Codex";
@@ -224,7 +258,7 @@ describe("AgentLauncherToolContent", () => {
       terminalTabs: [tabA, tabB],
     });
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -242,7 +276,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(screen.queryByTestId("agent-xterm")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Codex" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "使用 Codex 进入" })).toBeInTheDocument();
   });
 
   it("sends a desktop notification when an enabled agent terminal finishes", async () => {
@@ -258,7 +292,7 @@ describe("AgentLauncherToolContent", () => {
       },
     });
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
     });
@@ -316,9 +350,11 @@ describe("AgentLauncherToolContent", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Claude" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Custom Agent" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "选择 Agent" })).toHaveAttribute(
+      "aria-valuetext",
+      "Codex",
+    );
+    expect(screen.getByRole("button", { name: "使用 Codex 进入" })).toBeVisible();
   });
 
   it("keeps a launched agent terminal while switching right-panel tools", async () => {
@@ -332,7 +368,7 @@ describe("AgentLauncherToolContent", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
 
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(1);
@@ -393,27 +429,39 @@ describe("AgentLauncherToolContent", () => {
       title: "Custom Agent",
     }));
 
-    renderAgentLauncher();
+    renderAgentLauncher({
+      settings: {
+        ...defaultAppSettings,
+        agentLauncher: {
+          customAgents: [
+            {
+              command: "kimi --fast",
+              id: "11111111-1111-4111-8111-111111111111",
+              name: "Kimi",
+            },
+          ],
+          selectedAgentKey: "builtin:codex",
+        },
+      },
+    });
 
-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
-    await user.type(screen.getByRole("textbox", { name: "Custom agent command" }), "kimi --fast");
-    await user.click(
-      screen.getByRole("button", { name: "Open custom agent command" }),
-    );
+    await launchAgent(user, "Kimi");
 
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
+        launcherKey: "custom:11111111-1111-4111-8111-111111111111",
         scope: {
           kind: "tab",
           tabId: "tab-main",
         },
-        title: "Custom · 当前 Tab · 1 个终端 · tab-main",
+        title: "Kimi",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "custom",
         agentSessionId: "ags-custom",
         customCommand: "kimi --fast",
+        resumeProviderSession: false,
       });
     });
     expect(await screen.findByTestId("agent-xterm")).toHaveAttribute("data-shell", "pwsh.exe");
@@ -426,15 +474,193 @@ describe("AgentLauncherToolContent", () => {
     );
   });
 
-  it("keeps the custom launch submit disabled for an empty command", async () => {
+  it("launches PI as a native built-in Agent", async () => {
+    const user = userEvent.setup();
+    renderAgentLauncher();
+
+    await launchAgent(user, "PI Agent");
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "pi",
+        launcherKey: "builtin:pi",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "PI Agent · 当前 Tab · 1 个终端 · tab-main",
+      });
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "pi",
+        agentSessionId: "ags-pi",
+        resumeProviderSession: false,
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toHaveTextContent(
+      "PI Agent",
+    );
+    expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
+      "pi --approve --mcp-config .mcp.json",
+    );
+  });
+
+  it("launches a saved Custom definition and snapshots its command", async () => {
+    const user = userEvent.setup();
+    const settings = {
+      ...defaultAppSettings,
+      agentLauncher: {
+        customAgents: [
+          {
+            command: "custom-agent --profile local",
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "Secret Agent",
+          },
+        ],
+        selectedAgentKey: "builtin:codex",
+      },
+    };
+    renderAgentLauncher({ settings });
+
+    await launchAgent(user, "Secret Agent");
+
+    await waitFor(() => {
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "custom",
+        agentSessionId: "ags-custom",
+        customCommand: "custom-agent --profile local",
+        resumeProviderSession: false,
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toBeInTheDocument();
+    expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+      agentId: "custom",
+      launcherKey: "custom:11111111-1111-4111-8111-111111111111",
+      scope: { kind: "tab", tabId: "tab-main" },
+      title: "Secret Agent",
+    });
+    expect(apiMocks.updateAgentSession).toHaveBeenCalledWith(
+      "ags-custom",
+      expect.objectContaining({
+        launch: expect.objectContaining({
+          commandLabel: "custom-agent --profile local",
+        }),
+      }),
+    );
+  });
+
+  it("creates a fresh dropdown Custom session from the edited definition", async () => {
+    const user = userEvent.setup();
+    const launcherKey = "custom:11111111-1111-4111-8111-111111111111";
+    apiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentId: "custom",
+            agentSessionId: "ags-old-pi",
+            launcherKey,
+            launch: {
+              args: ["--old"],
+              commandLabel: "pi --old",
+              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-old-pi",
+              shell: "pi",
+            },
+            scope: { kind: "tab", tabId: "tab-main" },
+            status: "active",
+            title: "Old PI",
+          },
+        },
+      ],
+    });
+    renderAgentLauncher({
+      settings: {
+        ...defaultAppSettings,
+        agentLauncher: {
+          customAgents: [
+            {
+              command: "pi --new",
+              id: "11111111-1111-4111-8111-111111111111",
+              name: "New PI",
+            },
+          ],
+          selectedAgentKey: launcherKey,
+        },
+      },
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "使用 New PI 进入" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "新会话" }));
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "custom",
+        launcherKey,
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "New PI",
+      });
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "custom",
+        agentSessionId: "ags-custom",
+        customCommand: "pi --new",
+        resumeProviderSession: false,
+      });
+    });
+  });
+
+  it("creates a same-Agent session from a deleted Custom definition snapshot", async () => {
+    const user = userEvent.setup();
+    apiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentId: "custom",
+            agentSessionId: "ags-deleted-pi",
+            launcherKey: "custom:22222222-2222-4222-8222-222222222222",
+            launch: {
+              args: ["--deleted"],
+              commandLabel: "pi --deleted",
+              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-deleted-pi",
+              shell: "pi",
+            },
+            scope: { kind: "tab", tabId: "tab-main" },
+            status: "active",
+            title: "Deleted PI",
+          },
+        },
+      ],
+    });
+
+    renderAgentLauncher();
+    await user.click(
+      await screen.findByRole("button", { name: "同 Agent 新会话" }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "custom",
+        launcherKey: "custom:22222222-2222-4222-8222-222222222222",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Deleted PI",
+      });
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "custom",
+        agentSessionId: "ags-custom",
+        customCommand: "pi --deleted",
+        resumeProviderSession: false,
+      });
+    });
+  });
+
+  it("keeps custom save disabled until the required fields are complete", async () => {
     const user = userEvent.setup();
 
     renderAgentLauncher();
 
-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
+    await user.click(screen.getByRole("combobox", { name: "选择 Agent" }));
+    await user.click(screen.getByRole("button", { name: "添加自定义 Agent" }));
 
     expect(
-      screen.getByRole("button", { name: "Open custom agent command" }),
+      screen.getByRole("button", { name: "保存并选择" }),
     ).toBeDisabled();
 
     await user.keyboard("{Enter}");
@@ -506,6 +732,7 @@ function renderAgentLauncher(
   return render(
     <AgentLauncherToolContent
       activeTab={terminalTab("tab-main")}
+      onConfirmedSettingsChange={async (nextSettings) => nextSettings}
       {...props}
     />,
   );
@@ -518,41 +745,4 @@ function terminalTab(id: string) {
     machineId: "local",
     title: id,
   } as never;
-}
-
-function workspaceStatus(): ExternalAgentWorkspaceStatus {
-  return {
-    agents: {
-      claude: {
-        cliCommand: "claude",
-        configPath: "C:/Users/me/.kerminal/.mcp.json",
-        configReady: false,
-        id: "claude",
-        installed: true,
-        statusDetail: "Claude CLI detected. MCP config needs refresh.",
-        title: "Claude",
-      },
-      codex: {
-        cliCommand: "codex",
-        configPath: "C:/Users/me/.kerminal/.codex/config.toml",
-        configReady: true,
-        id: "codex",
-        installed: true,
-        statusDetail: "Codex CLI detected.",
-        title: "Codex",
-      },
-      custom: {
-        cliCommand: "",
-        configPath: "",
-        configReady: false,
-        id: "custom",
-        installed: false,
-        statusDetail: "Configure a custom agent command first.",
-        title: "Custom",
-      },
-    },
-    mcpEndpoint: "http://127.0.0.1:37657/mcp",
-    mcpServerRunning: true,
-    workspaceDir: "C:/Users/me/.kerminal",
-  };
 }

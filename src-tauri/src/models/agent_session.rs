@@ -8,6 +8,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
+#[path = "agent_session/agent_id.rs"]
+mod agent_id;
+#[path = "agent_session/launcher_key.rs"]
+mod launcher_key;
+#[path = "agent_session/validation.rs"]
+mod validation;
+
+pub use self::agent_id::{AgentId, PI_AGENT_LAUNCH_COMMAND, PI_AGENT_RESUME_COMMAND};
+pub use self::launcher_key::normalize_agent_launcher_key;
+use self::validation::{is_valid_agent_session_id, normalize_optional_text};
+
 /// Agent session 文件 schema 版本。
 pub const AGENT_SESSION_SCHEMA_VERSION: u32 = 1;
 
@@ -45,18 +56,6 @@ impl fmt::Display for AgentSessionId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
-}
-
-/// 外部 Agent 类型。
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum AgentId {
-    /// OpenAI Codex CLI。
-    Codex,
-    /// Claude Code CLI。
-    Claude,
-    /// 用户自定义命令。
-    Custom,
 }
 
 /// Agent 会话生命周期状态。
@@ -248,6 +247,9 @@ pub struct AgentSession {
     pub agent_session_id: AgentSessionId,
     /// 外部 Agent 类型。
     pub agent_id: AgentId,
+    /// 选择器中的稳定启动身份；旧 session 缺失时由调用方按 agent/命令快照推导。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_key: Option<String>,
     /// 用户可见标题。
     pub title: String,
     /// 创建时间，使用调用方提供的稳定字符串。
@@ -287,6 +289,7 @@ impl AgentSession {
             )));
         }
         AgentSessionId::new(self.agent_session_id.as_str().to_owned())?;
+        normalize_agent_launcher_key(self.agent_id, self.launcher_key.clone())?;
         if self.title.trim().is_empty() {
             return Err(AppError::InvalidInput(
                 "Agent session title 不能为空".to_owned(),
@@ -315,6 +318,8 @@ pub enum AgentProvider {
     Codex,
     /// Claude Code CLI。
     Claude,
+    /// PI coding agent CLI。
+    Pi,
     /// 用户自定义命令。
     Custom,
 }
@@ -324,6 +329,7 @@ impl From<AgentId> for AgentProvider {
         match agent_id {
             AgentId::Codex => Self::Codex,
             AgentId::Claude => Self::Claude,
+            AgentId::Pi => Self::Pi,
             AgentId::Custom => Self::Custom,
         }
     }
@@ -360,6 +366,9 @@ impl AgentProviderSession {
             // latest conversation created in this Kerminal session instead of opening
             // a new transcript after an app restart or an explicit "继续上次" action.
             AgentProvider::Claude => (true, Some("claude --continue".to_owned())),
+            // PI discovers the session-scoped MCP adapter from the generated config and
+            // scopes `--continue` by the stable session cwd, matching its native CLI model.
+            AgentProvider::Pi => (true, Some(PI_AGENT_RESUME_COMMAND.to_owned())),
             AgentProvider::Custom => (false, None),
         };
         Self {
@@ -865,22 +874,4 @@ pub struct AgentSessionUpdateRequest {
     /// 更新 MCP endpoint context 文件。
     #[serde(default)]
     pub mcp_endpoint: Option<AgentMcpEndpointContext>,
-}
-
-fn is_valid_agent_session_id(value: &str) -> bool {
-    let value = value.trim();
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-}
-
-fn normalize_optional_text(value: String) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_owned())
-    }
 }

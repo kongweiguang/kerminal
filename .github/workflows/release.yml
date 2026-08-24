@@ -250,8 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 优化终端 Web 链接渲染：持续输出、滚动和悬停时复用稳定装饰，避免下划线闪烁或叠加。
-            - URL 点击改用 xterm 公共 link provider，继续支持跨行链接，并保持 Windows/Linux Ctrl、macOS Command 加左键打开的安全策略。
+            - Agent Launcher 新增内置 PI Agent，并通过会话级 `.mcp.json` 接入 Kerminal MCP，支持新建和继续受管会话。
+            - 新增可持久化的自定义 Agent 管理与专用选择器；名称、命令和选择写入 `settings.toml`，保存失败会回滚到已确认状态。
+            - 完善 Agent 会话快照与历史恢复：多个自定义 Agent 按稳定 key 隔离，定义编辑或删除后仍可按创建时快照继续历史会话。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

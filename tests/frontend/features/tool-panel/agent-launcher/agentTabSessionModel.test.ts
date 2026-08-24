@@ -149,16 +149,36 @@ describe("agentTabSessionModel", () => {
     const model = state([tabACodex, tabBCodex, tabAClaude], {});
 
     expect(
-      findRunningSessionForTabAgent(model, "tab-a", "codex", "default"),
+      findRunningSessionForTabAgent(
+        model,
+        "tab-a",
+        { agentId: "codex", launcherKey: "builtin:codex" },
+        "default",
+      ),
     ).toBe(tabACodex);
     expect(
-      findRunningSessionForTabAgent(model, "tab-b", "codex", "default"),
+      findRunningSessionForTabAgent(
+        model,
+        "tab-b",
+        { agentId: "codex", launcherKey: "builtin:codex" },
+        "default",
+      ),
     ).toBe(tabBCodex);
     expect(
-      findRunningSessionForTabAgent(model, "tab-a", "claude", "default"),
+      findRunningSessionForTabAgent(
+        model,
+        "tab-a",
+        { agentId: "claude", launcherKey: "builtin:claude" },
+        "default",
+      ),
     ).toBe(tabAClaude);
     expect(
-      findRunningSessionForTabAgent(model, "tab-a", "codex", "skipPermissions"),
+      findRunningSessionForTabAgent(
+        model,
+        "tab-a",
+        { agentId: "codex", launcherKey: "builtin:codex" },
+        "skipPermissions",
+      ),
     ).toBeUndefined();
   });
 
@@ -174,7 +194,12 @@ describe("agentTabSessionModel", () => {
 
     expect(visibleAgentSessionForTab(model, undefined)).toBe(unbound);
     expect(
-      findRunningSessionForTabAgent(model, undefined, "codex", "default"),
+      findRunningSessionForTabAgent(
+        model,
+        undefined,
+        { agentId: "codex", launcherKey: "builtin:codex" },
+        "default",
+      ),
     ).toBe(unbound);
   });
 
@@ -197,20 +222,55 @@ describe("agentTabSessionModel", () => {
       findRunningSessionForTabAgent(
         model,
         "tab-a",
-        "custom",
+        {
+          agentId: "custom",
+          customCommand: "qwen --fast",
+          launcherKey: "custom:11111111-1111-4111-8111-111111111111",
+        },
         "default",
-        "qwen --fast",
       ),
     ).toBe(tabACustom);
     expect(
       findRunningSessionForTabAgent(
         model,
         "tab-a",
-        "custom",
+        {
+          agentId: "custom",
+          customCommand: "qwen --slow",
+          launcherKey: "custom:11111111-1111-4111-8111-111111111111",
+        },
         "default",
-        "qwen --slow",
       ),
     ).toBeUndefined();
+  });
+
+  it("does not merge running Custom sessions that have different stable keys", () => {
+    const first = sidebarSession({
+      agentId: "custom",
+      agentSessionId: "ags-custom-first",
+      customCommand: "pi",
+      launcherKey: "custom:11111111-1111-4111-8111-111111111111",
+    });
+    const second = sidebarSession({
+      agentId: "custom",
+      agentSessionId: "ags-custom-second",
+      customCommand: "pi",
+      launcherKey: "custom:22222222-2222-4222-8222-222222222222",
+    });
+    const model = state([first, second], {});
+
+    expect(
+      findRunningSessionForTabAgent(
+        model,
+        "tab-a",
+        {
+          agentId: "custom",
+          customCommand: "pi",
+          launcherKey: "custom:22222222-2222-4222-8222-222222222222",
+        },
+        "default",
+      ),
+    ).toBe(second);
   });
 
   it("plans cleanup for sessions whose tabs were removed", () => {

@@ -12,6 +12,10 @@ import {
 
 describe("settingsModel", () => {
   it("defaults terminal rendering to CPU without rewriting explicit modes", () => {
+    expect(defaultAppSettings.agentLauncher).toEqual({
+      customAgents: [],
+      selectedAgentKey: "builtin:codex",
+    });
     expect(defaultAppSettings.interfaceDensity).toBe("compact");
     expect(normalizeAppSettings().interfaceDensity).toBe("compact");
     expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
@@ -45,6 +49,88 @@ describe("settingsModel", () => {
 
       expect(settings.terminal.rendererType).toBe(rendererType);
     }
+  });
+
+  it("isolates invalid Agent definitions and restores a valid selected key", () => {
+    const validId = "11111111-1111-4111-8111-111111111111";
+    const settings = normalizeAppSettings({
+      agentLauncher: {
+        customAgents: [
+          { command: " pi ", id: validId, name: " PI " },
+          {
+            command: "other",
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "pi",
+          },
+          { command: "broken", id: "not-a-uuid", name: "Broken" },
+        ],
+        selectedAgentKey: "custom:missing",
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(settings.agentLauncher).toEqual({
+      customAgents: [{ command: "pi", id: validId, name: "PI" }],
+      selectedAgentKey: "builtin:codex",
+    });
+  });
+
+  it("preserves the native PI launcher selection", () => {
+    expect(
+      normalizeAppSettings({
+        agentLauncher: {
+          customAgents: [],
+          selectedAgentKey: "builtin:pi",
+        },
+      }).agentLauncher.selectedAgentKey,
+    ).toBe("builtin:pi");
+  });
+
+  it("normalizes Agent limits with Unicode code point counts", () => {
+    const acceptedId = "33333333-3333-4333-8333-333333333333";
+    const rejectedId = "44444444-4444-4444-8444-444444444444";
+    const settings = normalizeAppSettings({
+      agentLauncher: {
+        customAgents: [
+          { command: "pi", id: acceptedId, name: "😀".repeat(64) },
+          { command: "pi", id: rejectedId, name: "😀".repeat(65) },
+        ],
+        selectedAgentKey: `custom:${acceptedId}`,
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(settings.agentLauncher.customAgents).toHaveLength(1);
+    expect(settings.agentLauncher.selectedAgentKey).toBe(`custom:${acceptedId}`);
+  });
+
+  it("accepts every canonical UUID shape supported by Rust Uuid parsing", () => {
+    const nilId = "00000000-0000-0000-0000-000000000000";
+    const settings = normalizeAppSettings({
+      agentLauncher: {
+        customAgents: [{ command: "pi", id: nilId, name: "Nil UUID" }],
+        selectedAgentKey: `custom:${nilId}`,
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(settings.agentLauncher.customAgents).toEqual([
+      { command: "pi", id: nilId, name: "Nil UUID" },
+    ]);
+    expect(settings.agentLauncher.selectedAgentKey).toBe(`custom:${nilId}`);
+
+    const uppercaseId = "ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB";
+    const canonical = normalizeAppSettings({
+      agentLauncher: {
+        customAgents: [
+          { command: "pi", id: uppercaseId, name: "Uppercase UUID" },
+        ],
+        selectedAgentKey: `custom:${uppercaseId}`,
+      },
+    } as Partial<typeof defaultAppSettings>);
+    expect(canonical.agentLauncher.customAgents[0]?.id).toBe(
+      uppercaseId.toLowerCase(),
+    );
+    expect(canonical.agentLauncher.selectedAgentKey).toBe(
+      `custom:${uppercaseId.toLowerCase()}`,
+    );
   });
 
   it("normalizes invalid appearance values to safe defaults", () => {

@@ -43,7 +43,7 @@ use models::agent_session::{
     AgentSessionCreateRequest, AgentSessionId, AgentSessionLaunch, AgentSessionScope,
     AgentSessionStatus, AgentSessionTarget, AgentSessionUpdateRequest, AgentTargetBindingContext,
     AgentTargetBindingStatus, AgentTargetLiveStatus, AgentTerminalSnapshotContext,
-    AGENT_SESSION_SCHEMA_VERSION,
+    AGENT_SESSION_SCHEMA_VERSION, PI_AGENT_RESUME_COMMAND,
 };
 use services::{
     agent_session_file_store::AgentSessionFileStore,
@@ -160,6 +160,137 @@ fn create_get_update_and_archive_session_files() {
         .expect("archive session");
     assert_eq!(archived.session.status, AgentSessionStatus::Archived);
     assert_eq!(archived.session.updated_at, "300");
+}
+
+#[test]
+/// 验证新 session 持久化 launcher_key，而旧 schema v1 文件缺失该字段时仍可读取。
+fn launcher_key_roundtrips_without_bumping_session_schema() {
+    let temp = tempdir().expect("temp dir");
+    let service = service_with_ids(temp.path(), &["ags_custom_key", "ags_legacy_key"]);
+    let launcher_key = "custom:9d045678-983a-4ed1-ab39-bd46bccb1fa3";
+
+    let created = service
+        .create_session_at_with_launcher_key(
+            AgentSessionCreateRequest {
+                agent_id: AgentId::Custom,
+                title: Some("PI Agent".to_owned()),
+                launch: None,
+                scope: None,
+                target: None,
+                provider: None,
+                mcp_endpoint: None,
+            },
+            Some(launcher_key.to_owned()),
+            "100",
+        )
+        .expect("create keyed session");
+    assert_eq!(created.session.schema_version, AGENT_SESSION_SCHEMA_VERSION);
+    assert_eq!(created.session.launcher_key.as_deref(), Some(launcher_key));
+    let keyed_source = fs::read_to_string(&created.paths.session_toml).expect("keyed session toml");
+    assert!(keyed_source.contains(&format!("launcher_key = \"{launcher_key}\"")));
+
+    let legacy = service
+        .create_session_at(
+            AgentSessionCreateRequest {
+                agent_id: AgentId::Custom,
+                title: Some("Legacy custom".to_owned()),
+                launch: None,
+                scope: None,
+                target: None,
+                provider: None,
+                mcp_endpoint: None,
+            },
+            "101",
+        )
+        .expect("create legacy-compatible session");
+    let legacy_source =
+        fs::read_to_string(&legacy.paths.session_toml).expect("legacy session toml");
+    assert!(!legacy_source.contains("launcher_key"));
+    let legacy_id = AgentSessionId::new("ags_legacy_key").expect("legacy id");
+    assert_eq!(
+        service
+            .get_session(&legacy_id)
+            .expect("read legacy session")
+            .session
+            .launcher_key,
+        None
+    );
+}
+
+#[test]
+/// 验证 PI 使用原生 provider、builtin key 和 schema v1 会话快照完成 TOML round-trip。
+fn pi_session_roundtrips_native_provider_and_launcher_key() {
+    let temp = tempdir().expect("temp dir");
+    let service = service_with_ids(temp.path(), &["ags_pi_native"]);
+    let created = service
+        .create_session_at_with_launcher_key(
+            AgentSessionCreateRequest {
+                agent_id: AgentId::Pi,
+                title: None,
+                launch: None,
+                scope: None,
+                target: None,
+                provider: None,
+                mcp_endpoint: None,
+            },
+            Some("builtin:pi".to_owned()),
+            "102",
+        )
+        .expect("create PI session");
+
+    assert_eq!(created.session.schema_version, AGENT_SESSION_SCHEMA_VERSION);
+    assert_eq!(created.session.agent_id, AgentId::Pi);
+    assert_eq!(created.session.launcher_key.as_deref(), Some("builtin:pi"));
+    assert_eq!(created.session.title, "PI Agent");
+    assert_eq!(created.session.launch.command_label, "pi");
+    let provider = created.provider.expect("PI provider");
+    assert_eq!(provider.provider, AgentProvider::Pi);
+    assert!(provider.resume_supported);
+    assert_eq!(
+        provider.resume_command.as_deref(),
+        Some(PI_AGENT_RESUME_COMMAND)
+    );
+
+    let source = fs::read_to_string(&created.paths.session_toml).expect("PI session TOML");
+    assert!(source.contains("agent_id = \"pi\""));
+    assert!(source.contains("launcher_key = \"builtin:pi\""));
+    let provider_source =
+        fs::read_to_string(&created.paths.provider_toml).expect("PI provider TOML");
+    assert!(provider_source.contains("provider = \"pi\""));
+    assert!(provider_source.contains(PI_AGENT_RESUME_COMMAND));
+}
+
+#[test]
+/// 拒绝与 agentId 不一致或不含 UUID 的 launcher key，避免多个 Custom 会话身份串线。
+fn launcher_key_validation_rejects_mismatched_agent_identity() {
+    let temp = tempdir().expect("temp dir");
+    let service = service_with_ids(temp.path(), &["ags_invalid_key", "ags_mismatch_key"]);
+    let request = AgentSessionCreateRequest {
+        agent_id: AgentId::Custom,
+        title: Some("Invalid custom".to_owned()),
+        launch: None,
+        scope: None,
+        target: None,
+        provider: None,
+        mcp_endpoint: None,
+    };
+
+    assert!(matches!(
+        service.create_session_at_with_launcher_key(
+            request.clone(),
+            Some("custom:not-a-uuid".to_owned()),
+            "100"
+        ),
+        Err(error::AppError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        service.create_session_at_with_launcher_key(
+            request,
+            Some("builtin:codex".to_owned()),
+            "101"
+        ),
+        Err(error::AppError::InvalidInput(_))
+    ));
 }
 
 #[test]

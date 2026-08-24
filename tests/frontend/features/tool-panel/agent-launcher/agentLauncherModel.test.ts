@@ -21,6 +21,7 @@ import {
 import { parseAgentCommandLine } from "../../../../../src/lib/agentCommandLine";
 
 const readyCodex: ExternalAgentStatus = {
+  adapterAvailable: true,
   cliCommand: "codex",
   configPath: "C:/Users/me/.kerminal/.codex/config.toml",
   configReady: true,
@@ -176,6 +177,13 @@ describe("agentLauncherModel", () => {
           id: "custom",
           title: "Custom",
         },
+        pi: {
+          ...readyCodex,
+          cliCommand: "pi --approve --mcp-config .mcp.json",
+          configPath: "C:/Users/me/.kerminal/.mcp.json",
+          id: "pi",
+          title: "PI Agent",
+        },
       },
       mcpEndpoint: "http://127.0.0.1:37657/mcp",
       mcpServerRunning: true,
@@ -184,7 +192,28 @@ describe("agentLauncherModel", () => {
 
     expect(
       buildAgentLauncherViewModel(status, true).map((view) => view.agentId),
-    ).toEqual(["codex", "claude", "custom"]);
+    ).toEqual(["codex", "claude", "pi", "custom"]);
+  });
+
+  it("keeps PI adapter availability separate from CLI and config readiness", () => {
+    const view = buildAgentActionViewModel(
+      {
+        ...readyCodex,
+        adapterAvailable: false,
+        cliCommand: "pi --approve --mcp-config .mcp.json",
+        id: "pi",
+        title: "PI Agent",
+      },
+      {
+        mcpServerRunning: true,
+        terminalLauncherAvailable: true,
+      },
+    );
+
+    expect(view.availabilityLabel).toBe("需安装");
+    expect(view.availabilityDetail).toBe("PI MCP Adapter 尚未安装。");
+    expect(view.installLabel).toBe("Missing MCP adapter");
+    expect(view.tone).toBe("warning");
   });
 
   it("builds MCP status and copyable config snippets from endpoint", () => {
@@ -237,7 +266,9 @@ describe("agentLauncherModel", () => {
 
     expect(agentSupportsPermissionSkip("codex")).toBe(true);
     expect(agentSupportsPermissionSkip("claude")).toBe(true);
+    expect(agentSupportsPermissionSkip("pi")).toBe(false);
     expect(agentSupportsPermissionSkip("custom")).toBe(false);
+    expect(agentPermissionSkipFlag("pi")).toBeUndefined();
     expect(agentPermissionSkipFlag("custom")).toBeUndefined();
     expect(applyAgentLaunchPermissionMode(codexSpec, "default")).toBe(
       codexSpec,

@@ -6,7 +6,9 @@ use std::{collections::BTreeMap, fs, io::ErrorKind, path::PathBuf};
 
 use crate::{
     error::{AppError, AppResult},
-    models::agent_session::{AgentId, AgentProvider, AgentProviderSession, AgentSessionId},
+    models::agent_session::{
+        AgentId, AgentProvider, AgentProviderSession, AgentSessionId, PI_AGENT_LAUNCH_COMMAND,
+    },
     services::agent_session_file_store::AgentSessionFileStore,
 };
 
@@ -46,6 +48,7 @@ pub struct ExternalAgentWorkspaceService {
 }
 
 impl ExternalAgentWorkspaceService {
+    /// 创建 workspace adapter；CLI/adapter 状态保持惰性读取，避免初始化产生子进程副作用。
     pub fn new(
         workspace_dir: impl Into<PathBuf>,
         mcp_endpoint: Option<String>,
@@ -58,6 +61,7 @@ impl ExternalAgentWorkspaceService {
         }
     }
 
+    /// 返回四类 provider 的可用性快照，PI 的 CLI 与 MCP adapter 分别报告。
     pub fn status(&self) -> ExternalAgentWorkspaceStatus {
         ExternalAgentWorkspaceStatus {
             workspace_dir: path_to_string(&self.workspace_dir),
@@ -66,20 +70,24 @@ impl ExternalAgentWorkspaceService {
             agents: ExternalAgentStatuses {
                 codex: self.agent_status("codex", "Codex", "codex", self.codex_config_path()),
                 claude: self.agent_status("claude", "Claude", "claude", self.claude_config_path()),
+                pi: self.pi_agent_status(),
                 custom: self.custom_agent_status(),
             },
             validator: self.validator_status(),
         }
     }
 
+    /// 初始化内置 provider 共用规则及各自原生 MCP 配置，不触碰自定义命令定义。
     pub fn ensure_default_agent_files(&self) -> AppResult<()> {
         fs::create_dir_all(&self.workspace_dir)?;
         let options = WorkspaceWriteOptions::write_default();
         self.prepare_codex_files(&options)?;
         self.prepare_claude_files(&options)?;
+        self.prepare_pi_files(&options)?;
         Ok(())
     }
 
+    /// 准备无 session 或 session-scoped 启动；只生成文件和 launch spec，不直接拉起 CLI。
     pub fn prepare(
         &self,
         request: &PrepareExternalAgentWorkspaceRequest,
@@ -142,6 +150,27 @@ impl ExternalAgentWorkspaceService {
                     validator: self.validator_status(),
                 })
             }
+            "pi" => {
+                let operations = self.prepare_pi_files(&options)?;
+                let (shell, args) = agent_launch_command(PI_AGENT_LAUNCH_COMMAND);
+                Ok(ExternalAgentLaunchSpec {
+                    agent_id: "pi".to_owned(),
+                    agent_session_id: None,
+                    title: "PI Agent".to_owned(),
+                    shell,
+                    args,
+                    cwd: path_to_string(&self.workspace_dir),
+                    env: None,
+                    message: if options.dry_run {
+                        "PI Agent workspace file changes were previewed.".to_owned()
+                    } else {
+                        "PI Agent workspace files are ready.".to_owned()
+                    },
+                    dry_run: options.dry_run,
+                    operations,
+                    validator: self.validator_status(),
+                })
+            }
             "custom" => {
                 let command = request
                     .custom_command
@@ -176,6 +205,7 @@ impl ExternalAgentWorkspaceService {
         }
     }
 
+    /// 为右栏 Agent session 准备隔离 cwd、通用上下文与 provider 专属启动配置。
     pub fn prepare_agent_session_workspace(
         &self,
         request: &PrepareExternalAgentWorkspaceRequest,
@@ -251,6 +281,35 @@ impl ExternalAgentWorkspaceService {
                     validator: self.validator_status(),
                 })
             }
+            "pi" => {
+                let mut operations = self.prepare_pi_files(&options)?;
+                operations
+                    .extend(self.prepare_agent_session_common_files(&context, false, &options)?);
+                let (_command_label, shell, args) = self.agent_session_launch_command(
+                    AgentId::Pi,
+                    PI_AGENT_LAUNCH_COMMAND,
+                    &context,
+                    request.resume_provider_session,
+                    &options,
+                )?;
+                Ok(ExternalAgentLaunchSpec {
+                    agent_id: "pi".to_owned(),
+                    agent_session_id: Some(context.agent_session_id.clone()),
+                    title: "PI Agent".to_owned(),
+                    shell,
+                    args,
+                    cwd: path_to_string(&context.session_root),
+                    env: Some(self.agent_session_env(&context)),
+                    message: if options.dry_run {
+                        "PI Agent session workspace file changes were previewed.".to_owned()
+                    } else {
+                        "PI Agent session workspace files are ready.".to_owned()
+                    },
+                    dry_run: options.dry_run,
+                    operations,
+                    validator: self.validator_status(),
+                })
+            }
             "custom" => {
                 let command = request
                     .custom_command
@@ -268,10 +327,11 @@ impl ExternalAgentWorkspaceService {
                     self.prepare_agent_session_common_files(&context, false, &options)?;
                 let (shell, args) = agent_launch_command(&command);
                 self.sync_agent_session_launch(&context, &command, &shell, &args, &options)?;
+                let title = self.custom_agent_session_title(&context)?;
                 Ok(ExternalAgentLaunchSpec {
                     agent_id: "custom".to_owned(),
                     agent_session_id: Some(context.agent_session_id.clone()),
-                    title: "Custom Agent".to_owned(),
+                    title,
                     shell,
                     args,
                     cwd: path_to_string(&context.session_root),
@@ -292,6 +352,7 @@ impl ExternalAgentWorkspaceService {
         }
     }
 
+    /// 选择新建/恢复命令并把实际命令快照回写 session.toml，保证后续历史恢复一致。
     fn agent_session_launch_command(
         &self,
         agent_id: AgentId,
@@ -311,6 +372,7 @@ impl ExternalAgentWorkspaceService {
         Ok((command, shell, args))
     }
 
+    /// 优先采用 session provider 快照，旧文件缺少命令时回退当前 provider 原生默认值。
     fn provider_resume_command(
         &self,
         agent_id: AgentId,
@@ -341,6 +403,7 @@ impl ExternalAgentWorkspaceService {
             })
     }
 
+    /// 读取且校验 provider.toml；损坏或 provider 不匹配时由上层使用当前默认值恢复。
     fn read_agent_provider_session(
         &self,
         agent_id: AgentId,
@@ -355,6 +418,7 @@ impl ExternalAgentWorkspaceService {
         Some(provider)
     }
 
+    /// 原子更新已有 session 的 launch 快照；dry-run 或兼容性无 session 调用不产生写入。
     fn sync_agent_session_launch(
         &self,
         context: &AgentSessionWorkspaceContext,
@@ -382,6 +446,31 @@ impl ExternalAgentWorkspaceService {
         Ok(())
     }
 
+    /// 从 session.toml 读取 Custom 启动标题，使定义重命名只影响新会话，历史会话继续
+    /// 使用创建时快照；未创建 session 文件的兼容调用仍回退到通用标题。
+    fn custom_agent_session_title(
+        &self,
+        context: &AgentSessionWorkspaceContext,
+    ) -> AppResult<String> {
+        let store = AgentSessionFileStore::new(&self.workspace_dir);
+        let agent_session_id = AgentSessionId::new(context.agent_session_id.clone())?;
+        match store.read_session(&agent_session_id) {
+            Ok(session) => {
+                let title = session.title.trim();
+                Ok(if title.is_empty() {
+                    "Custom Agent".to_owned()
+                } else {
+                    title.to_owned()
+                })
+            }
+            Err(AppError::Io(error)) if error.kind() == ErrorKind::NotFound => {
+                Ok("Custom Agent".to_owned())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// 校验 provider/session id 并构造限定在该 session 目录和 MCP endpoint 的上下文。
     fn agent_session_context(
         &self,
         agent_id: &str,
@@ -389,7 +478,7 @@ impl ExternalAgentWorkspaceService {
     ) -> AppResult<AgentSessionWorkspaceContext> {
         let agent_session_id = validate_agent_session_id(agent_session_id)?;
         match agent_id {
-            "codex" | "claude" | "custom" => {}
+            "codex" | "claude" | "pi" | "custom" => {}
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Unsupported external agent: {other}"
@@ -404,6 +493,7 @@ impl ExternalAgentWorkspaceService {
         })
     }
 
+    /// 使用经校验的 session id 构造固定目录，避免 provider 自行选择 cwd。
     fn agent_session_root(&self, agent_session_id: &str) -> PathBuf {
         self.workspace_dir
             .join("agents")
@@ -411,6 +501,7 @@ impl ExternalAgentWorkspaceService {
             .join(agent_session_id)
     }
 
+    /// 只注入 Kerminal session 所需的最小环境，不复制或记录用户凭据。
     fn agent_session_env(
         &self,
         context: &AgentSessionWorkspaceContext,

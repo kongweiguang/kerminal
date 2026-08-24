@@ -17,15 +17,15 @@
 
 ![在 Kerminal 工作台右侧成功启动 Codex](docs/assets/kerminal-hero.png)
 
-Kerminal 是一个本地桌面终端、远程管理与 Agent 工作台。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code 或自己的命令行 Agent。Agent 通过 Kerminal MCP 使用当前 Tab 的全部终端，或在全局范围操作所有工作区 Tab 的用户终端。
+Kerminal 是一个本地桌面终端、远程管理与 Agent 工作台。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code、PI Agent 或自己的命令行 Agent。Agent 通过 Kerminal MCP 使用当前 Tab 的全部终端，或在全局范围操作所有工作区 Tab 的用户终端。
 
-当前版本：**v0.3.28**
+当前版本：**v0.3.29**
 
 ## 你可以用 Kerminal 做什么
 
 - 连接本机、SSH、独立 SFTP、RDP、Telnet 和串口设备。
 - 使用多标签、多分屏终端处理不同机器和任务。
-- 启动 Codex、Claude Code 或自定义 Agent，并继续之前的会话。
+- 启动 Codex、Claude Code、PI Agent 或已保存的自定义 Agent，并继续之前的会话。
 - 将当前终端、命令块、选区和目标上下文发送给 Agent。
 - 浏览、上传、下载和编辑远程文件。
 - 管理 Docker、Podman、Compose 和容器内文件。

@@ -5,44 +5,30 @@ import {
   useAgentWorkflowController,
 } from "../agent-workflow";
 import { cn } from "../../lib/cn";
-import type { DesktopNotificationSettings } from "../../lib/desktopNotificationPolicy";
 import {
   agentSessionRecordId,
   agentSessionRecordAgentId,
-  agentSessionRecordTarget,
   getExternalAgentWorkspaceStatus,
   listAgentSessions,
   prepareExternalAgentWorkspace,
-  updateAgentSession,
   type AgentSessionRecord,
   type AgentSessionScope,
   type AgentSessionTargetRequest,
-  type ExternalAgentId,
   type ExternalAgentLaunchSpec,
   type ExternalAgentWorkspaceStatus,
 } from "../../lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import {
   buildUserFacingError,
-  redactSensitiveTechnicalDetail,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
 import {
+  defaultAppSettings,
   defaultTerminalAppearance,
-  type ResolvedTheme,
-  type TerminalAppearance,
 } from "../settings/contracts/index";
+import { isTerminalSessionTab } from "../workspace/contracts/index";
 import {
-  isTerminalSessionTab,
-  type TerminalPane,
-  type TerminalTab,
-} from "../workspace/contracts/index";
-import {
-  agentLaunchDisplayCommand,
-  applyManagedAgentLaunchTrust,
-  applyAgentLaunchPermissionMode,
   agentSessionRecordPermissionMode,
-  agentSupportsPermissionSkip,
   buildAgentLauncherViewModel,
   type AgentLaunchPermissionMode,
 } from "./agent-launcher/agentLauncherModel";
@@ -58,22 +44,19 @@ import {
 } from "./agent-launcher/agentTabSessionModel";
 import {
   buildAgentSessionScope,
-  buildAgentSessionTarget,
-  formatCurrentAgentTargetLabel,
 } from "./agent-launcher/agentSessionTargetModel";
 import {
   AgentTerminalView,
-  type AgentTerminalSession,
 } from "./agent-launcher/AgentTerminalView";
 import type { AgentLaunchTargetMode } from "./agent-launcher/AgentLaunchControls";
 import {
   AgentLauncherView,
-  type AgentLauncherActionState,
   type AgentLauncherLoadState,
   type AgentRestoreChoice,
 } from "./agent-launcher/AgentLauncherView";
 import {
   findPersistedAgentSession,
+  persistedAgentSessionSelection,
   type AgentSessionSelection,
 } from "./agent-launcher/agentSessionRestoreModel";
 import { createAgentPromptTransport } from "./agent-launcher/agentPromptTransport";
@@ -82,16 +65,26 @@ import { useAgentSessionDelete } from "./agent-launcher/useAgentSessionDelete";
 import { useAgentSessionTitleRename } from "./agent-launcher/useAgentSessionTitleRename";
 import { useAgentSendRequestCoordinator } from "./agent-launcher/useAgentSendRequestCoordinator";
 import { useAgentSendRequestSnapshot } from "../agent-workflow/state/index";
-import { createAgentSessionForLaunch } from "./agent-launcher/agentSessionLaunchFactory";
-interface AgentLauncherToolContentProps {
-  activeTab?: TerminalTab;
-  desktopNotifications?: DesktopNotificationSettings;
-  focusedPane?: TerminalPane;
-  resolvedTheme?: ResolvedTheme;
-  terminalAppearance?: TerminalAppearance;
-  terminalPanes?: TerminalPane[];
-  terminalTabs?: TerminalTab[];
-}
+import {
+  buildPreparedAgentTerminalSession,
+  createAgentSessionForLaunch,
+  type LauncherTerminalSession,
+} from "./agent-launcher/agentSessionLaunchFactory";
+import {
+  resolveAgentLauncherDescriptor,
+  type AgentLauncherDescriptor,
+} from "./agent-launcher/agentLauncherSettingsModel";
+import { useConfirmedAgentLauncherSettings } from "./agent-launcher/useConfirmedAgentLauncherSettings";
+import { useAgentLauncherAction } from "./agent-launcher/useAgentLauncherAction";
+import {
+  buildAgentSelectorOptions,
+  buildAgentTargetPresentation,
+  buildAgentTechnicalDetail,
+  launcherSnapshotFromSelection,
+  resolveHistoricalAgentLaunch,
+  type AgentLaunchSnapshot,
+} from "./agent-launcher/agentLauncherPresentationModel";
+import type { AgentLauncherToolContentProps } from "./agent-launcher/AgentLauncherToolContent.types";
 type AgentLauncherScreen = "launcher" | "terminal";
 
 /** 右栏 Agent 的默认作用域是当前 terminal Tab，显式全局会话通过稳定 global key 跨 Tab 保持。 */
@@ -99,11 +92,24 @@ export function AgentLauncherToolContent({
   activeTab,
   desktopNotifications,
   focusedPane,
+  onConfirmedSettingsChange,
   resolvedTheme = "dark",
+  settings = defaultAppSettings,
   terminalAppearance = defaultTerminalAppearance,
   terminalPanes,
   terminalTabs,
 }: AgentLauncherToolContentProps) {
+  const {
+    deleteCustomAgent,
+    launcherSettings,
+    mutationError,
+    mutationPending,
+    saveCustomAgent,
+    selectAgent,
+  } = useConfirmedAgentLauncherSettings({
+    onConfirmedSettingsChange,
+    settings,
+  });
   const workflowSignalListenersRef = useRef(
     new Set<(signal: TerminalAgentSignal) => void>(),
   );
@@ -131,15 +137,10 @@ export function AgentLauncherToolContent({
   );
   const [loadState, setLoadState] = useState<AgentLauncherLoadState>("loading");
   const [loadError, setLoadError] = useState<UserFacingMessage | null>(null);
-  const [actionState, setActionState] =
-    useState<AgentLauncherActionState>(null);
-  const [actionError, setActionError] = useState<UserFacingMessage | null>(
-    null,
-  );
-  const [customCommandOpen, setCustomCommandOpen] = useState(false);
-  const [customCommand, setCustomCommand] = useState("");
+  const { actionError, actionState, runAction, setActionError } =
+    useAgentLauncherAction();
   const [agentSessions, setAgentSessions] = useState<
-    Record<string, AgentTerminalSession>
+    Record<string, LauncherTerminalSession>
   >({});
   const [persistedAgentSessions, setPersistedAgentSessions] = useState<
     AgentSessionRecord[]
@@ -147,8 +148,6 @@ export function AgentLauncherToolContent({
   const [restoreChoice, setRestoreChoice] = useState<AgentRestoreChoice | null>(
     null,
   );
-  const [customLaunchTargetMode, setCustomLaunchTargetMode] =
-    useState<AgentLaunchTargetMode>("current");
   const [activeSessionIdByTabId, setActiveSessionIdByTabId] = useState<
     Record<string, string | undefined>
   >({});
@@ -229,64 +228,26 @@ export function AgentLauncherToolContent({
       status ? buildAgentLauncherViewModel(status, true) : initialAgentActions,
     [status],
   );
+  const agentOptions = useMemo(
+    () => buildAgentSelectorOptions(agentActions, launcherSettings.customAgents),
+    [agentActions, launcherSettings.customAgents],
+  );
   const agentTechnicalDetail = useMemo(
-    () =>
-      redactSensitiveTechnicalDetail(
-        [
-          `MCP: ${status?.mcpServerRunning ? "running" : "stopped"}`,
-          `Endpoint: ${status?.mcpEndpoint || "unavailable"}`,
-          ...agentActions.flatMap((agent) => [
-            "",
-            `${agent.title}: ${agent.availabilityLabel}`,
-            `  command: ${agent.cliCommand}`,
-            `  config: ${agent.configPath}`,
-            `  status: ${agent.statusDetail}`,
-          ]),
-        ].join("\n"),
-      ),
+    () => buildAgentTechnicalDetail(status, agentActions),
     [agentActions, status],
   );
-  const currentAgentTargetLabel = formatCurrentAgentTargetLabel(
-    activeAgentViewScopeId === globalAgentScopeId
-      ? undefined
-      : effectiveFocusedPane,
-    activeAgentViewScopeId === globalAgentScopeId
-      ? undefined
-      : activeTab,
+  const {
+    currentAgentScope,
+    currentAgentTarget,
+    currentAgentTargetLabel,
+  } = buildAgentTargetPresentation({
+    activeAgentScope,
+    activeAgentViewScopeId,
+    activeTab,
+    effectiveFocusedPane,
+    globalAgentScopeId,
     terminalPanes,
-  );
-  const currentAgentTarget = buildAgentSessionTarget(
-    activeAgentViewScopeId === globalAgentScopeId
-      ? undefined
-      : effectiveFocusedPane,
-    activeAgentViewScopeId === globalAgentScopeId
-      ? undefined
-      : activeTab,
-  );
-  const currentAgentScope: AgentSessionScope =
-    activeAgentViewScopeId === globalAgentScopeId
-      ? { kind: "global" }
-      : activeAgentScope;
-
-  const runAction = async (
-    nextAction: ExternalAgentId,
-    action: () => Promise<void>,
-  ) => {
-    setActionState(nextAction);
-    setActionError(null);
-    try {
-      await action();
-    } catch (error) {
-      setActionError(
-        buildUserFacingError(error, {
-          recoveryAction: "请检查目标终端和 Agent 配置后重试。",
-          title: "Agent 操作未完成",
-        }),
-      );
-    } finally {
-      setActionState(null);
-    }
-  };
+  });
 
   const agentSessionList = useMemo(
     () => Object.values(agentSessions),
@@ -377,15 +338,16 @@ export function AgentLauncherToolContent({
       ),
     );
   }, [agentSidebarState, terminalTabIds, terminalTabIdsKey, terminalTabs]);
+  /** 运行态复用同时校验 scope、权限与 launcherKey，旧 Custom 才退回命令匹配。 */
   const findAgentSessionId = (
     tabId: string | undefined,
-    agentId: ExternalAgentId,
+    launcher: AgentLauncherDescriptor,
     permissionMode: AgentLaunchPermissionMode,
   ) =>
     findRunningSessionForTabAgent(
       agentSidebarState,
       tabId,
-      agentId,
+      launcher,
       permissionMode,
     )?.agentSessionId ?? null;
   const setTabView = useCallback(
@@ -431,13 +393,16 @@ export function AgentLauncherToolContent({
     targetPane: requestedPane,
   });
 
+  /** 先按 launcher 与权限模式查本地快照再刷新磁盘，避免普通进入恢复越权会话。 */
   const resolvePersistedAgentSession = async (
     tabId: string,
-    agentId: ExternalAgentId,
+    launcher: AgentLauncherDescriptor,
+    permissionMode: AgentLaunchPermissionMode,
   ) => {
+    const matcher = { ...launcher, permissionMode };
     const current = findPersistedAgentSession(
       tabId,
-      agentId,
+      matcher,
       persistedAgentSessions,
     );
     if (current) {
@@ -446,59 +411,26 @@ export function AgentLauncherToolContent({
     try {
       const list = await listAgentSessions();
       setPersistedAgentSessions(list.sessions ?? []);
-      return findPersistedAgentSession(tabId, agentId, list.sessions ?? []);
+      return findPersistedAgentSession(tabId, matcher, list.sessions ?? []);
     } catch {
       return null;
     }
   };
 
+  /** 启动前先固化最终 shell/args 快照，保证历史 Custom 不依赖后来编辑的定义。 */
   const launchPreparedSpec = async (
     spec: ExternalAgentLaunchSpec,
     options: {
       customCommand?: string;
+      launcherKey?: string;
       permissionMode?: AgentLaunchPermissionMode;
       scope?: AgentSessionScope;
       tabId: string;
       target?: AgentSessionTargetRequest;
+      title: string;
     },
   ) => {
-    const permissionMode = options.permissionMode ?? "default";
-    const launchSpec = applyAgentLaunchPermissionMode(
-      applyManagedAgentLaunchTrust(spec),
-      permissionMode,
-    );
-    const agentSessionId = launchSpec.agentSessionId?.trim();
-    if (!agentSessionId) {
-      throw new Error("Agent session launch spec is missing agentSessionId.");
-    }
-    const commandLabel =
-      agentLaunchDisplayCommand(launchSpec) || launchSpec.title;
-    if (agentSupportsPermissionSkip(launchSpec.agentId)) {
-      await updateAgentSession(agentSessionId, {
-        launch: {
-          args: launchSpec.args ?? [],
-          commandLabel,
-          cwd: launchSpec.cwd,
-          shell: launchSpec.shell,
-        },
-      });
-    }
-    const nextSession: AgentTerminalSession = {
-      agentSessionId,
-      agentId: launchSpec.agentId,
-      args: launchSpec.args ?? [],
-      commandLabel,
-      cwd: launchSpec.cwd,
-      env: launchSpec.env,
-      permissionMode,
-      scope: options.scope,
-      shell: launchSpec.shell,
-      status: launchSpec.status ?? "running",
-      title: launchSpec.agentId === "custom" ? "Custom" : launchSpec.title,
-      customCommand: options.customCommand,
-      tabId: options.tabId,
-      target: options.target,
-    };
+    const nextSession = await buildPreparedAgentTerminalSession(spec, options);
     setAgentSessions((current) => ({
       ...current,
       [nextSession.agentSessionId]: nextSession,
@@ -540,67 +472,79 @@ export function AgentLauncherToolContent({
     }
   }, []);
 
+  /**
+   * workspace preparation 与右栏终端创建共用不可变启动描述；只有终端接线成功后才
+   * 在这一处刷新所有会话视图，避免失败会话进入历史或调用方重复刷新 controller。
+   */
   const prepareAndLaunchAgent = async (
-    agentId: ExternalAgentId,
+    launcher: AgentLaunchSnapshot,
     agentSession: AgentSessionSelection,
     options: {
-      customCommand?: string;
       permissionMode?: AgentLaunchPermissionMode;
       resumeProviderSession?: boolean;
     } = {},
   ) => {
     const launchSpec = await prepareExternalAgentWorkspace({
-      agentId,
+      agentId: launcher.agentId,
       agentSessionId: agentSession.agentSessionId,
-      ...(options.customCommand !== undefined
-        ? { customCommand: options.customCommand }
+      ...(launcher.customCommand !== undefined
+        ? { customCommand: launcher.customCommand }
         : {}),
       ...(options.resumeProviderSession !== undefined
         ? { resumeProviderSession: options.resumeProviderSession }
         : {}),
     });
     await launchPreparedSpec(launchSpec, {
-      customCommand: options.customCommand,
+      customCommand: launcher.customCommand,
+      launcherKey: launcher.launcherKey,
       permissionMode: options.permissionMode,
       scope: agentSession.scope,
       tabId: agentSession.tabId,
       target: agentSession.target,
+      title: launcher.title,
     });
-    await loadPersistedAgentSessions();
-    await loadStatus("refreshing");
+    await Promise.all([
+      loadPersistedAgentSessions(),
+      loadStatus("refreshing"),
+      workflowController.refresh(),
+    ]);
   };
 
-  /** 创建新的 provider 会话；scope 显式传入时不受当前 focused pane 影响。 */
-  const startNewProviderAgentSession = async (
-    agentId: ExternalAgentId,
+  /** 创建新的 Agent 会话；Custom 在创建时固化名称、命令和 launcherKey 快照。 */
+  const startNewAgentSession = async (
+    launcher: AgentLaunchSnapshot,
     permissionMode: AgentLaunchPermissionMode = "default",
     targetMode: AgentLaunchTargetMode = "current",
     scope?: AgentSessionScope,
   ) => {
-    const agentSession = await createAgentSessionForLaunch(agentId, {
+    const agentSession = await createAgentSessionForLaunch(launcher.agentId, {
       activeTab,
       focusedPane: effectiveFocusedPane,
+      launcherKey: launcher.launcherKey,
       scope,
       tabId: activeAgentScopeId,
       targetMode,
+      title: launcher.agentId === "custom" ? launcher.title : undefined,
     });
-    await prepareAndLaunchAgent(agentId, agentSession, {
+    await prepareAndLaunchAgent(launcher, agentSession, {
       permissionMode,
       resumeProviderSession: false,
     });
   };
 
-  /** 启动内置 Agent，并按选中的 tab/global scope 查找可恢复会话。 */
-  const launchAgent = (
-    agentId: ExternalAgentId,
+  /** 按当前下拉条目启动，并以 launcherKey 隔离同一 scope 内的多个 Custom。 */
+  const launchSelectedAgent = (
     permissionMode: AgentLaunchPermissionMode = "default",
     targetMode: AgentLaunchTargetMode = "current",
   ) => {
-    if (agentId === "custom") {
-      setCustomLaunchTargetMode(targetMode);
-      setRestoreChoice(null);
-      setCustomCommandOpen(true);
-      setActionError(null);
+    const launcher = resolveAgentLauncherDescriptor(launcherSettings);
+    if (!launcher) {
+      setActionError(
+        buildUserFacingError(new Error("selected launcher is missing"), {
+          recoveryAction: "请重新选择一个 Agent。",
+          title: "所选 Agent 已不存在",
+        }),
+      );
       return;
     }
 
@@ -612,94 +556,52 @@ export function AgentLauncherToolContent({
     }
     const existingSessionId = findAgentSessionId(
       launchScopeId,
-      agentId,
+      launcher,
       permissionMode,
     );
     if (existingSessionId) {
       const existingSession = agentSessions[existingSessionId];
       if (existingSession) {
         setRestoreChoice({
-          agentId,
+          agentId: launcher.agentId,
+          newSessionLauncher: launcher,
           permissionMode,
           session: {
             agentSessionId: existingSession.agentSessionId,
+            customCommand: existingSession.customCommand,
+            launcherKey: existingSession.launcherKey,
             scope:
               existingSession.scope ??
               agentSessionScopeFromId(existingSession.tabId),
             tabId: existingSession.tabId,
             target: existingSession.target,
+            title: existingSession.title,
           },
         });
       }
       return;
     }
 
-    void runAction(agentId, async () => {
+    void runAction(launcher.launcherKey, async () => {
       const persistedSession = await resolvePersistedAgentSession(
         launchScopeId,
-        agentId,
+        launcher,
+        permissionMode,
       );
       if (persistedSession) {
         setRestoreChoice({
-          agentId,
+          agentId: launcher.agentId,
+          newSessionLauncher: launcher,
           permissionMode: persistedSession.permissionMode ?? permissionMode,
           session: persistedSession,
         });
         return;
       }
-      await startNewProviderAgentSession(agentId, permissionMode, targetMode);
+      await startNewAgentSession(launcher, permissionMode, targetMode);
     });
   };
 
-  /** 启动自定义 Agent，复用相同的 tab/global scope 解析规则。 */
-  const launchCustomAgent = () => {
-    const trimmedCommand = customCommand.trim();
-    if (!trimmedCommand) {
-      return;
-    }
-    const tabId = agentSessionScopeId(
-      buildAgentSessionScope(activeTab, customLaunchTargetMode),
-    );
-    if (tabId === globalAgentScopeId) {
-      setScopeOverrideId(globalAgentScopeId);
-    }
-
-    const existingSession = agentSessionList.find(
-      (session) =>
-        session.tabId === tabId &&
-        session.agentId === "custom" &&
-        session.customCommand === trimmedCommand,
-    );
-    if (existingSession) {
-      activateAgentSessionForTab(tabId, existingSession.agentSessionId);
-      return;
-    }
-
-    void runAction("custom", async () => {
-      setRestoreChoice(null);
-      const agentSession = await createAgentSessionForLaunch("custom", {
-        activeTab,
-        focusedPane: effectiveFocusedPane,
-        tabId,
-        targetMode: customLaunchTargetMode,
-      });
-      const launchSpec = await prepareExternalAgentWorkspace({
-        agentId: "custom",
-        agentSessionId: agentSession.agentSessionId,
-        customCommand: trimmedCommand,
-      });
-      await launchPreparedSpec(launchSpec, {
-        customCommand: trimmedCommand,
-        permissionMode: "default",
-        scope: agentSession.scope,
-        tabId: agentSession.tabId,
-        target: agentSession.target,
-      });
-      await loadPersistedAgentSessions();
-      await loadStatus("refreshing");
-    });
-  };
-
+  /** 继续会话使用保存时的名称和命令；运行中的会话只切回现有终端。 */
   const continuePersistedAgentSession = (choice: AgentRestoreChoice) => {
     const runningSession = agentSessions[choice.session.agentSessionId];
     if (runningSession) {
@@ -710,8 +612,9 @@ export function AgentLauncherToolContent({
       );
       return;
     }
-    void runAction(choice.agentId, async () => {
-      await prepareAndLaunchAgent(choice.agentId, choice.session, {
+    const launcher = launcherSnapshotFromSelection(choice.agentId, choice.session);
+    void runAction(launcher.launcherKey ?? choice.agentId, async () => {
+      await prepareAndLaunchAgent(launcher, choice.session, {
         permissionMode: choice.permissionMode,
         resumeProviderSession: true,
       });
@@ -720,10 +623,13 @@ export function AgentLauncherToolContent({
 
   /** 从恢复提示创建同一作用域的新会话，避免 global 会话落回当前 Tab。 */
   const createFreshAgentSession = (choice: AgentRestoreChoice) => {
-    void runAction(choice.agentId, async () => {
+    const launcher =
+      choice.newSessionLauncher ??
+      launcherSnapshotFromSelection(choice.agentId, choice.session);
+    void runAction(launcher.launcherKey ?? choice.agentId, async () => {
       const globalScopeId = agentSessionScopeId({ kind: "global" });
-      await startNewProviderAgentSession(
-        choice.agentId,
+      await startNewAgentSession(
+        launcher,
         choice.permissionMode,
         choice.session.tabId === globalScopeId ? "unbound" : "current",
         choice.session.tabId === globalScopeId
@@ -753,74 +659,78 @@ export function AgentLauncherToolContent({
     }
     const recordScopeId =
       agentSessionRecordTabId(record) ?? activeAgentScopeId;
-    void runAction(agentId, async () => {
-      await prepareAndLaunchAgent(
-        agentId,
-        {
-          agentSessionId,
-          scope: agentSessionScopeFromId(recordScopeId),
-          tabId: recordScopeId,
-          target: agentSessionRecordTarget(record),
-        },
-        {
-          permissionMode: agentSessionRecordPermissionMode(record),
-          resumeProviderSession: true,
-        },
-      );
-      await workflowController.refresh();
+    const selection = persistedAgentSessionSelection(record, recordScopeId);
+    if (!selection) {
+      return;
+    }
+    const launcher = launcherSnapshotFromSelection(agentId, selection);
+    void runAction(launcher.launcherKey ?? agentId, async () => {
+      await prepareAndLaunchAgent(launcher, selection, {
+        permissionMode: agentSessionRecordPermissionMode(record),
+        resumeProviderSession: true,
+      });
     });
   };
 
+  /** 会话列表的新会话动作保留来源 scope，并允许已删除 Custom 复用历史快照。 */
   const startNewWorkflowSession = (agentSessionId: string) => {
-    const workflowSession = workflowSnapshot.sessions.find(
-      (session) => session.agentSessionId === agentSessionId,
-    );
-    const agentId = workflowSession?.agentId;
-    if (!agentId) {
+    const resolution = resolveHistoricalAgentLaunch({
+      activeScope: activeAgentScope,
+      agentSessionId,
+      launcherSettings,
+      persistedSessions: persistedAgentSessions,
+      runtimeSessions: agentSessions,
+      workflowSessions: workflowSnapshot.sessions,
+    });
+    if (!resolution) {
       return;
     }
-    const sourceScope =
-      workflowSession.scope ??
-      (workflowSession.target?.liveStatus === "unbound"
-        ? { kind: "global" as const }
-        : workflowSession.target?.tabId
-          ? { kind: "tab" as const, tabId: workflowSession.target.tabId }
-          : activeAgentScope);
+    const { agentId, launcher, sourceScope } = resolution;
+    if (!launcher) {
+      setActionError(
+        buildUserFacingError(new Error("historical custom launch is missing"), {
+          recoveryAction: "请保留历史会话，或重新添加对应的自定义 Agent。",
+          title: "无法读取历史 Agent 命令",
+        }),
+      );
+      return;
+    }
     if (sourceScope.kind === "global") {
       setScopeOverrideId(globalAgentScopeId);
     }
-    void runAction(agentId, async () => {
-      await startNewProviderAgentSession(
-        agentId,
+    void runAction(launcher.launcherKey ?? agentId, async () => {
+      await startNewAgentSession(
+        launcher,
         "default",
         sourceScope.kind === "global" ? "unbound" : "current",
         sourceScope,
       );
-      await workflowController.refresh();
     });
   };
 
   return (
     <section className="relative h-full min-h-0 overflow-hidden bg-[var(--surface-terminal)]">
       <AgentLauncherView
-        actionError={actionError}
+        actionError={actionError ?? mutationError}
         actionState={actionState}
-        agentActions={agentActions}
+        agentOptions={agentOptions}
         agentTechnicalDetail={agentTechnicalDetail}
         currentAgentScope={currentAgentScope}
         currentAgentTarget={currentAgentTarget}
         currentAgentTargetLabel={currentAgentTargetLabel}
-        customCommand={customCommand}
-        customCommandOpen={customCommandOpen}
+        customAgentError={mutationError}
+        customAgentMutationPending={mutationPending}
+        customAgents={launcherSettings.customAgents}
         deletingSessionId={deletingSessionId}
         loadError={loadError}
         loadState={loadState}
         pendingSendRequest={pendingAgentSendRequest}
+        onAgentSelect={(launcherKey) => void selectAgent(launcherKey)}
         onCancelRestore={() => setRestoreChoice(null)}
         onContinueRestore={continuePersistedAgentSession}
-        onCustomCommandChange={setCustomCommand}
-        onCustomCommandSubmit={launchCustomAgent}
-        onLaunch={launchAgent}
+        onCustomAgentDelete={deleteCustomAgent}
+        onCustomAgentSave={saveCustomAgent}
+        onLaunchSelected={launchSelectedAgent}
         onNewSession={createFreshAgentSession}
         onRetry={() => void loadStatus("loading")}
         onWorkflowContinue={continueWorkflowSession}
@@ -829,6 +739,7 @@ export function AgentLauncherToolContent({
         onWorkflowRename={renameWorkflowSession}
         renamingSessionId={renamingSessionId}
         restoreChoice={restoreChoice}
+        selectedAgentKey={launcherSettings.selectedAgentKey}
         statusAvailable={Boolean(status)}
         visible={view === "launcher"}
         workflowSnapshot={workflowSnapshot}

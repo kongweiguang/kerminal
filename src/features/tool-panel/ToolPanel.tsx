@@ -74,6 +74,9 @@ interface ToolPanelProps {
     placement?: TmuxAttachPlacement,
   ) => void;
   onRemoteHostCreated?: () => void | Promise<void>;
+  onConfirmedSettingsChange?: (
+    settings: AppSettings,
+  ) => Promise<AppSettings>;
   onSettingsChange?: (settings: AppSettings) => void;
   onSplitPane?: (direction: "horizontal" | "vertical") => void;
 }
@@ -128,6 +131,7 @@ export function ToolPanel({
   onOpenToolRailCustomization,
   onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
+  onConfirmedSettingsChange,
   resolvedTheme = "dark",
   settings,
   showRail = true,
@@ -269,7 +273,9 @@ export function ToolPanel({
                         activeTab={binding.activeTab}
                         desktopNotifications={settings?.desktopNotifications}
                         focusedPane={binding.focusedPane}
+                        onConfirmedSettingsChange={onConfirmedSettingsChange}
                         resolvedTheme={resolvedTheme}
+                        settings={settings}
                         terminalAppearance={
                           terminalAppearance ??
                           settings?.terminal ??

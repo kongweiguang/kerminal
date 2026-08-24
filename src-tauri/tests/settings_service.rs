@@ -5,15 +5,16 @@
 use kerminal_lib::{
     error::AppError,
     models::settings::{
-        AppSettings, BackgroundImageFit, ExternalLaunchToolSetting, InterfaceDensity,
-        InterfaceLanguage, TerminalColorScheme, TerminalCommandSuggestionPresentation,
-        TerminalCommandSuggestionRemoteRefresh, TerminalCursorStyle, TerminalFontWeight,
-        TerminalInlineSuggestionAcceptKey, TerminalRendererType, TerminalRightClickBehavior,
-        ThemeMode, DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH,
-        MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES,
-        MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS,
-        MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
-        MIN_SFTP_TIMEOUT_SECONDS,
+        AgentLauncherSettings, AppSettings, BackgroundImageFit, CustomAgentDefinition,
+        ExternalLaunchToolSetting, InterfaceDensity, InterfaceLanguage, TerminalColorScheme,
+        TerminalCommandSuggestionPresentation, TerminalCommandSuggestionRemoteRefresh,
+        TerminalCursorStyle, TerminalFontWeight, TerminalInlineSuggestionAcceptKey,
+        TerminalRendererType, TerminalRightClickBehavior, ThemeMode, BUILTIN_PI_LAUNCHER_KEY,
+        DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH, MAX_CUSTOM_AGENT_COMMAND_CHARS,
+        MAX_CUSTOM_AGENT_DEFINITIONS, MAX_CUSTOM_AGENT_NAME_CHARS, MAX_SFTP_GLOBAL_TRANSFERS,
+        MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH,
+        MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS,
+        MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -263,6 +264,184 @@ fn settings_service_persists_settings_in_toml() {
         vec!["putty", "kerminal-native"]
     );
     assert!(!settings_source.contains("shimBridge"));
+}
+
+#[test]
+/// 验证多个自定义 Agent、添加顺序与最后选择会跨应用重启持久化。
+fn settings_service_roundtrips_custom_agent_launcher_settings() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let first_id = "9d045678-983a-4ed1-ab39-bd46bccb1fa3";
+    let second_id = "0d11d9b2-fde8-4c24-a86c-16fc6a440aad";
+
+    {
+        let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
+        let settings = AppSettings {
+            agent_launcher: AgentLauncherSettings {
+                selected_agent_key: format!(" custom:{second_id} "),
+                custom_agents: vec![
+                    CustomAgentDefinition {
+                        id: first_id.to_uppercase(),
+                        name: " PI Agent ".to_owned(),
+                        command: " pi --mode coding ".to_owned(),
+                    },
+                    CustomAgentDefinition {
+                        id: second_id.to_owned(),
+                        name: "Qwen".to_owned(),
+                        command: "qwen --model max".to_owned(),
+                    },
+                ],
+            },
+            ..AppSettings::default()
+        };
+
+        let saved = state
+            .settings()
+            .update_settings(settings)
+            .expect("save agent launcher settings");
+        assert_eq!(
+            saved.agent_launcher.selected_agent_key,
+            format!("custom:{second_id}")
+        );
+        assert_eq!(saved.agent_launcher.custom_agents[0].id, first_id);
+        assert_eq!(saved.agent_launcher.custom_agents[0].name, "PI Agent");
+        assert_eq!(
+            saved.agent_launcher.custom_agents[0].command,
+            "pi --mode coding"
+        );
+    }
+
+    let state = AppState::initialize_with_paths(paths.clone()).expect("reopen app state");
+    let reloaded = state.settings().load_settings().expect("reload settings");
+    assert_eq!(
+        reloaded.agent_launcher.selected_agent_key,
+        format!("custom:{second_id}")
+    );
+    assert_eq!(
+        reloaded
+            .agent_launcher
+            .custom_agents
+            .iter()
+            .map(|definition| definition.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["PI Agent", "Qwen"]
+    );
+
+    let source =
+        std::fs::read_to_string(paths.root.join("settings.toml")).expect("read persisted settings");
+    assert!(source.contains("[agentLauncher]"));
+    assert!(source.contains("selectedAgentKey = \"custom:"));
+    assert!(source.contains("[[agentLauncher.customAgents]]"));
+    assert!(source.contains("command = \"pi --mode coding\""));
+}
+
+#[test]
+/// 验证内置 PI 选择键使用现有 settings schema 跨重启持久化，不依赖自定义定义。
+fn settings_service_roundtrips_builtin_pi_selection() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    {
+        let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
+        let settings = AppSettings {
+            agent_launcher: AgentLauncherSettings {
+                selected_agent_key: BUILTIN_PI_LAUNCHER_KEY.to_owned(),
+                custom_agents: Vec::new(),
+            },
+            ..AppSettings::default()
+        };
+        state
+            .settings()
+            .update_settings(settings)
+            .expect("save PI selection");
+    }
+
+    let state = AppState::initialize_with_paths(paths.clone()).expect("reopen app state");
+    let reloaded = state
+        .settings()
+        .load_settings()
+        .expect("reload PI selection");
+    assert_eq!(
+        reloaded.agent_launcher.selected_agent_key,
+        BUILTIN_PI_LAUNCHER_KEY
+    );
+    let source =
+        std::fs::read_to_string(paths.root.join("settings.toml")).expect("settings source");
+    assert!(source.contains("selectedAgentKey = \"builtin:pi\""));
+}
+
+#[test]
+/// 覆盖自定义 Agent 集合上限、Unicode 名称长度、唯一性和悬空 selected key。
+fn custom_agent_launcher_settings_reject_invalid_boundaries() {
+    let valid_id = "9d045678-983a-4ed1-ab39-bd46bccb1fa3";
+    let definition = CustomAgentDefinition {
+        id: valid_id.to_owned(),
+        name: "PI Agent".to_owned(),
+        command: "pi".to_owned(),
+    };
+
+    let mut too_many = AppSettings::default();
+    too_many.agent_launcher.custom_agents = (0..=MAX_CUSTOM_AGENT_DEFINITIONS)
+        .map(|index| CustomAgentDefinition {
+            id: uuid::Uuid::from_u128((index + 1) as u128).to_string(),
+            name: format!("Agent {index}"),
+            command: "pi".to_owned(),
+        })
+        .collect();
+    assert!(matches!(
+        too_many.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
+
+    let mut duplicate_name = AppSettings::default();
+    duplicate_name.agent_launcher.custom_agents = vec![
+        definition.clone(),
+        CustomAgentDefinition {
+            id: "0d11d9b2-fde8-4c24-a86c-16fc6a440aad".to_owned(),
+            name: "pi agent".to_owned(),
+            command: "qwen".to_owned(),
+        },
+    ];
+    assert!(matches!(
+        duplicate_name.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
+
+    let mut long_name = AppSettings::default();
+    long_name.agent_launcher.custom_agents = vec![CustomAgentDefinition {
+        name: "界".repeat(MAX_CUSTOM_AGENT_NAME_CHARS + 1),
+        ..definition.clone()
+    }];
+    assert!(matches!(
+        long_name.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
+
+    let mut long_command = AppSettings::default();
+    long_command.agent_launcher.custom_agents = vec![CustomAgentDefinition {
+        command: "x".repeat(MAX_CUSTOM_AGENT_COMMAND_CHARS + 1),
+        ..definition.clone()
+    }];
+    assert!(matches!(
+        long_command.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
+
+    let mut dangling_selection = AppSettings::default();
+    dangling_selection.agent_launcher.selected_agent_key = format!("custom:{valid_id}");
+    assert!(matches!(
+        dangling_selection.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
+
+    let mut invalid_id = AppSettings::default();
+    invalid_id.agent_launcher.custom_agents = vec![CustomAgentDefinition {
+        id: "not-a-uuid".to_owned(),
+        ..definition
+    }];
+    assert!(matches!(
+        invalid_id.validated(),
+        Err(AppError::InvalidInput(_))
+    ));
 }
 
 #[test]

@@ -8,14 +8,23 @@ import {
   type ExternalAgentWorkspaceStatus,
 } from "../../../lib/agentLauncherApi";
 import { parseAgentCommandLine } from "../../../lib/agentCommandLine";
-const EXTERNAL_AGENT_IDS: ExternalAgentId[] = ["codex", "claude", "custom"];
+const EXTERNAL_AGENT_IDS: ExternalAgentId[] = [
+  "codex",
+  "claude",
+  "pi",
+  "custom",
+];
 type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
 type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
 
+/** 内置 provider 的标题在 session、历史和下拉之间保持稳定，避免 PI 被当作 Custom。 */
 function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
+  }
+  if (agentId === "pi") {
+    return "PI Agent";
   }
   if (agentId === "custom") {
     return "Custom";
@@ -73,6 +82,7 @@ export function buildAgentLauncherViewModel(
   );
 }
 
+/** PI 的 CLI、MCP adapter 与配置是三个独立探测项，必须分别映射可用性。 */
 export function buildAgentActionViewModel(
   agent: ExternalAgentStatus,
   options: AgentActionOptions,
@@ -117,7 +127,11 @@ export function buildAgentActionViewModel(
       : agent.configPath.trim() || "Config path not generated",
     disabled: Boolean(disabledReason),
     disabledReason,
-    installLabel: installed ? "Installed" : "Missing CLI",
+    installLabel: !installed
+      ? "Missing CLI"
+      : agent.id === "pi" && !agent.adapterAvailable
+        ? "Missing MCP adapter"
+        : "Installed",
     statusDetail,
     title: agent.title,
     tone: resolveAgentTone(agent, disabledReason),
@@ -286,6 +300,7 @@ function resolveAgentDisabledReason(
   return undefined;
 }
 
+/** PI adapter 缺失与 CLI 缺失分开反馈，便于用户安装正确的运行时组件。 */
 function resolveAgentAvailability(
   agent: ExternalAgentStatus,
   disabledReason: string | undefined,
@@ -310,6 +325,12 @@ function resolveAgentAvailability(
       label: "需安装",
     };
   }
+  if (agent.id === "pi" && !agent.adapterAvailable) {
+    return {
+      detail: "PI MCP Adapter 尚未安装。",
+      label: "需安装",
+    };
+  }
   if (!agent.configReady) {
     return {
       detail: "需要先完成必要设置，打开时会自动准备。",
@@ -322,6 +343,7 @@ function resolveAgentAvailability(
   };
 }
 
+/** PI 三项探测任一未就绪都使用警告色，不把部分可用误报为 ready。 */
 function resolveAgentTone(
   agent: ExternalAgentStatus,
   disabledReason: string | undefined,
@@ -333,6 +355,9 @@ function resolveAgentTone(
     return "ready";
   }
   if (!agent.installed) {
+    return "warning";
+  }
+  if (agent.id === "pi" && !agent.adapterAvailable) {
     return "warning";
   }
   if (!agent.configReady) {

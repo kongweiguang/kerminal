@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModalShell } from "../../../../src/components/ui/modal-shell";
 import { Select } from "../../../../src/components/ui/select";
@@ -131,6 +132,48 @@ describe("ModalShell", () => {
     );
     expect(source).toHaveFocus();
     source.remove();
+  });
+
+  it("restores an explicit workflow target when the portal trigger disconnects", () => {
+    const source = document.createElement("button");
+    document.body.append(source);
+    source.focus();
+    const returnFocusRef = createRef<HTMLButtonElement>();
+
+    const { rerender } = render(
+      <>
+        <button ref={returnFocusRef} type="button">
+          进入
+        </button>
+        <ModalShell
+          onClose={vi.fn()}
+          open
+          returnFocusRef={returnFocusRef}
+          title="显式焦点合同"
+        >
+          内容
+        </ModalShell>
+      </>,
+    );
+
+    source.remove();
+    rerender(
+      <>
+        <button ref={returnFocusRef} type="button">
+          进入
+        </button>
+        <ModalShell
+          onClose={vi.fn()}
+          open={false}
+          returnFocusRef={returnFocusRef}
+          title="显式焦点合同"
+        >
+          内容
+        </ModalShell>
+      </>,
+    );
+
+    expect(returnFocusRef.current).toHaveFocus();
   });
 
   it("lets an expanded themed select consume Escape before closing the dialog", async () => {

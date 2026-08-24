@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type { AgentActionViewModel } from "./agentLauncherModel";
 
 /** Agent 状态 API 返回前使用的稳定占位动作，不承担运行态可用性判断。 */
@@ -28,6 +30,20 @@ export const initialAgentActions: AgentActionViewModel[] = [
     installLabel: "Launch",
     statusDetail: "Open Claude in the Kerminal workspace.",
     title: "Claude",
+    tone: "muted",
+  },
+  {
+    actionLabel: "Open PI Agent",
+    agentId: "pi",
+    availabilityDetail: "正在检查 PI Agent 与 MCP Adapter 状态。",
+    availabilityLabel: "需设置",
+    cliCommand: "pi --approve --mcp-config .mcp.json",
+    configLabel: "Workspace",
+    configPath: "~/.kerminal/.mcp.json",
+    disabled: false,
+    installLabel: "Launch",
+    statusDetail: "Open PI Agent in the Kerminal workspace.",
+    title: "PI Agent",
     tone: "muted",
   },
   {

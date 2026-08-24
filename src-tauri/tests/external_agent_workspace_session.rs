@@ -10,7 +10,7 @@ use kerminal_lib::{
     models::agent_session::{
         AgentId, AgentProviderSession, AgentSession, AgentSessionId, AgentSessionLaunch,
         AgentSessionScope, AgentSessionStatus, AgentSessionTarget, AgentTargetLiveStatus,
-        AGENT_SESSION_SCHEMA_VERSION,
+        AGENT_SESSION_SCHEMA_VERSION, PI_AGENT_LAUNCH_COMMAND, PI_AGENT_RESUME_COMMAND,
     },
     services::{
         agent_session_file_store::AgentSessionFileStore,
@@ -223,6 +223,7 @@ fn prepare_agent_session_workspace_seeds_scope_from_session_toml() {
             schema_version: AGENT_SESSION_SCHEMA_VERSION,
             agent_session_id: agent_session_id.clone(),
             agent_id: AgentId::Codex,
+            launcher_key: None,
             title: "Codex".to_owned(),
             created_at: "20260629200000".to_owned(),
             updated_at: "20260629200000".to_owned(),
@@ -359,6 +360,71 @@ fn prepare_claude_agent_session_resume_uses_directory_scoped_continue_command() 
 }
 
 #[test]
+/// 验证 PI 新建与恢复均使用 session cwd、标准 MCP 文件和同一组 Kerminal 环境变量。
+fn prepare_pi_agent_session_uses_native_mcp_adapter_commands() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let service = ExternalAgentWorkspaceService::new(
+        temp.path(),
+        Some("http://127.0.0.1:3031/mcp".to_owned()),
+        true,
+    );
+    let agent_session_id = "ags_pi_20260824";
+    let scoped_endpoint = format!("http://127.0.0.1:3031/mcp/agents/{agent_session_id}");
+    let session_root = temp
+        .path()
+        .join("agents")
+        .join("sessions")
+        .join(agent_session_id);
+
+    let start = service
+        .prepare(&PrepareExternalAgentWorkspaceRequest {
+            agent_id: "pi".to_owned(),
+            agent_session_id: Some(agent_session_id.to_owned()),
+            custom_command: None,
+            resume_provider_session: false,
+            dry_run: false,
+            overwrite_policy: ExternalAgentOverwritePolicy::BackupAndReplaceInvalid,
+        })
+        .expect("prepare PI session");
+    assert_agent_launch_command(&start, PI_AGENT_LAUNCH_COMMAND);
+    assert_eq!(start.title, "PI Agent");
+    assert_eq!(start.cwd, path_to_string(&session_root));
+    assert_session_env(
+        &start,
+        agent_session_id,
+        temp.path(),
+        &session_root,
+        &scoped_endpoint,
+    );
+    assert!(session_root.join("AGENTS.md").is_file());
+    assert!(session_root.join(".mcp.json").is_file());
+    assert!(!session_root.join("CLAUDE.md").exists());
+    assert!(!session_root.join(".codex").exists());
+    let mcp: Value = serde_json::from_str(
+        &fs::read_to_string(session_root.join(".mcp.json")).expect("PI MCP config"),
+    )
+    .expect("PI MCP JSON");
+    assert_eq!(
+        mcp.pointer("/mcpServers/kerminal/url")
+            .and_then(Value::as_str),
+        Some(scoped_endpoint.as_str())
+    );
+
+    let resumed = service
+        .prepare(&PrepareExternalAgentWorkspaceRequest {
+            agent_id: "pi".to_owned(),
+            agent_session_id: Some(agent_session_id.to_owned()),
+            custom_command: None,
+            resume_provider_session: true,
+            dry_run: false,
+            overwrite_policy: ExternalAgentOverwritePolicy::BackupAndReplaceInvalid,
+        })
+        .expect("resume PI session");
+    assert_agent_launch_command(&resumed, PI_AGENT_RESUME_COMMAND);
+    assert_eq!(resumed.cwd, path_to_string(&session_root));
+}
+
+#[test]
 fn prepare_claude_agent_session_resume_migrates_legacy_provider_without_command() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -417,6 +483,7 @@ fn prepare_agent_session_resume_syncs_launch_back_to_session_toml() {
             schema_version: AGENT_SESSION_SCHEMA_VERSION,
             agent_session_id: agent_session_id.clone(),
             agent_id: AgentId::Codex,
+            launcher_key: None,
             title: "Codex".to_owned(),
             created_at: "20260624200000".to_owned(),
             updated_at: "20260624200000".to_owned(),
@@ -539,7 +606,8 @@ fn prepare_claude_agent_session_workspace_writes_default_provider_files() {
 }
 
 #[test]
-fn prepare_custom_agent_session_workspace_skips_provider_specific_files() {
+/// 验证 Custom session 保留独立标题/命令快照，并生成通用 MCP 文件而非 provider 配置。
+fn prepare_custom_agent_session_workspace_writes_standard_mcp_without_provider_configs() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
         temp.path(),
@@ -548,6 +616,33 @@ fn prepare_custom_agent_session_workspace_skips_provider_specific_files() {
     );
     let agent_session_id = "ags_custom_20260624";
     let scoped_endpoint = format!("http://127.0.0.1:3022/mcp/agents/{agent_session_id}");
+    let session_root = temp
+        .path()
+        .join("agents")
+        .join("sessions")
+        .join(agent_session_id);
+    AgentSessionFileStore::new(temp.path())
+        .write_session(&AgentSession {
+            schema_version: AGENT_SESSION_SCHEMA_VERSION,
+            agent_session_id: AgentSessionId::new(agent_session_id).expect("session id"),
+            agent_id: AgentId::Custom,
+            launcher_key: Some("custom:9d045678-983a-4ed1-ab39-bd46bccb1fa3".to_owned()),
+            title: "PI Agent".to_owned(),
+            created_at: "20260624200000".to_owned(),
+            updated_at: "20260624200000".to_owned(),
+            status: AgentSessionStatus::Active,
+            workspace_root: path_to_string(temp.path()),
+            session_root: path_to_string(&session_root),
+            launch: AgentSessionLaunch {
+                command_label: "qwen --model max".to_owned(),
+                shell: "qwen".to_owned(),
+                args: vec!["--model".to_owned(), "max".to_owned()],
+                cwd: path_to_string(&session_root),
+            },
+            scope: Some(AgentSessionScope::Global),
+            target: None,
+        })
+        .expect("write custom session snapshot");
 
     let spec = service
         .prepare(&PrepareExternalAgentWorkspaceRequest {
@@ -560,12 +655,8 @@ fn prepare_custom_agent_session_workspace_skips_provider_specific_files() {
         })
         .expect("prepare custom session");
 
-    let session_root = temp
-        .path()
-        .join("agents")
-        .join("sessions")
-        .join(agent_session_id);
     assert_agent_launch_command(&spec, "qwen --model max");
+    assert_eq!(spec.title, "PI Agent");
     assert_eq!(spec.cwd, path_to_string(&session_root));
     assert_session_env(
         &spec,
@@ -589,7 +680,15 @@ fn prepare_custom_agent_session_workspace_skips_provider_specific_files() {
         .is_file());
     assert!(!session_root.join("CLAUDE.md").exists());
     assert!(!session_root.join(".codex").exists());
-    assert!(!session_root.join(".mcp.json").exists());
+    let mcp_root: Value =
+        serde_json::from_str(&fs::read_to_string(session_root.join(".mcp.json")).expect("mcp"))
+            .expect("mcp json");
+    assert_eq!(
+        mcp_root
+            .pointer("/mcpServers/kerminal/url")
+            .and_then(Value::as_str),
+        Some(scoped_endpoint.as_str())
+    );
 
     let endpoint_context: Value = serde_json::from_str(
         &fs::read_to_string(session_root.join("context").join("mcp-endpoint.json"))

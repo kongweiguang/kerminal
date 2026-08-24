@@ -10,6 +10,10 @@ import {
   defaultTerminalAppearance,
 } from "./settingsDefaults";
 import {
+  normalizeAgentLauncherSettings,
+  type AgentLauncherSettings,
+} from "./agentLauncherSettings";
+import {
   SFTP_GLOBAL_TRANSFERS_MAX,
   SFTP_GLOBAL_TRANSFERS_MIN,
   SFTP_HOST_TRANSFERS_MAX,
@@ -31,6 +35,8 @@ import {
   normalizeTerminalKeywordHighlightSettings,
   type TerminalKeywordHighlightSettings,
 } from "./terminalKeywordHighlightModel";
+
+export * from "./agentLauncherSettings";
 
 export {
   defaultAppSettings,
@@ -214,6 +220,7 @@ export interface SftpPerformanceSettings {
 }
 
 export interface AppSettings {
+  agentLauncher: AgentLauncherSettings;
   appearance: AppearanceSettings;
   desktopNotifications: DesktopNotificationSettings;
   externalLaunch: ExternalLaunchSettings;
@@ -232,6 +239,7 @@ export interface AppSettings {
 export function normalizeAppSettings(
   settings?: Partial<AppSettings>,
 ): AppSettings {
+  const agentLauncher = normalizeAgentLauncherSettings(settings?.agentLauncher);
   const appearance = settings?.appearance ?? defaultAppearanceSettings;
   const desktopNotifications =
     settings?.desktopNotifications ?? defaultDesktopNotificationSettings;
@@ -257,6 +265,7 @@ export function normalizeAppSettings(
   );
 
   return {
+    agentLauncher,
     appearance: {
       backgroundEnabled:
         appearance.backgroundEnabled ??

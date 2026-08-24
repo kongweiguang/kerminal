@@ -1,24 +1,37 @@
+// @author kongweiguang
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentLauncherView } from "../../../../src/features/tool-panel/agent-launcher/AgentLauncherView";
 
+const codexSelectorOption = {
+  agentId: "codex" as const,
+  key: "builtin:codex",
+  name: "Codex",
+  statusLabel: "可用",
+  tone: "ready" as const,
+};
+
 const baseProps = {
   actionError: null,
   actionState: null,
-  agentActions: [],
+  agentOptions: [codexSelectorOption],
   agentTechnicalDetail: "",
   currentAgentTargetLabel: "未绑定",
-  customCommand: "",
-  customCommandOpen: false,
+  customAgentError: null,
+  customAgentMutationPending: false,
+  customAgents: [],
   deletingSessionId: null,
   loadError: null,
   loadState: "idle" as const,
   pendingSendRequest: null,
+  selectedAgentKey: "builtin:codex",
+  onAgentSelect: vi.fn(),
   onCancelRestore: vi.fn(),
   onContinueRestore: vi.fn(),
-  onCustomCommandChange: vi.fn(),
-  onCustomCommandSubmit: vi.fn(),
-  onLaunch: vi.fn(),
+  onCustomAgentDelete: vi.fn().mockResolvedValue(true),
+  onCustomAgentSave: vi.fn().mockResolvedValue(true),
+  onLaunchSelected: vi.fn(),
   onNewSession: vi.fn(),
   onRetry: vi.fn(),
   onWorkflowRename: vi.fn().mockResolvedValue(true),
@@ -82,6 +95,117 @@ describe("AgentLauncher workflow integration", () => {
 
     expect(screen.getByRole("heading", { name: "新建对话" })).toBeInTheDocument();
     expect(screen.queryByTestId("agent-launcher-pending-send")).not.toBeInTheDocument();
+  });
+
+  it("保存自定义 Agent 成功后关闭管理弹窗并聚焦主进入按钮", async () => {
+    const onCustomAgentSave = vi.fn().mockResolvedValue(true);
+    render(
+      <AgentLauncherView
+        {...baseProps}
+        onCustomAgentSave={onCustomAgentSave}
+        onWorkflowContinue={vi.fn()}
+        onWorkflowNewSession={vi.fn()}
+        workflowSnapshot={{
+          disposed: false,
+          historyMetadata: [],
+          loading: false,
+          queueMetadata: [],
+          revision: 1,
+          sessions: [],
+          stale: false,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "选择 Agent" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "添加自定义 Agent" }),
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "自定义 Agent 名称" }),
+      { target: { value: "PI Agent" } },
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "自定义 Agent 启动命令" }),
+      { target: { value: "pi" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存并选择" }));
+
+    await waitFor(() => expect(onCustomAgentSave).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "使用 Codex 进入" }),
+      ).toHaveFocus(),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "管理自定义 Agent" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("普通关闭自定义 Agent 管理弹窗后恢复选择器焦点", async () => {
+    render(
+      <AgentLauncherView
+        {...baseProps}
+        onWorkflowContinue={vi.fn()}
+        onWorkflowNewSession={vi.fn()}
+        workflowSnapshot={{
+          disposed: false,
+          historyMetadata: [],
+          loading: false,
+          queueMetadata: [],
+          revision: 1,
+          sessions: [],
+          stale: false,
+        }}
+      />,
+    );
+
+    const selector = screen.getByRole("combobox", { name: "选择 Agent" });
+    fireEvent.click(selector);
+    fireEvent.click(
+      screen.getByRole("button", { name: "添加自定义 Agent" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+
+    await waitFor(() => expect(selector).toHaveFocus());
+    expect(
+      screen.queryByRole("heading", { name: "管理自定义 Agent" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("旧 PI 会话缺少 launcherKey 时仍按内置 key 展示恢复中状态", () => {
+    const { container } = render(
+      <AgentLauncherView
+        {...baseProps}
+        actionState="builtin:pi"
+        onWorkflowContinue={vi.fn()}
+        onWorkflowNewSession={vi.fn()}
+        restoreChoice={{
+          agentId: "pi",
+          permissionMode: "default",
+          session: {
+            agentSessionId: "ags-legacy-pi",
+            scope: { kind: "tab", tabId: "tab-local" },
+            tabId: "tab-local",
+            title: "PI Agent",
+          },
+        }}
+        workflowSnapshot={{
+          disposed: false,
+          historyMetadata: [],
+          loading: false,
+          queueMetadata: [],
+          revision: 1,
+          sessions: [],
+          stale: false,
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "继续上次" }),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector(".animate-spin")).toBeInTheDocument();
   });
 
   it("展示统一状态并只以上抛 session id 的方式执行继续和同 Agent 新会话", () => {

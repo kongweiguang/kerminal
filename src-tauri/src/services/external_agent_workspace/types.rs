@@ -63,6 +63,7 @@ pub struct ExternalAgentWorkspaceStatus {
 pub struct ExternalAgentStatuses {
     pub codex: ExternalAgentStatus,
     pub claude: ExternalAgentStatus,
+    pub pi: ExternalAgentStatus,
     pub custom: ExternalAgentStatus,
 }
 
@@ -73,6 +74,7 @@ pub struct ExternalAgentStatus {
     pub title: String,
     pub cli_command: String,
     pub installed: bool,
+    pub adapter_available: bool,
     pub config_ready: bool,
     pub config_path: String,
     pub status_detail: String,

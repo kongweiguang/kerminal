@@ -2,7 +2,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { parseAgentCommandLine } from "./agentCommandLine";
 
-export type ExternalAgentId = "codex" | "claude" | "custom";
+export type ExternalAgentId = "codex" | "claude" | "pi" | "custom";
 
 /** Agent 会话的权限作用域；作用域决定 MCP 可以观察和操作的终端集合。 */
 export type AgentSessionScope =
@@ -13,6 +13,8 @@ export interface ExternalAgentStatus {
   id: ExternalAgentId;
   title: string;
   cliCommand: string;
+  /** PI 单独探测 MCP adapter；其它 provider 始终返回 true。 */
+  adapterAvailable: boolean;
   installed: boolean;
   configReady: boolean;
   configPath: string;
@@ -117,6 +119,7 @@ interface AgentSessionScopeRecord {
 
 export interface AgentSessionCreateRequest {
   agentId: ExternalAgentId;
+  launcherKey?: string;
   scope: AgentSessionScope;
   title?: string;
   target?: AgentSessionTargetRequest;
@@ -149,6 +152,8 @@ export interface AgentSessionRecord {
     agent_session_id?: string;
     agentId?: ExternalAgentId;
     agent_id?: ExternalAgentId;
+    launcherKey?: string;
+    launcher_key?: string;
     title: string;
     sessionRoot?: string;
     session_root?: string;
@@ -260,6 +265,34 @@ export function agentSessionRecordAgentId(
   return record.session.agentId ?? record.session.agent_id;
 }
 
+/** 兼容 IPC camelCase 与 session.toml snake_case，空 key 按旧会话处理。 */
+export function agentSessionRecordLauncherKey(
+  record: AgentSessionRecord,
+): string | undefined {
+  const launcherKey =
+    record.session.launcherKey ?? record.session.launcher_key;
+  return launcherKey?.trim() || undefined;
+}
+
+/**
+ * Custom 恢复必须使用创建时的命令快照；优先使用完整 commandLabel，旧记录再退回
+ * shell/args 的可读组合，不回查当前定义。
+ */
+export function agentSessionRecordLaunchCommand(
+  record: AgentSessionRecord,
+): string | undefined {
+  const commandLabel =
+    record.session.launch.commandLabel ?? record.session.launch.command_label;
+  if (commandLabel?.trim()) {
+    return commandLabel.trim();
+  }
+  const shell = record.session.launch.shell.trim();
+  if (!shell) {
+    return undefined;
+  }
+  return [shell, ...record.session.launch.args].join(" ").trim();
+}
+
 /** 读取新的 scope 字段，并把旧 target/unbound 记录归一化为同一作用域。 */
 export function agentSessionRecordScope(
   record: AgentSessionRecord,
@@ -328,6 +361,7 @@ function previewExternalAgentWorkspaceStatus(): ExternalAgentWorkspaceStatus {
   return {
     agents: {
       claude: {
+        adapterAvailable: true,
         cliCommand: "claude",
         configPath: `${workspaceDir}/.mcp.json`,
         configReady: true,
@@ -337,6 +371,7 @@ function previewExternalAgentWorkspaceStatus(): ExternalAgentWorkspaceStatus {
         title: "Claude",
       },
       codex: {
+        adapterAvailable: true,
         cliCommand: "codex",
         configPath: `${workspaceDir}/.codex/config.toml`,
         configReady: true,
@@ -346,6 +381,7 @@ function previewExternalAgentWorkspaceStatus(): ExternalAgentWorkspaceStatus {
         title: "Codex",
       },
       custom: {
+        adapterAvailable: true,
         cliCommand: "",
         configPath: "",
         configReady: false,
@@ -353,6 +389,17 @@ function previewExternalAgentWorkspaceStatus(): ExternalAgentWorkspaceStatus {
         installed: false,
         statusDetail: "Custom Agent is not initialized by default.",
         title: "Custom",
+      },
+      pi: {
+        adapterAvailable: false,
+        cliCommand: "pi --approve --mcp-config .mcp.json",
+        configPath: `${workspaceDir}/.mcp.json`,
+        configReady: true,
+        id: "pi",
+        installed: false,
+        statusDetail:
+          "PI Agent and its MCP adapter were not detected in browser preview.",
+        title: "PI Agent",
       },
     },
     mcpEndpoint: endpoint,
@@ -381,7 +428,9 @@ function previewExternalAgentLaunchSpec({
       ? "codex resume --last"
       : resumeProviderSession && agentId === "claude"
         ? "claude --continue"
-        : null;
+        : resumeProviderSession && agentId === "pi"
+          ? `${agent.cliCommand} --continue`
+          : null;
   const parsed = custom
     ? parseAgentCommandLine(customCommand ?? "")
     : parseAgentCommandLine(resumeCommand ?? agent.cliCommand);
@@ -428,6 +477,7 @@ function previewAgentSessionRecord(
     session: {
       agentId: request.agentId,
       agentSessionId,
+      launcherKey: request.launcherKey,
       launch: {
         args: [],
         commandLabel: request.agentId,

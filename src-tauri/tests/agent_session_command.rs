@@ -16,6 +16,7 @@ use kerminal_lib::{
 use tauri::Manager;
 
 #[test]
+/// 目标不存在时在写 session 前拒绝请求，防止留下半成品。
 fn create_rejects_non_live_agent_target_without_partial_session() {
     let home = tempfile::tempdir().expect("temp home");
     let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
@@ -30,6 +31,7 @@ fn create_rejects_non_live_agent_target_without_partial_session() {
         state,
         AgentSessionCreateCommandRequest {
             agent_id: AgentId::Codex,
+            launcher_key: None,
             title: Some("Codex".to_owned()),
             launch: None,
             scope: None,
@@ -55,6 +57,7 @@ fn create_rejects_non_live_agent_target_without_partial_session() {
 }
 
 #[test]
+/// 未绑定 scope 可在没有 live terminal 时创建，并持久化内置 launcher key。
 fn create_accepts_unbound_agent_target_without_live_terminal() {
     let home = tempfile::tempdir().expect("temp home");
     let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
@@ -69,6 +72,7 @@ fn create_accepts_unbound_agent_target_without_live_terminal() {
         state,
         AgentSessionCreateCommandRequest {
             agent_id: AgentId::Codex,
+            launcher_key: Some("builtin:codex".to_owned()),
             title: Some("Codex".to_owned()),
             launch: None,
             scope: None,
@@ -79,6 +83,10 @@ fn create_accepts_unbound_agent_target_without_live_terminal() {
     )
     .expect("create unbound agent session");
 
+    assert_eq!(
+        record.session.launcher_key.as_deref(),
+        Some("builtin:codex")
+    );
     let target = record.session.target.expect("session target");
     assert_eq!(target.live_status, AgentTargetLiveStatus::Unbound);
     assert_eq!(target.target_terminal_session_id, None);
@@ -91,6 +99,7 @@ fn create_accepts_unbound_agent_target_without_live_terminal() {
 }
 
 #[test]
+/// 标记为 ready 的目标必须带完整运行态身份，避免创建不可恢复绑定。
 fn create_rejects_incomplete_bound_agent_target_without_partial_session() {
     let home = tempfile::tempdir().expect("temp home");
     let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
@@ -107,6 +116,7 @@ fn create_rejects_incomplete_bound_agent_target_without_partial_session() {
         state,
         AgentSessionCreateCommandRequest {
             agent_id: AgentId::Codex,
+            launcher_key: None,
             title: Some("Codex".to_owned()),
             launch: None,
             scope: None,

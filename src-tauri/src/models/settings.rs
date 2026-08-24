@@ -6,11 +6,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
+mod agent_launcher;
 mod keybindings;
 mod keyword_highlights;
 mod sftp_performance;
 mod tool_rail;
 
+pub use self::agent_launcher::{
+    AgentLauncherSettings, CustomAgentDefinition, BUILTIN_CLAUDE_LAUNCHER_KEY,
+    BUILTIN_CODEX_LAUNCHER_KEY, BUILTIN_PI_LAUNCHER_KEY, MAX_CUSTOM_AGENT_COMMAND_CHARS,
+    MAX_CUSTOM_AGENT_DEFINITIONS, MAX_CUSTOM_AGENT_NAME_CHARS,
+};
 pub use self::keybindings::default_keybindings;
 pub use self::keyword_highlights::{
     TerminalKeywordHighlightColorPair, TerminalKeywordHighlightCustomColors,
@@ -602,6 +608,9 @@ pub struct AppSettings {
     /// 右侧工具栏顺序与显示设置。
     #[serde(default)]
     pub tool_rail: ToolRailSettings,
+    /// Agent 助手下拉选择与自定义 Agent 定义。
+    #[serde(default)]
+    pub agent_launcher: AgentLauncherSettings,
 }
 
 impl Default for AppSettings {
@@ -616,6 +625,7 @@ impl Default for AppSettings {
             desktop_notifications: DesktopNotificationSettings::default(),
             external_launch: ExternalLaunchSettings::default(),
             tool_rail: ToolRailSettings::default(),
+            agent_launcher: AgentLauncherSettings::default(),
         }
     }
 }
@@ -695,6 +705,7 @@ impl AppSettings {
         self.desktop_notifications = self.desktop_notifications.normalized();
         self.external_launch = self.external_launch.normalized();
         self.tool_rail = self.tool_rail.normalized();
+        self.agent_launcher = self.agent_launcher.validated()?;
 
         Ok(self)
     }

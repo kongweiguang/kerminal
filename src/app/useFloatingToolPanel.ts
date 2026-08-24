@@ -87,11 +87,16 @@ export function useFloatingToolPanel({
   );
   const positionRef = useRef<FloatingToolPanelPoint | null>(null);
   const activeDragCleanupRef = useRef<(() => void) | null>(null);
+  const floatingActiveRef = useRef(enabled && open);
   const [position, setPosition] = useState<FloatingToolPanelPoint | null>(null);
+  floatingActiveRef.current = enabled && open;
 
   /** 提交低频最终坐标，并为当前工具保留本次运行期位置。 */
   const commitPoint = useCallback(
     (nextPoint: FloatingToolPanelPoint) => {
+      if (!floatingActiveRef.current) {
+        return;
+      }
       positionRef.current = nextPoint;
       if (activeTool) {
         positionsRef.current[activeTool] = nextPoint;
@@ -106,10 +111,14 @@ export function useFloatingToolPanel({
   );
 
   useLayoutEffect(() => {
+    const panel = panelRef.current;
     if (!enabled || !open) {
+      // 切换到贴靠布局时必须先停止命令式拖拽，再清掉合成层位移；坐标仍保留在
+      // positionsRef，之后重新进入自由浮窗可以恢复，但贴靠面板不会被推出视口。
+      activeDragCleanupRef.current?.();
+      panel?.style.removeProperty("transform");
       return;
     }
-    const panel = panelRef.current;
     if (!panel) {
       return;
     }

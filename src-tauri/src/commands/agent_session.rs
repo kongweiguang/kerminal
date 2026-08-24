@@ -31,6 +31,9 @@ const AGENT_SESSION_TERMINAL_SNAPSHOT_BYTES: usize = 24 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionCreateCommandRequest {
     pub agent_id: AgentId,
+    /// 选择器中的稳定启动身份；旧前端可省略以恢复 schema v1 会话。
+    #[serde(default)]
+    pub launcher_key: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -176,10 +179,12 @@ pub fn agent_session_archive(
         .map_err(|error| error.to_string())
 }
 
+/// 在校验 live target 后创建 session，并将 launcher key 与其它快照一次写入。
 fn create_agent_session(
     state: &AppState,
     request: AgentSessionCreateCommandRequest,
 ) -> AppResult<AgentSessionRecord> {
+    let launcher_key = request.launcher_key;
     let create_request = AgentSessionCreateRequest {
         agent_id: request.agent_id,
         title: request.title,
@@ -197,7 +202,9 @@ fn create_agent_session(
         validate_agent_session_target(state, target)?;
     }
 
-    let record = state.agent_sessions().create_session(create_request)?;
+    let record = state
+        .agent_sessions()
+        .create_session_with_launcher_key(create_request, launcher_key)?;
 
     if record
         .session

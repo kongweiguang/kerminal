@@ -395,6 +395,42 @@ describe("ShellResponsiveToolPanel", () => {
       "Claude 对话记录 2",
     );
   });
+
+  it.each(["attached", "left", "bottom"] as const)(
+    "自由浮窗切换到 %s 时清理拖拽位移并保持内容可见",
+    async (placement) => {
+      const renderPanel = (nextPlacement: "center" | typeof placement) => (
+        <ShellResponsiveToolPanel
+          activeTool="agentLauncher"
+          compact={false}
+          onClose={vi.fn()}
+          panel={<div>Agent 内容</div>}
+          placement={nextPlacement}
+          rail={<button type="button">打开 Agent</button>}
+        />
+      );
+      const { container, rerender } = render(renderPanel("center"));
+      const floatingPanel = await screen.findByRole("dialog", {
+        name: "可拖动工具浮窗",
+      });
+
+      await waitFor(() =>
+        expect(floatingPanel.style.transform).toMatch(/^translate3d\(/),
+      );
+      rerender(renderPanel(placement));
+
+      await waitFor(() => {
+        const dockedPanel = container.querySelector<HTMLElement>(
+          `section[data-tool-panel-placement="${placement}"]`,
+        );
+        expect(dockedPanel).toBe(floatingPanel);
+        expect(dockedPanel).toBeVisible();
+        expect(dockedPanel?.style.transform).toBe("");
+      });
+      fireEvent(window, new Event("resize"));
+      expect(floatingPanel.style.transform).toBe("");
+    },
+  );
 });
 
 describe("KerminalShellNotices", () => {

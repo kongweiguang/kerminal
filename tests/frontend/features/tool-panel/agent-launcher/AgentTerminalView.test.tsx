@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { defaultTerminalAppearance } from "../../../../../src/features/settings/settingsModel";
@@ -35,6 +37,31 @@ const preview = {
 };
 
 describe("AgentTerminalView", () => {
+  it("PI 会话使用专属 PI 图标并保留 Agent 标题", () => {
+    const { container } = render(
+      <AgentTerminalView
+        focused
+        onAgentSignal={vi.fn()}
+        onBack={vi.fn()}
+        onCancelPreview={vi.fn()}
+        onConfirmPreview={vi.fn().mockResolvedValue({ outcome: "sent" })}
+        preview={null}
+        previewBusy={false}
+        resolvedTheme="dark"
+        session={{
+          ...session,
+          agentId: "pi",
+          commandLabel: "pi",
+          title: "PI Agent",
+        }}
+        terminalAppearance={defaultTerminalAppearance}
+      />,
+    );
+
+    expect(screen.getByText("PI Agent")).toBeVisible();
+    expect(container.querySelector(".lucide-pi")).toBeInTheDocument();
+  });
+
   it("预览覆盖内容区但不替换或压缩已挂载的终端", () => {
     const baseProps = {
       focused: true,

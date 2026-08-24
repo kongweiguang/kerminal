@@ -3,9 +3,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Info, Loader2, Send, Terminal } from "lucide-react";
+import { Info, Loader2, Send } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { IconAction } from "../../../components/ui/icon-action";
 import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
@@ -20,41 +19,50 @@ import type {
 } from "../../../lib/agentLauncherApi";
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
 import type { AgentSendRequest } from "../../agent-workflow/state/index";
-import type {
-  AgentActionViewModel,
-  AgentLaunchPermissionMode,
-} from "./agentLauncherModel";
+import type { CustomAgentDefinition } from "../../settings/contracts/index";
+import type { AgentLaunchPermissionMode } from "./agentLauncherModel";
 import type { AgentSessionSelection } from "./agentSessionRestoreModel";
 import { agentSessionScopeId } from "./agentTabSessionModel";
 import { formatTargetChipLabel } from "./agentSessionTargetModel";
 import {
-  AgentIconButton,
-  AgentLaunchContextMenu,
+  AgentLaunchSplitButton,
   type AgentLaunchTargetMode,
 } from "./AgentLaunchControls";
+import {
+  AgentSelector,
+  type AgentSelectorOption,
+} from "./AgentSelector";
+import {
+  CustomAgentManagerDialog,
+  type CustomAgentDraft,
+} from "./CustomAgentManagerDialog";
 import { AgentConversationList } from "./AgentConversationList";
+import type { AgentLaunchSnapshot } from "./agentLauncherPresentationModel";
 
 export type AgentLauncherLoadState =
   "idle" | "loading" | "refreshing" | "error";
-export type AgentLauncherActionState = ExternalAgentId | null;
+export type AgentLauncherActionState = string | null;
 
 export interface AgentRestoreChoice {
   agentId: ExternalAgentId;
+  /** 下拉入口的新会话使用当前定义；继续上次仍只读取 session 历史快照。 */
+  newSessionLauncher?: AgentLaunchSnapshot;
   permissionMode: AgentLaunchPermissionMode;
   session: AgentSessionSelection;
 }
 
-interface AgentLauncherViewProps {
+export interface AgentLauncherViewProps {
   actionError: UserFacingMessage | null;
   actionState: AgentLauncherActionState;
-  agentActions: AgentActionViewModel[];
+  agentOptions: AgentSelectorOption[];
   agentTechnicalDetail: string;
   currentAgentTarget?: AgentSessionTargetRequest;
   /** 缺省仅用于旧测试/嵌入调用方；主工具面板始终传入显式 scope。 */
   currentAgentScope?: AgentSessionScope;
   currentAgentTargetLabel: string;
-  customCommand: string;
-  customCommandOpen: boolean;
+  customAgentError: UserFacingMessage | null;
+  customAgentMutationPending: boolean;
+  customAgents: CustomAgentDefinition[];
   deletingSessionId: string | null;
   loadError: UserFacingMessage | null;
   loadState: AgentLauncherLoadState;
@@ -62,12 +70,13 @@ interface AgentLauncherViewProps {
   restoreChoice: AgentRestoreChoice | null;
   statusAvailable: boolean;
   visible: boolean;
+  selectedAgentKey: string;
+  onAgentSelect: (key: string) => void;
   onCancelRestore: () => void;
   onContinueRestore: (choice: AgentRestoreChoice) => void;
-  onCustomCommandChange: (command: string) => void;
-  onCustomCommandSubmit: () => void;
-  onLaunch: (
-    agentId: ExternalAgentId,
+  onCustomAgentDelete: (id: string) => Promise<boolean>;
+  onCustomAgentSave: (draft: CustomAgentDraft) => Promise<boolean>;
+  onLaunchSelected: (
     permissionMode?: AgentLaunchPermissionMode,
     targetMode?: AgentLaunchTargetMode,
   ) => void;
@@ -81,18 +90,6 @@ interface AgentLauncherViewProps {
   workflowSnapshot: AgentWorkflowSnapshot;
 }
 
-interface AgentLauncherContextMenuState {
-  agent: AgentActionViewModel;
-  position: {
-    x: number;
-    y: number;
-  };
-}
-
-const AGENT_LAUNCH_CONTEXT_MENU_WIDTH = 164;
-const AGENT_LAUNCH_CONTEXT_MENU_HEIGHT = 72;
-const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
-
 /**
  * Agent Launcher 的纯 UI 组合层。
  *
@@ -102,13 +99,14 @@ const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
 export function AgentLauncherView({
   actionError,
   actionState,
-  agentActions,
+  agentOptions,
   agentTechnicalDetail,
   currentAgentTarget,
   currentAgentScope,
   currentAgentTargetLabel,
-  customCommand,
-  customCommandOpen,
+  customAgentError,
+  customAgentMutationPending,
+  customAgents,
   deletingSessionId,
   loadError,
   loadState,
@@ -116,11 +114,13 @@ export function AgentLauncherView({
   restoreChoice,
   statusAvailable,
   visible,
+  selectedAgentKey,
+  onAgentSelect,
   onCancelRestore,
   onContinueRestore,
-  onCustomCommandChange,
-  onCustomCommandSubmit,
-  onLaunch,
+  onCustomAgentDelete,
+  onCustomAgentSave,
+  onLaunchSelected,
   onNewSession,
   onRetry,
   onWorkflowContinue,
@@ -131,48 +131,27 @@ export function AgentLauncherView({
   workflowSnapshot,
 }: AgentLauncherViewProps) {
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
-  const [agentContextMenu, setAgentContextMenu] =
-    useState<AgentLauncherContextMenuState | null>(null);
-  const launcherMenuRootRef = useRef<HTMLDivElement | null>(null);
+  const [customAgentDialogOpen, setCustomAgentDialogOpen] = useState(false);
+  const selectorButtonRef = useRef<HTMLButtonElement | null>(null);
+  const launchButtonRef = useRef<HTMLButtonElement | null>(null);
+  const customAgentDialogReturnFocusRef = useRef<HTMLElement | null>(null);
+  const selectedAgent =
+    agentOptions.find((option) => option.key === selectedAgentKey) ??
+    agentOptions[0] ??
+    null;
 
   useEffect(() => {
-    if (!agentContextMenu) {
-      return undefined;
+    if (!visible) {
+      setCustomAgentDialogOpen(false);
     }
+  }, [visible]);
 
-    const closeMenu = () => setAgentContextMenu(null);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeMenu();
-      }
-    };
-
-    window.addEventListener("click", closeMenu);
-    window.addEventListener("resize", closeMenu);
-    window.addEventListener("keydown", closeOnEscape);
-
-    return () => {
-      window.removeEventListener("click", closeMenu);
-      window.removeEventListener("resize", closeMenu);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [agentContextMenu]);
-
-  const openAgentContextMenu = (
-    agent: AgentActionViewModel,
-    event: ReactMouseEvent,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const bounds = launcherMenuRootRef.current?.getBoundingClientRect();
-    setAgentContextMenu({
-      agent,
-      position: clampAgentLaunchContextMenuPosition(
-        bounds ? event.clientX - bounds.left : event.clientX,
-        bounds ? event.clientY - bounds.top : event.clientY,
-        bounds,
-      ),
-    });
+  /** 普通关闭恢复到选择器；保存成功则前移到主“进入”按钮，形成连续键盘流程。 */
+  const closeCustomAgentDialog = (focusLaunchButton = false) => {
+    customAgentDialogReturnFocusRef.current = focusLaunchButton
+      ? launchButtonRef.current
+      : selectorButtonRef.current;
+    setCustomAgentDialogOpen(false);
   };
 
   return (
@@ -186,9 +165,8 @@ export function AgentLauncherView({
     >
       <div className="scrollbar-none flex min-h-0 flex-1 overflow-y-auto">
         <div
-          className="relative mx-auto my-auto w-full max-w-[280px] py-2"
+          className="relative mx-auto my-auto w-full max-w-[320px] py-2"
           data-testid="agent-launcher-content"
-          ref={launcherMenuRootRef}
         >
           <div className="mb-2 flex min-w-0 items-start gap-2 px-1">
             <div
@@ -235,16 +213,31 @@ export function AgentLauncherView({
               variant="ghost"
             />
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            {agentActions.map((agent) => (
-              <AgentIconButton
-                actionState={actionState}
-                agent={agent}
-                key={agent.agentId}
-                onLaunch={onLaunch}
-                onOpenMenu={openAgentContextMenu}
-              />
-            ))}
+          <div
+            aria-label="Agent 启动控件"
+            className="flex min-w-0 items-stretch px-0.5"
+            role="group"
+          >
+            <AgentSelector
+              actionState={actionState}
+              active={visible}
+              disabled={customAgentMutationPending}
+              onManageCustomAgents={() => {
+                customAgentDialogReturnFocusRef.current = selectorButtonRef.current;
+                setCustomAgentDialogOpen(true);
+              }}
+              onSelect={onAgentSelect}
+              options={agentOptions}
+              selectedKey={selectedAgentKey}
+              triggerRef={selectorButtonRef}
+            />
+            <AgentLaunchSplitButton
+              actionState={actionState}
+              disabled={customAgentMutationPending}
+              onLaunch={onLaunchSelected}
+              option={selectedAgent}
+              primaryButtonRef={launchButtonRef}
+            />
           </div>
           {technicalDetailsOpen ? (
             <div
@@ -257,54 +250,6 @@ export function AgentLauncherView({
                 {agentTechnicalDetail}
               </pre>
             </div>
-          ) : null}
-
-          {agentContextMenu ? (
-            <AgentLaunchContextMenu
-              agent={agentContextMenu.agent}
-              onLaunch={(permissionMode, targetMode = "current") => {
-                setAgentContextMenu(null);
-                onLaunch(
-                  agentContextMenu.agent.agentId,
-                  permissionMode,
-                  targetMode,
-                );
-              }}
-              position={agentContextMenu.position}
-            />
-          ) : null}
-
-          {customCommandOpen ? (
-            <form
-              className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-field)] p-1.5 shadow-sm shadow-black/5 dark:shadow-black/20"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onCustomCommandSubmit();
-              }}
-            >
-              <label className="sr-only">Custom CLI command</label>
-              <input
-                aria-label="Custom agent command"
-                autoFocus
-                className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:bg-white/70 focus:ring-4 focus:ring-sky-400/15 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:bg-white/10"
-                onChange={(event) => onCustomCommandChange(event.target.value)}
-                placeholder="kimi or qwen --model ..."
-                value={customCommand}
-              />
-              <Button
-                aria-label="Open custom agent command"
-                disabled={actionState !== null || !customCommand.trim()}
-                size="icon"
-                type="submit"
-                variant="primary"
-              >
-                {actionState === "custom" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Terminal className="h-4 w-4" />
-                )}
-              </Button>
-            </form>
           ) : null}
 
           {restoreChoice ? (
@@ -353,6 +298,17 @@ export function AgentLauncherView({
       {actionError ? (
         <UserFacingNotice className="mt-3" compact message={actionError} />
       ) : null}
+      <CustomAgentManagerDialog
+        customAgents={customAgents}
+        error={customAgentError}
+        mutationPending={customAgentMutationPending}
+        onClose={() => closeCustomAgentDialog(false)}
+        onDelete={onCustomAgentDelete}
+        onSave={onCustomAgentSave}
+        onSaved={() => closeCustomAgentDialog(true)}
+        open={customAgentDialogOpen}
+        returnFocusRef={customAgentDialogReturnFocusRef}
+      />
     </div>
   );
 }
@@ -380,14 +336,14 @@ function AgentRestoreChoicePanel({
   onContinue: (choice: AgentRestoreChoice) => void;
   onNewSession: (choice: AgentRestoreChoice) => void;
 }) {
-  const busy = actionState === choice.agentId;
+  const busy = actionState === restoreChoiceActionKey(choice);
   const disabled = actionState !== null;
   const targetLabel = formatRestoreTargetLabel(choice.session);
   return (
     <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
       <div className="flex min-w-0 items-center gap-2 px-1">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-          {agentTitle(choice.agentId)}
+          {choice.session.title || agentTitle(choice.agentId)}
         </span>
         <span
           className={cn(
@@ -447,9 +403,13 @@ function formatRestoreTargetLabel(session: AgentSessionSelection): string {
     : "当前 Tab";
 }
 
+/** 历史会话缺少标题快照时按内置身份回退，避免 PI 被泛化显示为 Custom。 */
 function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
+  }
+  if (agentId === "pi") {
+    return "PI Agent";
   }
   if (agentId === "custom") {
     return "Custom";
@@ -457,24 +417,19 @@ function agentTitle(agentId: ExternalAgentId): string {
   return "Codex";
 }
 
-function clampAgentLaunchContextMenuPosition(
-  x: number,
-  y: number,
-  bounds?: DOMRect,
-) {
-  const width = bounds?.width ?? window.innerWidth;
-  const height = bounds?.height ?? window.innerHeight;
-  const maxX = Math.max(
-    AGENT_LAUNCH_CONTEXT_MENU_INSET,
-    width - AGENT_LAUNCH_CONTEXT_MENU_WIDTH - AGENT_LAUNCH_CONTEXT_MENU_INSET,
-  );
-  const maxY = Math.max(
-    AGENT_LAUNCH_CONTEXT_MENU_INSET,
-    height - AGENT_LAUNCH_CONTEXT_MENU_HEIGHT - AGENT_LAUNCH_CONTEXT_MENU_INSET,
-  );
-
-  return {
-    x: Math.max(AGENT_LAUNCH_CONTEXT_MENU_INSET, Math.min(x, maxX)),
-    y: Math.max(AGENT_LAUNCH_CONTEXT_MENU_INSET, Math.min(y, maxY)),
-  };
+/** 新会话用稳定 launcherKey 标记 busy，旧内置/Custom 会话则回退到兼容 key。 */
+function restoreChoiceActionKey(choice: AgentRestoreChoice): string {
+  if (choice.session.launcherKey) {
+    return choice.session.launcherKey;
+  }
+  if (choice.agentId === "codex") {
+    return "builtin:codex";
+  }
+  if (choice.agentId === "claude") {
+    return "builtin:claude";
+  }
+  if (choice.agentId === "pi") {
+    return "builtin:pi";
+  }
+  return "custom";
 }

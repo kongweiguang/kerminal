@@ -1,6 +1,12 @@
 // @author kongweiguang
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/cn";
@@ -18,6 +24,7 @@ interface ModalShellProps {
   maxWidthClassName?: string;
   open: boolean;
   panelClassName?: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   title: string;
   onClose: () => void;
 }
@@ -84,6 +91,19 @@ function hasExpandedCombobox(panel: HTMLElement | null) {
   );
 }
 
+/** 关闭时才解析显式目标，使同一弹框能按“保存”或“取消”选择不同后续焦点。 */
+function restoreModalFocus(
+  returnFocusRef: RefObject<HTMLElement | null> | undefined,
+  previouslyFocused: HTMLElement | null,
+) {
+  const returnTarget = returnFocusRef?.current;
+  if (returnTarget?.isConnected) {
+    returnTarget.focus();
+  } else if (previouslyFocused?.isConnected) {
+    previouslyFocused.focus();
+  }
+}
+
 /**
  * 全屏 overlay 共用的顶部窗口拖拽条。
  *
@@ -117,6 +137,7 @@ export function ModalShell({
   onClose,
   open,
   panelClassName,
+  returnFocusRef,
   size = "medium",
   title,
 }: ModalShellProps) {
@@ -230,11 +251,11 @@ export function ModalShell({
       if (activeModalStack.length === 0) {
         document.body.style.overflow = previousBodyOverflow;
       }
-      if (previouslyFocused?.isConnected) {
-        previouslyFocused.focus();
-      }
+      // 触发器位于已关闭 portal 时 previouslyFocused 会失联；调用方可显式指定
+      // 业务流程的下一焦点，避免焦点退回 body。
+      restoreModalFocus(returnFocusRef, previouslyFocused);
     };
-  }, [modalId, open]);
+  }, [modalId, open, returnFocusRef]);
 
   if (!open) {
     return null;

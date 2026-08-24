@@ -20,7 +20,7 @@
   "entries": [
     {
       "file": "src-tauri/src/models/agent_session.rs",
-      "lines": 887,
+      "lines": 878,
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
@@ -38,20 +38,6 @@
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
-    },
-    {
-      "file": "src/features/tool-panel/AgentLauncherToolContent.tsx",
-      "lines": 877,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "tests/frontend/features/tool-panel/AgentLauncherToolContent.test.tsx",
-      "lines": 811,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
     }
   ]
 }

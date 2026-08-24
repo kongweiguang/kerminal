@@ -1,172 +1,297 @@
 // @author kongweiguang
 
-import { useId, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import {
-  Loader2,
-  ShieldOff,
-  Sparkles,
-  Terminal,
-  Unlink,
-  Wrench,
-} from "lucide-react";
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type Ref,
+} from "react";
+import { ChevronDown, Loader2, ShieldOff, Unlink } from "lucide-react";
 import { cn } from "../../../lib/cn";
-import type { ExternalAgentId } from "../../../lib/agentLauncherApi";
 import {
   agentPermissionSkipFlag,
-  type AgentActionViewModel,
   type AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
-
-const agentIcons = {
-  claude: Sparkles,
-  codex: Terminal,
-  custom: Wrench,
-};
-const agentLaunchContextMenuClassName =
-  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter kerminal-layer-popover absolute w-[164px]";
+import type { AgentSelectorOption } from "./AgentSelector";
 
 export type AgentLaunchTargetMode = "current" | "unbound";
 
-export function AgentIconButton({
-  actionState,
-  agent,
-  onLaunch,
-  onOpenMenu,
-}: {
-  actionState: ExternalAgentId | null;
-  agent: AgentActionViewModel;
+interface AgentLaunchSplitButtonProps {
+  actionState: string | null;
+  disabled?: boolean;
   onLaunch: (
-    agentId: ExternalAgentId,
     permissionMode?: AgentLaunchPermissionMode,
     targetMode?: AgentLaunchTargetMode,
   ) => void;
-  onOpenMenu: (agent: AgentActionViewModel, event: ReactMouseEvent) => void;
-}) {
-  const Icon = agentIcons[agent.agentId];
-  const busy = actionState === agent.agentId;
-  const disabled = actionState !== null || agent.disabled;
-  const disabledReason =
-    agent.disabledReason ??
-    (busy
-      ? "正在启动。"
-      : actionState !== null
-        ? "另一个 Agent 操作正在进行。"
-        : undefined);
-  const disabledReasonId = useId();
-  const label = agent.agentId === "custom" ? "自定义" : agent.title;
+  option: AgentSelectorOption | null;
+  primaryButtonRef?: Ref<HTMLButtonElement>;
+}
+
+interface LaunchMenuPosition {
+  left: number;
+  side: "bottom" | "top";
+  top: number;
+}
+
+const MENU_WIDTH = 164;
+const MENU_GAP = 6;
+const MENU_INSET = 8;
+const MENU_ESTIMATED_HEIGHT = 88;
+
+/**
+ * 分裂按钮把最常用的当前 Tab 启动留在主按钮，低频权限/全局模式收纳在次级菜单。
+ * 组件只上抛明确模式，不推导 scope 或修改会话状态。
+ */
+export function AgentLaunchSplitButton({
+  actionState,
+  disabled: externallyDisabled = false,
+  onLaunch,
+  option,
+  primaryButtonRef,
+}: AgentLaunchSplitButtonProps) {
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const firstMenuItemRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<LaunchMenuPosition | null>(
+    null,
+  );
+  const busy = Boolean(option && actionState === option.key);
+  const disabled =
+    externallyDisabled ||
+    !option ||
+    actionState !== null ||
+    Boolean(option.disabled);
+  const skipFlag = option ? permissionSkipFlagForOption(option) : undefined;
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !menuButtonRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      menuButtonRef.current?.focus();
+    };
+
+    const animationFrame = window.requestAnimationFrame(() =>
+      firstMenuItemRef.current?.focus(),
+    );
+    window.addEventListener("pointerdown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("pointerdown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      return undefined;
+    }
+
+    /** 启动菜单跟随箭头按钮并自动翻转，确保底部工具栏也能完整显示两项操作。 */
+    const updateMenuPosition = () => {
+      const trigger = menuButtonRef.current;
+      if (!trigger) {
+        return;
+      }
+      setMenuPosition(resolveLaunchMenuPosition(trigger.getBoundingClientRect()));
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
+
+  /** 菜单项执行后立即收起浮层，防止异步启动期间残留可重复点击入口。 */
+  const launchFromMenu = (
+    permissionMode: AgentLaunchPermissionMode,
+    targetMode: AgentLaunchTargetMode = "current",
+  ) => {
+    setOpen(false);
+    onLaunch(permissionMode, targetMode);
+  };
+
+  /** 箭头键直接打开菜单，让键盘用户不必先用 Enter 再寻找第一项。 */
+  const handleMenuButtonKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+    }
+  };
+
+  /** 菜单内使用方向键循环聚焦；Tab 保留浏览器原生顺序并在焦点移动后收起浮层。 */
+  const handleLaunchMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Tab") {
+      window.setTimeout(() => setOpen(false), 0);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    event.preventDefault();
+    const menuItems = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ??
+        [],
+    );
+    if (menuItems.length === 0) {
+      return;
+    }
+    const currentIndex = menuItems.findIndex(
+      (item) => item === document.activeElement,
+    );
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex =
+      (Math.max(currentIndex, 0) + direction + menuItems.length) %
+      menuItems.length;
+    menuItems[nextIndex]?.focus();
+  };
 
   return (
-    <button
-      aria-label={
-        agent.agentId === "custom" ? "Open Custom Agent" : `Open ${agent.title}`
-      }
-      aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
-      aria-disabled={disabled || undefined}
-      className={cn(
-        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
-        disabled && "cursor-not-allowed opacity-45",
-      )}
-      onClick={() => {
-        if (!disabled) {
-          onLaunch(agent.agentId);
-        }
-      }}
-      onContextMenu={(event) => {
-        if (disabled) {
-          return;
-        }
-        onOpenMenu(agent, event);
-      }}
-      title={disabledReason ?? agent.availabilityDetail}
-      type="button"
-    >
-      {busy ? (
-        <Loader2 className="h-5 w-5 animate-spin" />
-      ) : (
-        <Icon className="h-5 w-5" strokeWidth={1.75} />
-      )}
-      <span className="max-w-full truncate text-[11px] font-medium">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "max-w-full truncate text-[10px]",
-          agent.availabilityLabel === "可用"
-            ? "text-zinc-500 dark:text-zinc-400"
-            : "text-amber-700 dark:text-amber-300",
-        )}
+    <div className="relative -ml-px flex shrink-0">
+      <button
+        aria-label={option ? `使用 ${option.name} 进入` : "进入 Agent"}
+        className="kerminal-focus-ring kerminal-pressable inline-flex h-11 min-w-[58px] items-center justify-center border border-[rgb(var(--app-accent))] bg-[rgb(var(--app-accent))] px-3 text-xs font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => onLaunch("default", "current")}
+        ref={primaryButtonRef}
+        title={option?.disabledReason}
+        type="button"
       >
-        {agent.availabilityLabel}
-      </span>
-      {disabled && disabledReason ? (
-        <span className="sr-only" id={disabledReasonId}>
-          {disabledReason}
-        </span>
-      ) : null}
-    </button>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "进入"}
+      </button>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="打开 Agent 启动选项"
+        className="kerminal-focus-ring kerminal-pressable inline-flex h-11 w-8 items-center justify-center rounded-r-[var(--radius-control)] border border-l border-[rgb(var(--app-accent))] bg-[rgb(var(--app-accent))] text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={handleMenuButtonKeyDown}
+        ref={menuButtonRef}
+        type="button"
+      >
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            "h-3.5 w-3.5 transition-transform duration-150",
+            open ? "rotate-180" : "",
+          )}
+          strokeWidth={2}
+        />
+      </button>
+
+      {open && menuPosition && option
+        ? createPortal(
+            <div
+              aria-label={`${option.name} 启动选项`}
+              className="kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter kerminal-layer-popover fixed w-[164px]"
+              data-side={menuPosition.side}
+              onKeyDown={handleLaunchMenuKeyDown}
+              ref={menuRef}
+              role="menu"
+              style={{ left: menuPosition.left, top: menuPosition.top }}
+            >
+              <div className="kerminal-context-menu-group">
+                {skipFlag ? (
+                  <button
+                    aria-label={`跳过权限打开 ${option.name}`}
+                    className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
+                    onClick={() => launchFromMenu("skipPermissions")}
+                    ref={firstMenuItemRef}
+                    role="menuitem"
+                    title={`启动时附加 ${skipFlag}`}
+                    type="button"
+                  >
+                    <span className="kerminal-context-menu-icon">
+                      <ShieldOff />
+                    </span>
+                    <span className="kerminal-context-menu-label">
+                      跳过权限打开
+                    </span>
+                  </button>
+                ) : null}
+                <button
+                  aria-label={`允许 ${option.name} 操作整个 Kerminal`}
+                  className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
+                  onClick={() => launchFromMenu("default", "unbound")}
+                  ref={skipFlag ? undefined : firstMenuItemRef}
+                  role="menuitem"
+                  title="允许 Agent 操作所有标签、终端和 Kerminal 运行态"
+                  type="button"
+                >
+                  <span className="kerminal-context-menu-icon">
+                    <Unlink />
+                  </span>
+                  <span className="kerminal-context-menu-label">
+                    操作整个 Kerminal
+                  </span>
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 }
 
-/** 提供权限模式与全局作用域入口；“操作整个 Kerminal”不再伪装成主机解绑。 */
-export function AgentLaunchContextMenu({
-  agent,
-  onLaunch,
-  position,
-}: {
-  agent: AgentActionViewModel;
-  onLaunch: (
-    permissionMode: AgentLaunchPermissionMode,
-    targetMode?: AgentLaunchTargetMode,
-  ) => void;
-  position: {
-    x: number;
-    y: number;
-  };
-}) {
-  const skipFlag = agentPermissionSkipFlag(agent.agentId);
+/**
+ * 跳过权限只属于 Codex/Claude 的原生 CLI 能力；PI 与 Custom 不渲染无效入口，
+ * 避免用户把“菜单里有选项”误解为后端会提供同等权限模式。
+ */
+function permissionSkipFlagForOption(option: AgentSelectorOption) {
+  return option.agentId === "codex" || option.agentId === "claude"
+    ? agentPermissionSkipFlag(option.agentId)
+    : undefined;
+}
 
-  return (
-    <div
-      aria-label={`${agent.title} launch options`}
-      className={agentLaunchContextMenuClassName}
-      onClick={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
-      role="menu"
-      style={{
-        left: position.x,
-        top: position.y,
-      }}
-    >
-      <div className="kerminal-context-menu-group">
-        {skipFlag ? (
-          <button
-            aria-label={`Launch ${agent.title} with skipped permissions`}
-            className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
-            onClick={() => onLaunch("skipPermissions")}
-            role="menuitem"
-            title="将以跳过权限确认的模式启动"
-            type="button"
-          >
-            <span className="kerminal-context-menu-icon">
-              <ShieldOff />
-            </span>
-            <span className="kerminal-context-menu-label">跳过权限打开</span>
-          </button>
-        ) : null}
-        <button
-          aria-label={`Launch ${agent.title} for the entire Kerminal`}
-          className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
-          onClick={() => onLaunch("default", "unbound")}
-          role="menuitem"
-          title="允许 Agent 操作所有标签、终端和 Kerminal 运行态"
-          type="button"
-        >
-          <span className="kerminal-context-menu-icon">
-            <Unlink />
-          </span>
-          <span className="kerminal-context-menu-label">操作整个 Kerminal</span>
-        </button>
-      </div>
-    </div>
+/** 在目标控件附近选择上下展开方向，并将菜单水平位置限制在可视区域内。 */
+function resolveLaunchMenuPosition(rect: DOMRect): LaunchMenuPosition {
+  const viewportWidth = Math.max(window.innerWidth, MENU_WIDTH + MENU_INSET * 2);
+  const viewportHeight = Math.max(
+    window.innerHeight,
+    MENU_ESTIMATED_HEIGHT + MENU_INSET * 2,
   );
+  const availableBelow = viewportHeight - rect.bottom - MENU_GAP - MENU_INSET;
+  const side =
+    availableBelow >= MENU_ESTIMATED_HEIGHT || availableBelow >= rect.top
+      ? "bottom"
+      : "top";
+  const left = Math.min(
+    Math.max(MENU_INSET, rect.right - MENU_WIDTH),
+    viewportWidth - MENU_WIDTH - MENU_INSET,
+  );
+  const top =
+    side === "bottom"
+      ? Math.min(
+          rect.bottom + MENU_GAP,
+          viewportHeight - MENU_ESTIMATED_HEIGHT - MENU_INSET,
+        )
+      : Math.max(MENU_INSET, rect.top - MENU_GAP - MENU_ESTIMATED_HEIGHT);
+  return { left, side, top };
 }

@@ -98,6 +98,9 @@ interface ToolPanelStoreBridgeProps {
     placement?: TmuxAttachPlacement,
   ) => void;
   onRemoteHostCreated?: () => void | Promise<void>;
+  onConfirmedSettingsChange?: (
+    settings: AppSettings,
+  ) => Promise<AppSettings>;
   onSettingsChange?: (settings: AppSettings) => void;
   onSplitPane?: (direction: TerminalSplitDirection) => void;
   resolvedTheme: ResolvedTheme;

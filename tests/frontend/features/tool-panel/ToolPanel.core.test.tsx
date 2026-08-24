@@ -139,16 +139,16 @@ it("renders the active Agent Launcher tool", async () => {
   ).toBeInTheDocument();
   expect(
     await screen.findByRole(
-      "button",
-      { name: "Open Codex" },
+      "combobox",
+      { name: "选择 Agent" },
       { timeout: 10000 },
     ),
+  ).toHaveAttribute("aria-valuetext", "Codex");
+  expect(
+    screen.getByRole("button", { name: "使用 Codex 进入" }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Open Claude" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Open Custom Agent" }),
+    screen.getByRole("button", { name: "打开 Agent 启动选项" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("历史会话")).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
@@ -213,11 +213,11 @@ it("keeps settings out of the rail without rendering settings content inside the
 
   expect(
     await screen.findByRole(
-      "button",
-      { name: "Open Codex" },
+      "combobox",
+      { name: "选择 Agent" },
       { timeout: 5000 },
     ),
-  ).toBeInTheDocument();
+  ).toHaveAttribute("aria-valuetext", "Codex");
   expect(screen.queryByText("终端外观")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "收起 设置" }),

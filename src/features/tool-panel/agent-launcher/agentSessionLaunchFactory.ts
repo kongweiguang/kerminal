@@ -3,12 +3,22 @@ import {
   agentSessionRecordId,
   agentSessionRecordTarget,
   createAgentSession,
+  updateAgentSession,
   type AgentSessionScope,
+  type AgentSessionTargetRequest,
   type ExternalAgentId,
+  type ExternalAgentLaunchSpec,
 } from "../../../lib/agentLauncherApi";
 import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 import type { AgentLaunchTargetMode } from "./AgentLaunchControls";
-import { buildAgentSessionTitle } from "./agentLauncherModel";
+import type { AgentTerminalSession } from "./AgentTerminalView";
+import {
+  agentLaunchDisplayCommand,
+  applyAgentLaunchPermissionMode,
+  applyManagedAgentLaunchTrust,
+  buildAgentSessionTitle,
+  type AgentLaunchPermissionMode,
+} from "./agentLauncherModel";
 import {
   buildAgentSessionScope,
   formatCurrentAgentTargetLabel,
@@ -18,11 +28,13 @@ import { agentSessionScopeId } from "./agentTabSessionModel";
 interface CreateAgentSessionForLaunchInput {
   activeTab?: TerminalTab;
   focusedPane?: TerminalPane;
+  launcherKey?: string;
   /** 旧调用方传入的 scope key，仅保留接口兼容；新作用域由 activeTab/targetMode 计算。 */
   tabId?: string;
   /** 恢复流程可显式指定原作用域，避免在当前 Tab 上误建 global/tab 会话。 */
   scope?: AgentSessionScope;
   targetMode?: AgentLaunchTargetMode;
+  title?: string;
 }
 
 /** 创建带显式权限作用域的持久会话；旧 target 不再决定新会话能访问哪些终端。 */
@@ -31,27 +43,93 @@ export async function createAgentSessionForLaunch(
   {
     activeTab,
     focusedPane,
+    launcherKey,
     scope: requestedScope,
     targetMode = "current",
+    title,
   }: CreateAgentSessionForLaunchInput,
 ) {
   const scope = requestedScope ?? buildAgentSessionScope(activeTab, targetMode);
   const record = await createAgentSession({
     agentId,
-    title: buildAgentSessionTitle(
-      agentId,
-      scope.kind === "global"
-        ? "整个 Kerminal"
-        : formatCurrentAgentTargetLabel(focusedPane, activeTab),
-    ),
+    launcherKey,
+    title:
+      title ??
+      buildAgentSessionTitle(
+        agentId,
+        scope.kind === "global"
+          ? "整个 Kerminal"
+          : formatCurrentAgentTargetLabel(focusedPane, activeTab),
+      ),
     scope,
   });
   const resolvedScope = resolveRecordScope(record, scope);
   return {
     agentSessionId: agentSessionRecordId(record),
+    launcherKey,
     scope: resolvedScope,
     tabId: scopeIdForAgentSession(resolvedScope),
     target: agentSessionRecordTarget(record),
+    title: record.session.title,
+  };
+}
+
+export type LauncherTerminalSession = AgentTerminalSession & {
+  launcherKey?: string;
+};
+
+interface BuildPreparedAgentTerminalSessionOptions {
+  customCommand?: string;
+  launcherKey?: string;
+  permissionMode?: AgentLaunchPermissionMode;
+  scope?: AgentSessionScope;
+  tabId: string;
+  target?: AgentSessionTargetRequest;
+  title: string;
+}
+
+/**
+ * 把 workspace preparation 的结果固化为可恢复 launch spec，并返回右栏运行态快照；
+ * 状态提交仍由调用方负责，避免后端持久化失败时提前暴露一个不可恢复的终端。
+ */
+export async function buildPreparedAgentTerminalSession(
+  spec: ExternalAgentLaunchSpec,
+  options: BuildPreparedAgentTerminalSessionOptions,
+): Promise<LauncherTerminalSession> {
+  const permissionMode = options.permissionMode ?? "default";
+  const launchSpec = applyAgentLaunchPermissionMode(
+    applyManagedAgentLaunchTrust(spec),
+    permissionMode,
+  );
+  const agentSessionId = launchSpec.agentSessionId?.trim();
+  if (!agentSessionId) {
+    throw new Error("Agent session launch spec is missing agentSessionId.");
+  }
+  const commandLabel = agentLaunchDisplayCommand(launchSpec) || launchSpec.title;
+  await updateAgentSession(agentSessionId, {
+    launch: {
+      args: launchSpec.args ?? [],
+      commandLabel,
+      cwd: launchSpec.cwd,
+      shell: launchSpec.shell,
+    },
+  });
+  return {
+    agentSessionId,
+    agentId: launchSpec.agentId,
+    args: launchSpec.args ?? [],
+    commandLabel,
+    cwd: launchSpec.cwd,
+    env: launchSpec.env,
+    launcherKey: options.launcherKey,
+    permissionMode,
+    scope: options.scope,
+    shell: launchSpec.shell,
+    status: launchSpec.status ?? "running",
+    title: options.title,
+    customCommand: options.customCommand,
+    tabId: options.tabId,
+    target: options.target,
   };
 }
 

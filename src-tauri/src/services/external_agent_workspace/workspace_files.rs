@@ -17,31 +17,34 @@ use crate::{
 };
 
 impl ExternalAgentWorkspaceService {
+    /// 写入所有 provider 共用的 session 文件；`.mcp.json` 放在此层以保证 Custom CLI
+    /// 也能按工作目录自动发现同一 scoped endpoint。
     pub(super) fn prepare_agent_session_common_files(
         &self,
         context: &AgentSessionWorkspaceContext,
         include_claude_file: bool,
         options: &WorkspaceWriteOptions,
     ) -> AppResult<Vec<ExternalAgentFileOperation>> {
-        let mut operations = Vec::with_capacity(if include_claude_file { 5 } else { 4 });
+        let mut operations = Vec::with_capacity(if include_claude_file { 6 } else { 5 });
         operations.push(self.ensure_agent_session_instructions(context, options)?);
         if include_claude_file {
             operations.push(self.ensure_agent_session_claude_instructions(context, options)?);
         }
+        operations.push(self.ensure_agent_session_mcp_json(context, options)?);
         operations.push(self.ensure_agent_session_mcp_endpoint(context, options)?);
         operations.push(self.ensure_agent_session_target_binding(context, options)?);
         operations.push(self.ensure_agent_session_terminal_snapshot(context, options)?);
         Ok(operations)
     }
 
+    /// 只写内置 provider 专属配置，避免 Custom session 误生成 Codex 目录。
     pub(super) fn prepare_agent_session_provider_files(
         &self,
         context: &AgentSessionWorkspaceContext,
         options: &WorkspaceWriteOptions,
     ) -> AppResult<Vec<ExternalAgentFileOperation>> {
         Ok(vec![
-            self.ensure_agent_session_codex_config(context, options)?,
-            self.ensure_agent_session_claude_mcp_json(context, options)?,
+            self.ensure_agent_session_codex_config(context, options)?
         ])
     }
 
@@ -57,6 +60,7 @@ impl ExternalAgentWorkspaceService {
         let agent_title = match context.agent_id.as_str() {
             "codex" => "Codex",
             "claude" => "Claude",
+            "pi" => "PI Agent",
             "custom" => "Custom Agent",
             _ => "External Agent",
         };
@@ -181,7 +185,9 @@ enabled = true
         )
     }
 
-    pub(super) fn ensure_agent_session_claude_mcp_json(
+    /// 为所有外部 Agent 写入通用 `.mcp.json`，使支持该标准的自定义 CLI（如 PI）
+    /// 与 Claude 一样自动发现当前 session-scoped Kerminal MCP endpoint。
+    pub(super) fn ensure_agent_session_mcp_json(
         &self,
         context: &AgentSessionWorkspaceContext,
         options: &WorkspaceWriteOptions,
@@ -238,7 +244,7 @@ enabled = true
                     "url": context.mcp_endpoint.as_str(),
                     "timeout": 60000
                 }))?,
-                reason: "Update session Claude MCP server entry.".to_owned(),
+                reason: "Update session MCP server entry.".to_owned(),
             },
             options,
         )
@@ -360,6 +366,7 @@ enabled = true
         }
     }
 
+    /// 汇总无需额外 adapter 的内置 provider 状态；PI 使用专门入口区分 CLI 与 adapter。
     pub(super) fn agent_status(
         &self,
         id: &str,
@@ -394,18 +401,51 @@ enabled = true
             title: title.to_owned(),
             cli_command: command.to_owned(),
             installed,
+            adapter_available: true,
             config_ready,
             config_path: path_to_string(&config_path),
             status_detail,
         }
     }
 
+    /// 独立报告 PI CLI、MCP adapter 与 workspace config，避免任一缺失被误报为可启动。
+    pub(super) fn pi_agent_status(&self) -> ExternalAgentStatus {
+        let config_path = self.claude_config_path();
+        let installed = executable_on_path("pi");
+        let adapter_available = pi_mcp_adapter_available();
+        let config_ready = claude_config_ready(&config_path)
+            && self.agents_file_path().is_file()
+            && self.config_reference_path().is_file();
+        let status_detail = if !installed {
+            "PI CLI not found in PATH"
+        } else if !adapter_available {
+            "PI MCP adapter is not installed"
+        } else if !config_ready {
+            "PI CLI and MCP adapter are ready; workspace files need regeneration"
+        } else {
+            "Ready"
+        };
+
+        ExternalAgentStatus {
+            id: "pi".to_owned(),
+            title: "PI Agent".to_owned(),
+            cli_command: PI_AGENT_LAUNCH_COMMAND.to_owned(),
+            installed,
+            adapter_available,
+            config_ready,
+            config_path: path_to_string(&config_path),
+            status_detail: status_detail.to_owned(),
+        }
+    }
+
+    /// Custom 命令按定义动态探测，因此 workspace 级状态不假定 CLI 或 adapter 存在。
     pub(super) fn custom_agent_status(&self) -> ExternalAgentStatus {
         ExternalAgentStatus {
             id: "custom".to_owned(),
             title: "Custom Agent".to_owned(),
             cli_command: String::new(),
             installed: false,
+            adapter_available: false,
             config_ready: false,
             config_path: path_to_string(&self.workspace_dir),
             status_detail: "Enter a custom CLI command to launch it in this workspace".to_owned(),
@@ -432,6 +472,18 @@ enabled = true
         operations.push(self.ensure_config_reference(options)?);
         operations.extend(self.ensure_claude_files(options)?);
         Ok(operations)
+    }
+
+    /// PI 与 Claude 共享标准 `.mcp.json`，但不生成 Claude 专用说明文件。
+    pub(super) fn prepare_pi_files(
+        &self,
+        options: &WorkspaceWriteOptions,
+    ) -> AppResult<Vec<ExternalAgentFileOperation>> {
+        Ok(vec![
+            self.ensure_shared_instructions(options)?,
+            self.ensure_config_reference(options)?,
+            self.ensure_claude_mcp_json(options)?,
+        ])
     }
 
     pub(super) fn validator_status(&self) -> ExternalAgentValidatorStatus {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
+  Pi,
   Sparkles,
   Terminal,
   Wrench,
@@ -59,8 +60,9 @@ export interface AgentTerminalSession {
 const agentTerminalIcons = {
   claude: Sparkles,
   codex: Terminal,
+  pi: Pi,
   custom: Wrench,
-};
+} satisfies Record<ExternalAgentId, typeof Terminal>;
 
 export function AgentTerminalView({
   desktopNotifications,

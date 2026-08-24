@@ -9,6 +9,7 @@ import type {
   SftpPerformanceSettings,
   TerminalAppearance,
 } from "./settingsModel";
+import { defaultAgentLauncherSettings } from "./agentLauncherSettings";
 import { defaultToolRailSettings } from "../tool-panel";
 import { defaultTerminalKeywordHighlightSettings } from "./terminalKeywordHighlightModel";
 import {
@@ -260,6 +261,7 @@ export const defaultSftpPerformanceSettings: SftpPerformanceSettings = {
 };
 
 export const defaultAppSettings: AppSettings = {
+  agentLauncher: defaultAgentLauncherSettings,
   appearance: defaultAppearanceSettings,
   desktopNotifications: defaultDesktopNotificationSettings,
   externalLaunch: defaultExternalLaunchSettings,

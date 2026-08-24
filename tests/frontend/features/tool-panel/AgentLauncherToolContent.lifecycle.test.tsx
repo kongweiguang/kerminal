@@ -29,6 +29,15 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   }) => record.session.agentId ?? record.session.agent_id,
   agentSessionRecordId: (record: { session: { agentSessionId?: string; agent_session_id?: string } }) =>
     record.session.agentSessionId ?? record.session.agent_session_id,
+  agentSessionRecordLaunchCommand: (record: {
+    session: { launch: { commandLabel?: string; command_label?: string; shell: string; args: string[] } };
+  }) =>
+    record.session.launch.commandLabel ??
+    record.session.launch.command_label ??
+    [record.session.launch.shell, ...record.session.launch.args].join(" ").trim(),
+  agentSessionRecordLauncherKey: (record: {
+    session: { launcherKey?: string; launcher_key?: string };
+  }) => record.session.launcherKey ?? record.session.launcher_key,
   agentSessionRecordStatus: (record: { session: { status?: string } }) =>
     record.session.status ?? "active",
   agentSessionRecordTarget: (record: { session: { target?: unknown } }) =>
@@ -149,14 +158,21 @@ describe("AgentLauncherToolContent", () => {
     apiMocks.createAgentSession.mockImplementation(
       async ({
         agentId,
+        launcherKey,
+        scope,
         target,
+        title,
       }: {
         agentId: string;
+        launcherKey?: string;
+        scope?: unknown;
         target?: unknown;
+        title?: string;
       }) => ({
         session: {
           agentId,
           agentSessionId: `ags-${agentId}`,
+          launcherKey,
           launch: {
             args: [],
             commandLabel: agentId,
@@ -164,8 +180,9 @@ describe("AgentLauncherToolContent", () => {
             shell: agentId,
           },
           sessionRoot: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
+          scope,
           target,
-          title: agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex",
+          title: title ?? (agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex"),
           workspaceRoot: "C:/Users/me/.kerminal",
         },
       }),
@@ -244,7 +261,7 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
+    await launchAgent(user, "Claude");
     await user.click(await screen.findByRole("button", { name: "继续上次" }));
 
     await waitFor(() => {
@@ -294,12 +311,13 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await user.click(await screen.findByRole("button", { name: "新会话" }));
 
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
+        launcherKey: "builtin:codex",
         scope: { kind: "tab", tabId: "tab-main" },
         title: "Codex · 当前 Tab · 1 个终端 · tab-main",
       });
@@ -350,7 +368,7 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher({ activeTab: terminalTab("tab-old") });
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
 
     expect(await screen.findByTestId("agent-restore-target-chip")).toHaveTextContent(
       "已失效",
@@ -373,7 +391,7 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
 
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
@@ -388,7 +406,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: "Open Codex" }),
+      await screen.findByRole("button", { name: "使用 Codex 进入" }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("agent-xterm")).toBeInTheDocument();
     expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
@@ -396,7 +414,7 @@ describe("AgentLauncherToolContent", () => {
       "false",
     );
 
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
 
     expect(
       await screen.findByRole("button", { name: "继续上次" }),
@@ -420,7 +438,7 @@ describe("AgentLauncherToolContent", () => {
     await user.click(
       screen.getByRole("button", { name: "Back to agent launcher" }),
     );
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await user.click(await screen.findByRole("button", { name: "新会话" }));
 
     await waitFor(() => {
@@ -457,7 +475,7 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
 
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -471,7 +489,7 @@ describe("AgentLauncherToolContent", () => {
       screen.getByRole("button", { name: "Back to agent launcher" }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
+    await launchAgent(user, "Claude");
 
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -498,7 +516,7 @@ describe("AgentLauncherToolContent", () => {
     await user.click(
       screen.getByRole("button", { name: "Back to agent launcher" }),
     );
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await user.click(
       await screen.findByRole("button", { name: "继续上次" }),
     );
@@ -548,7 +566,7 @@ describe("AgentLauncherToolContent", () => {
       activeTab: terminalTab("tab-a"),
     });
 
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -562,11 +580,11 @@ describe("AgentLauncherToolContent", () => {
     rerender(
       <AgentLauncherToolContent activeTab={terminalTab("tab-b")} />,
     );
-    expect(screen.getByRole("button", { name: "Open Codex" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "使用 Codex 进入" })).toBeInTheDocument();
     expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
       .toHaveAttribute("data-focused", "false");
 
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
+    await launchAgent(user, "Codex");
     await waitFor(() => {
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -619,9 +637,27 @@ function renderAgentLauncher(
   return render(
     <AgentLauncherToolContent
       activeTab={terminalTab("tab-main")}
+      onConfirmedSettingsChange={async (nextSettings) => nextSettings}
       {...props}
     />,
   );
+}
+
+/** 用公开下拉交互切换内置 Agent，并从统一“进入”按钮启动。 */
+async function launchAgent(
+  user: ReturnType<typeof userEvent.setup>,
+  name: "Codex" | "Claude",
+) {
+  const selector = screen.getByRole("combobox", { name: "选择 Agent" });
+  if (selector.getAttribute("aria-valuetext") !== name) {
+    await user.click(selector);
+    await user.click(
+      await screen.findByRole("option", {
+        name: new RegExp(`^${name}，`, "u"),
+      }),
+    );
+  }
+  await user.click(screen.getByRole("button", { name: `使用 ${name} 进入` }));
 }
 
 function terminalTab(id: string) {
@@ -637,6 +673,7 @@ function workspaceStatus(): ExternalAgentWorkspaceStatus {
   return {
     agents: {
       claude: {
+        adapterAvailable: true,
         cliCommand: "claude",
         configPath: "C:/Users/me/.kerminal/.mcp.json",
         configReady: false,
@@ -646,6 +683,7 @@ function workspaceStatus(): ExternalAgentWorkspaceStatus {
         title: "Claude",
       },
       codex: {
+        adapterAvailable: true,
         cliCommand: "codex",
         configPath: "C:/Users/me/.kerminal/.codex/config.toml",
         configReady: true,
@@ -655,6 +693,7 @@ function workspaceStatus(): ExternalAgentWorkspaceStatus {
         title: "Codex",
       },
       custom: {
+        adapterAvailable: true,
         cliCommand: "",
         configPath: "",
         configReady: false,
@@ -662,6 +701,16 @@ function workspaceStatus(): ExternalAgentWorkspaceStatus {
         installed: false,
         statusDetail: "Configure a custom agent command first.",
         title: "Custom",
+      },
+      pi: {
+        adapterAvailable: true,
+        cliCommand: "pi --approve --mcp-config .mcp.json",
+        configPath: "C:/Users/me/.kerminal/.mcp.json",
+        configReady: true,
+        id: "pi",
+        installed: true,
+        statusDetail: "PI Agent and MCP Adapter detected.",
+        title: "PI Agent",
       },
     },
     mcpEndpoint: "http://127.0.0.1:37657/mcp",

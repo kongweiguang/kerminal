@@ -566,6 +566,7 @@ export function KerminalShell() {
         onOpenToolRailCustomization: openToolRailCustomization,
         onOpenTool: openTool,
         onOpenSshTerminal: openSshTerminal, onRemoteHostCreated: refreshRemoteHostTree,
+        onConfirmedSettingsChange: handleConfirmedSettingsChange,
         onSettingsChange: handleSettingsChange, onSplitPane: splitFocusedPane,
         resolvedTheme, settings, snippetConfigRevision: configCatalogRevisions.snippets,
         terminalAppearance: settings.terminal,

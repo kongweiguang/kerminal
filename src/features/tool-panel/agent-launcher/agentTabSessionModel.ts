@@ -20,6 +20,7 @@ export interface AgentSidebarTabSession {
   agentId: ExternalAgentId;
   agentSessionId: string;
   customCommand?: string;
+  launcherKey?: string;
   permissionMode: AgentLaunchPermissionMode;
   scope?: AgentSessionScope;
   status: ExternalAgentSessionStatus;
@@ -44,6 +45,12 @@ export function agentSessionTabId(
 ): string | undefined {
   const scope = sessionScope(session);
   return scopeId(scope);
+}
+
+export interface AgentRuntimeSessionMatcher {
+  agentId: ExternalAgentId;
+  customCommand?: string;
+  launcherKey: string;
 }
 
 /** 把 tab 或显式 scope 变成可用于内存映射的稳定 key；global key 永不随 tab 生命周期变化。 */
@@ -87,24 +94,43 @@ export function visibleAgentSessionForTab(
 export function findRunningSessionForTabAgent(
   state: AgentSidebarSessionState,
   tabId: string | undefined,
-  agentId: ExternalAgentId,
+  matcher: AgentRuntimeSessionMatcher,
   permissionMode: AgentLaunchPermissionMode,
-  customCommand?: string,
 ): AgentSidebarTabSession | undefined {
   const normalizedTabId = agentSessionScopeId(tabId);
-  const normalizedCommand = normalizeCustomCommand(customCommand);
   return Object.values(state.sessionsById).find((session) => {
     if (agentSessionTabId(session) !== normalizedTabId) {
       return false;
     }
-    if (session.agentId !== agentId || session.permissionMode !== permissionMode) {
+    if (
+      session.agentId !== matcher.agentId ||
+      session.permissionMode !== permissionMode
+    ) {
       return false;
     }
     if (!isRunningSidebarSessionStatus(session.status)) {
       return false;
     }
-    return normalizeCustomCommand(session.customCommand) === normalizedCommand;
+    return sessionMatchesLauncher(session, matcher);
   });
+}
+
+/** 新运行态优先按 launcherKey 隔离；旧 Custom 只有命令完全相同时才可复用。 */
+function sessionMatchesLauncher(
+  session: AgentSidebarTabSession,
+  matcher: AgentRuntimeSessionMatcher,
+): boolean {
+  const sessionLauncherKey = session.launcherKey?.trim();
+  if (sessionLauncherKey) {
+    return sessionLauncherKey === matcher.launcherKey;
+  }
+  if (matcher.agentId === "custom") {
+    return (
+      normalizeCustomCommand(session.customCommand) ===
+      normalizeCustomCommand(matcher.customCommand)
+    );
+  }
+  return matcher.launcherKey === `builtin:${matcher.agentId}`;
 }
 
 export function tabRemovedCleanupPlan(

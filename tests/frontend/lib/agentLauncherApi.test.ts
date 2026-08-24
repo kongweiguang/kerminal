@@ -73,6 +73,39 @@ describe("agentLauncherApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("previews native PI status and appends its real continue flag", async () => {
+    isTauriMock.mockReturnValue(false);
+    const {
+      getExternalAgentWorkspaceStatus,
+      prepareExternalAgentWorkspace,
+    } = await import("../../../src/lib/agentLauncherApi");
+
+    await expect(getExternalAgentWorkspaceStatus()).resolves.toMatchObject({
+      agents: {
+        pi: {
+          adapterAvailable: false,
+          cliCommand: "pi --approve --mcp-config .mcp.json",
+          configPath: "~/.kerminal/.mcp.json",
+          id: "pi",
+          title: "PI Agent",
+        },
+      },
+    });
+    await expect(
+      prepareExternalAgentWorkspace({
+        agentId: "pi",
+        agentSessionId: "ags-preview-pi",
+        resumeProviderSession: true,
+      }),
+    ).resolves.toMatchObject({
+      args: ["--approve", "--mcp-config", ".mcp.json", "--continue"],
+      cwd: "~/.kerminal/agents/sessions/ags-preview-pi",
+      shell: "pi",
+      title: "PI Agent",
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("updates an agent session title through Tauri", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
@@ -168,16 +201,49 @@ describe("agentLauncherApi", () => {
 
     const record = await createAgentSession({
       agentId: "codex",
+      launcherKey: "builtin:codex",
       scope: { kind: "tab", tabId: "tab-main" },
     });
 
     expect(invokeMock).toHaveBeenCalledWith("agent_session_create", {
-      request: { agentId: "codex", scope: { kind: "tab", tabId: "tab-main" } },
+      request: {
+        agentId: "codex",
+        launcherKey: "builtin:codex",
+        scope: { kind: "tab", tabId: "tab-main" },
+      },
     });
     expect(agentSessionRecordScope(record)).toEqual({
       kind: "tab",
       tabId: "tab-main",
     });
+  });
+
+  it("reads launcherKey and Custom launch snapshots across wire naming styles", async () => {
+    const {
+      agentSessionRecordLaunchCommand,
+      agentSessionRecordLauncherKey,
+    } = await import("../../../src/lib/agentLauncherApi");
+    const record = {
+      session: {
+        agent_id: "custom" as const,
+        agent_session_id: "ags-custom",
+        launcher_key: "custom:11111111-1111-4111-8111-111111111111",
+        launch: {
+          args: ["--mcp-config", ".mcp.json"],
+          command_label: "pi --mcp-config .mcp.json",
+          cwd: "C:/sessions/ags-custom",
+          shell: "pi",
+        },
+        title: "PI",
+      },
+    };
+
+    expect(agentSessionRecordLauncherKey(record)).toBe(
+      "custom:11111111-1111-4111-8111-111111111111",
+    );
+    expect(agentSessionRecordLaunchCommand(record)).toBe(
+      "pi --mcp-config .mcp.json",
+    );
   });
 
   it("maps legacy unbound records to the stable global scope", async () => {

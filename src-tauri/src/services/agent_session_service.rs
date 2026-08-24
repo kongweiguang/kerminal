@@ -87,7 +87,16 @@ impl AgentSessionService {
         &self,
         request: AgentSessionCreateRequest,
     ) -> AppResult<AgentSessionRecord> {
-        self.create_session_at(request, current_unix_timestamp())
+        self.create_session_with_launcher_key(request, None)
+    }
+
+    /// 创建带稳定 launcher key 的 Agent session；旧调用方继续走无 key 的兼容入口。
+    pub fn create_session_with_launcher_key(
+        &self,
+        request: AgentSessionCreateRequest,
+        launcher_key: Option<String>,
+    ) -> AppResult<AgentSessionRecord> {
+        self.create_session_at_with_launcher_key(request, launcher_key, current_unix_timestamp())
     }
 
     /// 用指定时间创建 Agent session，主要用于测试和恢复流程。
@@ -96,12 +105,26 @@ impl AgentSessionService {
         request: AgentSessionCreateRequest,
         timestamp: impl Into<String>,
     ) -> AppResult<AgentSessionRecord> {
+        self.create_session_at_with_launcher_key(request, None, timestamp)
+    }
+
+    /// 用指定时间和 launcher key 创建 session，供兼容 fixture 与稳定身份测试复用。
+    pub fn create_session_at_with_launcher_key(
+        &self,
+        request: AgentSessionCreateRequest,
+        launcher_key: Option<String>,
+        timestamp: impl Into<String>,
+    ) -> AppResult<AgentSessionRecord> {
         let timestamp = timestamp.into();
         let agent_session_id = self.id_generator.generate()?;
         let session_root = self.store.session_root(&agent_session_id)?;
         let session_root_text = path_to_string(&session_root);
         let workspace_root = path_to_string(self.store.workspace_root());
         let launch = build_launch(request.agent_id, request.launch, session_root_text.clone())?;
+        let launcher_key = crate::models::agent_session::normalize_agent_launcher_key(
+            request.agent_id,
+            launcher_key,
+        )?;
         let title = request
             .title
             .and_then(normalize_optional_text)
@@ -111,6 +134,7 @@ impl AgentSessionService {
                 schema_version: AGENT_SESSION_SCHEMA_VERSION,
                 agent_session_id: agent_session_id.clone(),
                 agent_id: request.agent_id,
+                launcher_key,
                 title,
                 created_at: timestamp.clone(),
                 updated_at: timestamp.clone(),
@@ -319,6 +343,7 @@ fn default_title(agent_id: AgentId) -> &'static str {
     match agent_id {
         AgentId::Codex => "Codex",
         AgentId::Claude => "Claude",
+        AgentId::Pi => "PI Agent",
         AgentId::Custom => "Custom Agent",
     }
 }
@@ -327,6 +352,7 @@ fn default_command(agent_id: AgentId) -> &'static str {
     match agent_id {
         AgentId::Codex => "codex",
         AgentId::Claude => "claude",
+        AgentId::Pi => "pi",
         AgentId::Custom => "custom",
     }
 }
