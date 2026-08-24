@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 export function browserBootstrapScriptTail() {
   return `      function dockerContainers(request = {}) {
         return [
@@ -91,6 +93,7 @@ export function browserBootstrapScriptTail() {
         };
       }
 
+      /** 同时提供 GPU 与 Ascend NPU 数据，让资源截图覆盖当前两类加速卡能力。 */
       function serverInfoSnapshot(request = {}) {
         return {
           architecture: "x86_64",
@@ -111,6 +114,21 @@ export function browserBootstrapScriptTail() {
           gpus: [
             { driverVersion: "555.42", memoryTotalBytes: 24 * 1024 * 1024 * 1024, memoryUsedBytes: 8 * 1024 * 1024 * 1024, name: "NVIDIA RTX 4090", temperatureCelsius: 54, utilizationPercent: 36.5, vendor: "NVIDIA" },
             { driverVersion: "555.42", memoryTotalBytes: 24 * 1024 * 1024 * 1024, memoryUsedBytes: 5 * 1024 * 1024 * 1024, name: "NVIDIA RTX 4090", temperatureCelsius: 49, utilizationPercent: 22.1, vendor: "NVIDIA" },
+          ],
+          npuProbeStatus: "npu_smi",
+          npus: [
+            {
+              busId: "0000:06:00.0",
+              chipId: 0,
+              hbmTotalBytes: 32 * 1024 * 1024 * 1024,
+              hbmUsedBytes: 2659 * 1024 * 1024,
+              health: "OK",
+              id: 2,
+              name: "Ascend 910B4",
+              powerWatts: 84,
+              temperatureCelsius: 44,
+              utilizationPercent: 12.4,
+            },
           ],
           host: "10.23.42.18",
           hostId: request.hostId ?? "prod-api",
@@ -160,6 +178,14 @@ export function browserBootstrapScriptTail() {
           parentPath: "/srv",
           path,
         };
+      }
+
+      /** 固定书签既展示当前能力，也避免读取拍摄用户自己的远程路径收藏。 */
+      function sftpBookmarks() {
+        return [
+          { createdAtUnixMs: 1782197000000, path: "/srv/kerminal" },
+          { createdAtUnixMs: 1782196800000, path: "/var/log" },
+        ];
       }
 
       function localListing(path) {
@@ -270,12 +296,17 @@ export function browserBootstrapScriptTail() {
         ];
       }
 
+      /**
+       * README 场景必须覆盖当前全部内置 Agent，并返回完整探测字段；缺项会让新版
+       * 选择器进入错误边界，也会把截图误导成旧的双按钮启动界面。
+       */
       function externalAgentWorkspaceStatus() {
         const workspaceDir = "C:/Users/kong/.kerminal";
         const mcpEndpoint = "http://127.0.0.1:37657/mcp";
         return {
           agents: {
             claude: {
+              adapterAvailable: true,
               cliCommand: "claude",
               configPath: workspaceDir + "/.mcp.json",
               configReady: true,
@@ -285,6 +316,7 @@ export function browserBootstrapScriptTail() {
               title: "Claude",
             },
             codex: {
+              adapterAvailable: true,
               cliCommand: "codex",
               configPath: workspaceDir + "/.codex/config.toml",
               configReady: true,
@@ -294,6 +326,7 @@ export function browserBootstrapScriptTail() {
               title: "Codex",
             },
             custom: {
+              adapterAvailable: true,
               cliCommand: "custom",
               configPath: "",
               configReady: true,
@@ -301,6 +334,16 @@ export function browserBootstrapScriptTail() {
               installed: true,
               statusDetail: "Run a custom CLI command in a Kerminal agent session.",
               title: "Custom",
+            },
+            pi: {
+              adapterAvailable: true,
+              cliCommand: "pi --approve --mcp-config .mcp.json",
+              configPath: workspaceDir + "/.mcp.json",
+              configReady: true,
+              id: "pi",
+              installed: true,
+              statusDetail: "PI Agent and pi-mcp-adapter are ready for the session MCP endpoint.",
+              title: "PI Agent",
             },
           },
           mcpEndpoint,
@@ -334,6 +377,33 @@ export function browserBootstrapScriptTail() {
               updatedAt: "2026-07-12T07:20:00.000Z",
             }),
           ],
+        };
+      }
+
+      /**
+       * 会话恢复会把最终启动快照写回 session；fixture 合并该快照，避免以 null 响应
+       * 掩盖新版 session update 契约，并保留原始 scope/target。
+       */
+      function updatedAgentSessionRecord(agentSessionId, request = {}) {
+        const current = agentSessions().sessions.find(
+          (record) => record.session.agentSessionId === agentSessionId,
+        ) ?? createAgentSessionRecord({ agentSessionId });
+        const launch = request.launch
+          ? {
+              ...current.session.launch,
+              ...request.launch,
+              commandLabel:
+                request.launch.commandLabel ??
+                request.launch.command_label ??
+                current.session.launch.commandLabel,
+            }
+          : current.session.launch;
+        return {
+          session: {
+            ...current.session,
+            launch,
+            updatedAt: "2026-08-24T06:20:00.000Z",
+          },
         };
       }
 
@@ -416,6 +486,15 @@ export function browserBootstrapScriptTail() {
         };
       }
 
+      /** Windows README 场景显式展示系统协议可注册，但不修改拍摄机器的真实关联。 */
+      function externalLaunchDeepLinkStatus(registered = false) {
+        return {
+          registered,
+          scheme: "kerminal",
+          supported: true,
+        };
+      }
+
       function tmuxCapability(request = {}) {
         return {
           available: true,
@@ -466,10 +545,24 @@ export function browserBootstrapScriptTail() {
         ];
       }
 
+      /**
+       * 固定选择器的持久状态，使截图既呈现三个内置 Agent，也呈现用户可保存的
+       * 自定义启动器，同时不依赖拍摄机器上的真实 settings.toml。
+       */
       function readmeSettings() {
         const themeMode =
           localStorage.getItem("kerminal.readme.capture.themeMode") ?? "dark";
         return {
+          agentLauncher: {
+            customAgents: [
+              {
+                command: "qwen --model code",
+                id: "9db1ef37-a6e8-4a4e-87fa-f1f849a71831",
+                name: "Qwen Code",
+              },
+            ],
+            selectedAgentKey: "builtin:codex",
+          },
           appearance: {
             backgroundEnabled: false,
             backgroundFit: "cover",

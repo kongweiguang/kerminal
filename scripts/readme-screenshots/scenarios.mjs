@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   clickSelector,
   clickExpression,
@@ -17,7 +19,9 @@ export const captures = [
   { name: "kerminal-settings.png", setup: captureSettings },
   { name: "kerminal-docker.png", setup: captureDockerDialog },
   { name: "kerminal-system.png", setup: captureServerInfo },
+  { name: "kerminal-resources.png", setup: captureServerResources },
   { name: "kerminal-agent.png", setup: captureAgentLauncher },
+  { name: "kerminal-tool-rail.png", setup: captureToolRailCustomization },
   { name: "kerminal-tmux.png", setup: captureTmux },
   { name: "kerminal-ports.png", setup: capturePorts },
   { name: "kerminal-sftp.png", setup: captureSftp },
@@ -48,6 +52,7 @@ async function captureContextWorkspace(client) {
   );
 }
 
+/** 通过新版 Agent 选择器的主动作进入恢复提示，验证截图不再依赖旧双按钮入口。 */
 async function captureAgentSessionRestore(client) {
   await waitForBrowserExpression(
     client,
@@ -57,10 +62,10 @@ async function captureAgentSessionRestore(client) {
   await clickSelector(client, `[aria-label="打开 Agent Launcher"]`);
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="Open Codex"]') !== null && document.querySelector('[aria-label="Open Claude"]') !== null`,
+    `document.querySelector('[aria-label="选择 Agent"]') !== null && document.querySelector('[aria-label="使用 Codex 进入"]') !== null`,
     30_000,
   );
-  await clickSelector(client, `[aria-label="Open Codex"]`);
+  await clickSelector(client, `[aria-label="使用 Codex 进入"]`);
   await waitForBrowserExpression(
     client,
     `document.querySelector('[data-testid="agent-restore-target-chip"]') !== null && document.body.innerText.includes("继续上次")`,
@@ -132,7 +137,30 @@ async function captureServerInfo(client) {
   );
 }
 
+/** 切换资源视图并等待 GPU/NPU 两类加速卡，避免只凭能力文案宣称硬件监控。 */
+async function captureServerResources(client) {
+  await clickExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="系统信息视图"] [role="tab"]')).find((tab) => tab.textContent?.includes("资源"))`,
+  );
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("NVIDIA RTX 4090") && document.body.innerText.includes("Ascend 910B4") && document.body.innerText.includes("NPU 2")`,
+    20_000,
+  );
+}
+
+/** 展开当前 Agent 选择器，直接展示 Codex、Claude、PI 与持久化自定义启动器。 */
 async function captureAgentLauncher(client) {
+  await clickExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="左栏视图"] button')).find((button) => button.textContent?.includes("主机"))`,
+  );
+  await waitForBrowserExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="主机侧边栏"] button')).some((button) => button.textContent?.includes("prod-api"))`,
+    10_000,
+  );
   await clickSelector(client, `[aria-label="打开 Agent Launcher"]`);
   await waitForBrowserExpression(
     client,
@@ -142,18 +170,47 @@ async function captureAgentLauncher(client) {
   await clickSelector(client, `[aria-label="Back to agent launcher"]`);
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="对话范围"]') !== null && document.querySelector('[aria-label^="重命名 "]') !== null && document.querySelector('[aria-label^="删除 "]') !== null`,
+    `document.querySelector('[aria-label="选择 Agent"]') !== null && document.querySelector('[aria-label="对话范围"]') !== null`,
     30_000,
   );
-  await clickTextButtonContaining(client, "全部");
+  await clickSelector(client, `[aria-label="选择 Agent"]`);
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("部署回归检查") && document.body.innerText.includes("发布说明整理")`,
+    `document.body.innerText.includes("Codex") && document.body.innerText.includes("Claude") && document.body.innerText.includes("PI Agent") && document.body.innerText.includes("Qwen Code") && document.body.innerText.includes("添加自定义 Agent")`,
     20_000,
   );
 }
 
+/** 右击真实工具栏入口打开编辑器，展示显示、排序、固定和四种面板位置。 */
+async function captureToolRailCustomization(client) {
+  await pressKey(client, "Escape");
+  await contextClickExpression(
+    client,
+    `document.querySelector('[aria-label="工具栏"]')`,
+  );
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("自定义工具栏") && document.body.innerText.includes("贴靠右栏") && document.body.innerText.includes("底部固定区")`,
+    20_000,
+  );
+  await clickSelector(client, `[aria-label="打开位置 Agent Launcher"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("左侧栏") && document.body.innerText.includes("底部面板") && document.body.innerText.includes("自由浮窗")`,
+    10_000,
+  );
+}
+
+/** 关闭上一个模态编辑器后打开 tmux，确保场景之间不共享遮罩或焦点。 */
 async function captureTmux(client) {
+  await pressKey(client, "Escape");
+  await delay(100);
+  await pressKey(client, "Escape");
+  await waitForBrowserExpression(
+    client,
+    `!document.body.innerText.includes("自定义工具栏")`,
+    10_000,
+  );
   await clickSelector(client, `[aria-label="打开 tmux"]`);
   await waitForBrowserExpression(
     client,
@@ -162,12 +219,19 @@ async function captureTmux(client) {
   );
 }
 
+/** 打开新建隧道编排器，直接呈现当前 -L、-R 与 SOCKS 三种生产入口。 */
 async function capturePorts(client) {
   await clickSelector(client, `[aria-label="打开 端口"]`);
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("API tunnel") && document.body.innerText.includes("运行中")`,
+    `document.querySelector('[aria-label="添加隧道"]') !== null`,
     30_000,
+  );
+  await clickSelector(client, `[aria-label="添加隧道"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("添加 SSH 隧道") && document.body.innerText.includes("访问主机服务") && document.body.innerText.includes("暴露本机服务") && document.body.innerText.includes("SOCKS / 高级")`,
+    20_000,
   );
 }
 

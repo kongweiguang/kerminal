@@ -1,6 +1,12 @@
+// @author kongweiguang
+
 import { defaultWorkspaceSession } from "./workspace-session.mjs";
 import { browserBootstrapScriptTail } from "./bootstrap-tail.mjs";
 
+/**
+ * 为 README 场景提供与当前 Tauri IPC 契约一致的确定性浏览器运行时，避免截图读取
+ * 拍摄机器上的主机、凭据或会话数据。
+ */
 export function browserBootstrapScript() {
   return `
     (() => {
@@ -155,6 +161,8 @@ export function browserBootstrapScript() {
               return serverInfoSnapshot(args.request);
             case "sftp_list_directory":
               return sftpListing(args.request);
+            case "sftp_bookmark_list":
+              return sftpBookmarks();
             case "file_dialog_list_local_directory":
               return localListing(args.path);
             case "sftp_list_transfers":
@@ -308,6 +316,12 @@ export function browserBootstrapScript() {
               }));
             case "external_launch_take_pending":
               return [];
+            case "external_launch_deep_link_status":
+              return externalLaunchDeepLinkStatus(false);
+            case "external_launch_deep_link_register":
+              return externalLaunchDeepLinkStatus(true);
+            case "external_launch_deep_link_unregister":
+              return externalLaunchDeepLinkStatus(false);
             case "terminal_log_state":
             case "terminal_stop_log":
               return { active: false, bytesWritten: 0 };
@@ -369,6 +383,8 @@ export function browserBootstrapScript() {
               return externalAgentWorkspaceStatus();
             case "agent_session_list":
               return agentSessions();
+            case "agent_session_update":
+              return updatedAgentSessionRecord(args.agentSessionId, args.request);
             case "agent_session_create":
               return createAgentSessionRecord(args.request);
             case "agent_session_rebind_target":

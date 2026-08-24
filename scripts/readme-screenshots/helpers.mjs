@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 export async function waitForAppReady(client) {
   await waitForBrowserExpression(
     client,
@@ -12,13 +14,22 @@ export async function waitForAppReady(client) {
   await delay(500);
 }
 
+/**
+ * 截图不能在 IPC fixture 漂移时静默降级；浏览器异常和未建模 command 都会让画面
+ * 缺失真实能力，因此除 ResizeObserver 的无害通知外一律阻断生成。
+ */
 export async function assertNoBlockingErrors(client) {
   const result = await evaluate(
     client,
-    `(() => window.__kerminalReadmeCaptureState?.errors ?? [])()`,
+    `(() => ({
+      errors: window.__kerminalReadmeCaptureState?.errors ?? [],
+      unknownInvocations:
+        window.__kerminalReadmeCaptureState?.unknownInvocations ?? [],
+    }))()`,
     { returnByValue: true },
   );
-  const errors = result.result?.value ?? [];
+  const state = result.result?.value ?? {};
+  const errors = state.errors ?? [];
   const blocking = errors.filter(
     (error) =>
       !String(error.message ?? "").includes("ResizeObserver loop completed") &&
@@ -26,6 +37,11 @@ export async function assertNoBlockingErrors(client) {
   );
   if (blocking.length > 0) {
     throw new Error(`Browser errors during capture: ${JSON.stringify(blocking)}`);
+  }
+  if ((state.unknownInvocations ?? []).length > 0) {
+    throw new Error(
+      `Unknown Tauri IPC during capture: ${JSON.stringify(state.unknownInvocations)}`,
+    );
   }
 }
 
