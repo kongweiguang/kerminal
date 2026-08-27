@@ -1,25 +1,14 @@
 // @author kongweiguang
 
-import {
-  ChevronDown,
-  ChevronRight,
-  Layers2,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Layers2, X } from "lucide-react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import {
-  useLayoutEffect,
-  useRef,
-  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type Ref,
-  type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import {
   isTerminalSessionTab,
@@ -33,11 +22,13 @@ import {
   type TerminalTabGroupPreference,
   type WorkspaceFileTab,
 } from "../workspace/contracts/index";
-import {
-  type TerminalTabIdentityAccent,
-} from "./terminalTabIdentityModel";
+import { type TerminalTabIdentityAccent } from "./terminalTabIdentityModel";
 import { TerminalTabAttention } from "./TerminalTabAttention";
 import type { TerminalTabPresentation } from "./terminalTabPresentationModel";
+import {
+  TerminalTabMenuItem,
+  TerminalTabMoveToGroupMenu,
+} from "./terminalTabMenuPrimitives";
 export { buildTerminalTabGroups } from "./terminalTabGroupProjection";
 export {
   CloseTabsConfirmationDialog,
@@ -103,8 +94,6 @@ const terminalTabCompactIdleClassName =
   "border-transparent bg-transparent text-zinc-600 hover:bg-white/55 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50";
 const terminalTabCompactActiveClassName =
   "border-white/70 bg-white/72 text-zinc-950 shadow-sm shadow-black/8 ring-1 ring-white/70 dark:border-white/14 dark:bg-white/14 dark:text-zinc-50 dark:shadow-black/20 dark:ring-white/12";
-const terminalTabMenuItemClassName = "kerminal-context-menu-item";
-const terminalTabMenuIdleClassName = "";
 
 /** 将菜单键和 Shift+F10 转成现有 contextmenu 链路，保证键盘不依赖鼠标坐标。 */
 function dispatchTerminalTabContextMenu(
@@ -439,7 +428,9 @@ export function TerminalTabContextMenuItems({
       ) : null}
       {availableGroups?.some((candidate) => candidate.id !== group?.id) ? (
         <TerminalTabMoveToGroupMenu
-          groups={availableGroups.filter((candidate) => candidate.id !== group?.id)}
+          groups={availableGroups.filter(
+            (candidate) => candidate.id !== group?.id,
+          )}
           onMoveToGroup={(groupId) =>
             runMenuAction(() => onMoveToGroup?.(tab.id, groupId))
           }
@@ -455,11 +446,15 @@ export function TerminalTabContextMenuItems({
         <>
           <TerminalTabMenuItem
             label="组内向左移动"
-            onClick={() => runMenuAction(() => onMoveWithinGroup(tab.id, "before"))}
+            onClick={() =>
+              runMenuAction(() => onMoveWithinGroup(tab.id, "before"))
+            }
           />
           <TerminalTabMenuItem
             label="组内向右移动"
-            onClick={() => runMenuAction(() => onMoveWithinGroup(tab.id, "after"))}
+            onClick={() =>
+              runMenuAction(() => onMoveWithinGroup(tab.id, "after"))
+            }
           />
         </>
       ) : null}
@@ -467,9 +462,7 @@ export function TerminalTabContextMenuItems({
         <TerminalTabMenuItem
           disabled={!onRequestEditIdentity}
           label="设置标识颜色"
-          onClick={() =>
-            runMenuAction(() => onRequestEditIdentity?.(group))
-          }
+          onClick={() => runMenuAction(() => onRequestEditIdentity?.(group))}
         />
       ) : null}
       <TerminalTabMenuItem
@@ -569,234 +562,6 @@ export function TerminalTabGroupContextMenuItems({
         />
       ) : null}
     </>
-  );
-}
-
-/**
- * “移动到标签组”使用独立 portal，避免根菜单的 overflow:hidden 截断长组列表；
- * 子菜单以 fixed 坐标翻转到视口内，并把方向键焦点限制在自身菜单层。
- */
-function TerminalTabMoveToGroupMenu({
-  groups,
-  onMoveToGroup,
-}: {
-  groups: readonly TerminalTabGroup[];
-  onMoveToGroup: (groupId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const submenuRef = useRef<HTMLDivElement>(null);
-
-  /** 根据触发按钮和实际子菜单尺寸选择左右、上下方向，防止窄窗口溢出。 */
-  const updatePosition = () => {
-    const trigger = triggerRef.current;
-    const submenu = submenuRef.current;
-    if (!trigger) return;
-    const triggerRect = trigger.getBoundingClientRect();
-    const submenuRect = submenu?.getBoundingClientRect();
-    const width = submenuRect?.width || 232;
-    const height = submenuRect?.height || Math.min(window.innerHeight * 0.7, 360);
-    const margin = 8;
-    const placeRight = triggerRect.right + margin + width <= window.innerWidth - margin;
-    const left = placeRight
-      ? triggerRect.right + margin
-      : Math.max(margin, triggerRect.left - margin - width);
-    const top = Math.min(
-      Math.max(margin, triggerRect.top),
-      Math.max(margin, window.innerHeight - height - margin),
-    );
-    setPosition({ left: Math.round(left), top: Math.round(top) });
-  };
-
-  /** 打开后先定位再把焦点交给第一个可用组，保持菜单键盘操作连续。 */
-  useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-    const frame = window.requestAnimationFrame(() => {
-      submenuRef.current
-        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')
-        ?.focus();
-    });
-    const handleViewportChange = () => updatePosition();
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-    };
-  }, [open]);
-
-  /** 子菜单层只在自身可用项之间循环焦点，Escape/左键返回触发项。 */
-  const handleSubmenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const menuItems = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not([disabled])',
-      ),
-    );
-    const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (menuItems.length === 0) return;
-      const delta = event.key === "ArrowDown" ? 1 : -1;
-      menuItems[(currentIndex + delta + menuItems.length) % menuItems.length]?.focus();
-      return;
-    }
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      event.stopPropagation();
-      (event.key === "Home" ? menuItems[0] : menuItems[menuItems.length - 1])?.focus();
-      return;
-    }
-    if (event.key === "Escape" || event.key === "ArrowLeft") {
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(false);
-      triggerRef.current?.focus();
-      return;
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
-
-  return (
-    <>
-      <div className="relative" role="none">
-        <TerminalTabMenuItem
-          ariaExpanded={open}
-          ariaHasPopup="menu"
-          buttonRef={triggerRef}
-          label="移动到标签组"
-          onClick={() => setOpen(true)}
-          onMouseEnter={() => setOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowRight" || event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              setOpen(true);
-            }
-            if (event.key === "Escape" || event.key === "ArrowLeft") {
-              setOpen(false);
-            }
-          }}
-          rightIcon={<ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-65" />}
-        />
-      </div>
-      {open && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              aria-label="移动到标签组"
-              className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed z-[1000] w-56 max-h-[min(70vh,360px)] overflow-y-auto"
-              onClick={(event) => event.stopPropagation()}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onKeyDown={handleSubmenuKeyDown}
-              ref={submenuRef}
-              role="menu"
-              style={{ left: position.left, top: position.top }}
-            >
-              <div className="px-2 py-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                选择标签组
-              </div>
-              {groups.map((group) => (
-                <TerminalTabMenuItem
-                  key={group.id}
-                  label={`移入「${group.title}」`}
-                  onClick={() => onMoveToGroup(group.id)}
-                />
-              ))}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
-/** 菜单项统一处理方向键焦点移动，同时保留浏览器原生 Enter/Space click 语义。 */
-function TerminalTabMenuItem({
-  danger = false,
-  disabled,
-  label,
-  onClick,
-  onKeyDown,
-  onMouseEnter,
-  ariaExpanded,
-  ariaHasPopup,
-  buttonRef,
-  rightIcon,
-}: {
-  danger?: boolean;
-  disabled?: boolean;
-  label: string;
-  onClick: () => void;
-  onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
-  onMouseEnter?: () => void;
-  ariaExpanded?: boolean;
-  ariaHasPopup?: boolean | "menu";
-  buttonRef?: Ref<HTMLButtonElement>;
-  rightIcon?: ReactNode;
-}) {
-  /** 在当前 menu 层内移动焦点，避免依赖浏览器对 role=menu 的默认实现。 */
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    onKeyDown?.(event);
-    if (event.defaultPrevented) return;
-    if (
-      event.key !== "ArrowDown" &&
-      event.key !== "ArrowUp" &&
-      event.key !== "Home" &&
-      event.key !== "End"
-    ) {
-      return;
-    }
-    const menu = event.currentTarget.closest<HTMLElement>('[role="menu"]');
-    if (!menu) return;
-    const items = Array.from(
-      menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
-    ).filter((item) => item.closest('[role="menu"]') === menu);
-    const index = items.indexOf(event.currentTarget);
-    if (index < 0 || items.length === 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const nextIndex =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-            items.length;
-    items[nextIndex]?.focus();
-  };
-
-  return (
-    <button
-      aria-expanded={ariaExpanded}
-      aria-haspopup={ariaHasPopup}
-      className={cn(
-        terminalTabMenuItemClassName,
-        danger
-          ? "kerminal-context-menu-item--danger"
-          : terminalTabMenuIdleClassName,
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      onKeyDown={handleKeyDown}
-      onMouseEnter={onMouseEnter}
-      ref={buttonRef}
-      role="menuitem"
-      type="button"
-    >
-      <span className="kerminal-context-menu-label">{label}</span>
-      {ariaHasPopup ? (
-        <span className="sr-only">子菜单</span>
-      ) : null}
-      {rightIcon}
-    </button>
   );
 }
 

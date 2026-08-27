@@ -2,25 +2,14 @@
 
 import { ChevronDown } from "lucide-react";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
   PointerSensor,
-  pointerWithin,
-  useDroppable,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
@@ -51,7 +40,6 @@ import {
   TerminalTabButton,
   TerminalTabGroupHeader,
   type TerminalTabContextMenuPayload,
-  type TerminalTabDragActivatorProps,
   type TerminalTabGroup,
 } from "./terminalTabChrome";
 import {
@@ -64,11 +52,20 @@ import type {
   TerminalTabMoveRequest,
 } from "../workspace/contracts/index";
 import {
-  prioritizeTerminalTabPointerTargetIds,
   resolveTerminalTabDragCommand,
   type TerminalTabDragSource,
   type TerminalTabDragTarget,
 } from "./terminalTabDragModel";
+import {
+  DraggableGroupItem,
+  DraggableTabItem,
+  DropGap,
+  MaybeDndContext,
+  MaybeDragOverlay,
+  MaybeSortableContext,
+  resolveDropPosition,
+  terminalTabCollisionDetection,
+} from "./TerminalTabBar.dnd";
 
 interface TerminalTabBarProps {
   activeTabId: string;
@@ -195,7 +192,9 @@ export function TerminalTabBar({
     const position = resolveDropPosition(event);
     if (activeData.kind === "tab" && activeData.tabId) {
       if (overData.kind === "gap") {
-        setDragAnnouncement(`移出分组，移动到第 ${(overData.index ?? 0) + 1} 位`);
+        setDragAnnouncement(
+          `移出分组，移动到第 ${(overData.index ?? 0) + 1} 位`,
+        );
       } else if (overData.kind === "group" && overData.groupId) {
         setDragAnnouncement(`移入标签组 ${overData.label ?? overData.groupId}`);
       } else if (overData.kind === "tab" && overData.tabId) {
@@ -266,10 +265,11 @@ export function TerminalTabBar({
       if (!event.ctrlKey || !event.shiftKey) return;
       if (event.key !== "PageUp" && event.key !== "PageDown") return;
       const target = event.target as HTMLElement;
-      const tabId = target.closest<HTMLElement>("[data-terminal-tab-id]")?.dataset
-        .terminalTabId;
-      const groupId = target.closest<HTMLElement>("[data-terminal-tab-group-id]")
-        ?.dataset.terminalTabGroupId;
+      const tabId = target.closest<HTMLElement>("[data-terminal-tab-id]")
+        ?.dataset.terminalTabId;
+      const groupId = target.closest<HTMLElement>(
+        "[data-terminal-tab-group-id]",
+      )?.dataset.terminalTabGroupId;
       const direction = event.key === "PageUp" ? "before" : "after";
       if (tabId) {
         const group = tabGroups.find((candidate) =>
@@ -328,9 +328,9 @@ export function TerminalTabBar({
             ...(sibling.grouped
               ? { targetGroupId: sibling.id }
               : {
-                  targetIndex: tabs.findIndex(
-                    (tab) => tab.id === sibling.tabs[0]?.id,
-                  ) + (direction === "after" ? 1 : 0),
+                  targetIndex:
+                    tabs.findIndex((tab) => tab.id === sibling.tabs[0]?.id) +
+                    (direction === "after" ? 1 : 0),
                 }),
           });
         }
@@ -350,218 +350,233 @@ export function TerminalTabBar({
         onDragStart={handleDragStart}
         sensors={sensors}
       >
-      <MaybeSortableContext
-        enabled={dragEnabled}
-        items={tabGroups.flatMap((group) =>
-          group.grouped
-            ? [`group:${group.id}`]
-            : group.tabs.map((tab) => `tab:${tab.id}`),
-        )}
-        strategy={horizontalListSortingStrategy}
-      >
-      <div
-        className={cn(
-          "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] shadow-[inset_0_-1px_0_var(--border-subtle)]",
-          heightClassName,
-        )}
-        style={{ ...style, paddingRight: rightTitleBarInset }}
-      >
-      <div className="flex min-w-0 flex-1 items-center self-stretch">
-        <div
-          aria-label="终端标签栏"
-          className="scrollbar-none flex min-w-0 max-w-full flex-[0_1_auto] items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
-          onWheel={onWheel}
-          onKeyDown={handleTabListKeyDown}
-          ref={tabListRef}
+        <MaybeSortableContext
+          enabled={dragEnabled}
+          items={tabGroups.flatMap((group) =>
+            group.grouped
+              ? [`group:${group.id}`]
+              : group.tabs.map((tab) => `tab:${tab.id}`),
+          )}
+          strategy={horizontalListSortingStrategy}
         >
-        <DropGap disabled={!dragEnabled} index={0} />
-        {tabGroups.map((group) => {
-          const collapsed = collapsedGroupIds.has(group.id);
-          const groupActive = group.tabs.some(
-            (tab) => tab.id === activeTabId,
-          );
-          const groupPresentation = resolveTerminalTabGroupPresentation(
-            group.tabs.map(
-              (tab) =>
-                tabPresentationById.get(tab.id) ??
-                resolveTerminalTabPresentation([]),
-            ),
-            !collapsed,
-          );
-          const groupStartIndex = Math.max(
-            0,
-            tabs.findIndex((tab) => tab.id === group.tabs[0]?.id),
-          );
-          if (!group.grouped) {
-            return group.tabs.flatMap((tab) => [
-              <DraggableTabItem
-                disabled={!dragEnabled}
-                groupId={undefined}
-                key={tab.id}
-                label={tab.title}
-                tabId={tab.id}
-              >
-                {(dragProps) => (
-                  <TerminalTabButton
-                    {...dragProps}
-                    active={tab.id === activeTabId}
-                    identityAccent={group.identityAccent}
-                    onCloseTab={onRequestCloseTab}
-                    onContextMenu={(event) =>
-                      onOpenContextMenu(event, { tabId: tab.id, type: "tab" })
-                    }
-                    onSelectTab={onSelectTab}
-                    presentation={tabPresentationById.get(tab.id)}
-                    showClose
-                    status={tabStatusById.get(tab.id)}
-                    tab={tab}
-                    tabNumber={
-                      terminalAppearance.showTabNumbers
-                        ? tabs.findIndex((candidate) => candidate.id === tab.id) + 1
-                        : undefined
-                    }
-                    workspaceFileDirty={workspaceFileDirtyState[tab.id]}
-                  />
-                )}
-              </DraggableTabItem>,
-              <DropGap
-                disabled={!dragEnabled}
-                index={tabs.findIndex((candidate) => candidate.id === tab.id) + 1}
-                key={`gap:tab:${tab.id}`}
-              />,
-            ]);
-          }
-
-          return [
-            (
-            <DraggableGroupItem
-              disabled={!dragEnabled}
-              groupId={group.id}
-              key={group.id}
-              label={group.title}
-            >
-              {(dragProps) => (
-                <div className="relative flex h-9 shrink-0 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] px-1 shadow-sm shadow-black/5 dark:shadow-black/20">
-                  <TerminalTabGroupHeader
-                    {...dragProps}
-                    active={collapsed && groupActive}
-                    collapsed={collapsed}
-                    group={group}
-                    onContextMenu={(event) =>
-                      onOpenContextMenu(event, { groupId: group.id, type: "group" })
-                    }
-                    onToggle={() => onToggleGroup(group.id)}
-                    presentation={groupPresentation}
-                  />
-                  {!collapsed ? (
-                    <MaybeSortableContext
-                      enabled={dragEnabled}
-                      items={group.tabs.map((tab) => `tab:${tab.id}`)}
-                      strategy={horizontalListSortingStrategy}
-                    >
-                      {group.tabs.map((tab) => (
-                        <DraggableTabItem
-                          disabled={!dragEnabled}
-                          groupId={group.id}
-                          key={tab.id}
-                          label={tab.title}
-                          tabId={tab.id}
-                        >
-                          {(tabDragProps) => (
-                            <TerminalTabButton
-                              {...tabDragProps}
-                              active={tab.id === activeTabId}
-                              compact
-                              onCloseTab={onRequestCloseTab}
-                              onContextMenu={(event) =>
-                                onOpenContextMenu(event, {
-                                  tabId: tab.id,
-                                  type: "tab",
-                                })
-                              }
-                              onSelectTab={onSelectTab}
-                              presentation={tabPresentationById.get(tab.id)}
-                              showClose
-                              status={tabStatusById.get(tab.id)}
-                              tab={tab}
-                              tabNumber={
-                                terminalAppearance.showTabNumbers
-                                  ? tabs.findIndex(
-                                      (candidate) => candidate.id === tab.id,
-                                    ) + 1
-                                  : undefined
-                              }
-                              workspaceFileDirty={workspaceFileDirtyState[tab.id]}
-                            />
-                          )}
-                        </DraggableTabItem>
-                      ))}
-                    </MaybeSortableContext>
-                  ) : null}
-                </div>
-              )}
-            </DraggableGroupItem>
-            ),
-            <DropGap
-              disabled={!dragEnabled}
-              index={groupStartIndex + group.tabs.length}
-              key={`gap:${group.id}`}
-            />,
-          ];
-        })}
-        {!shouldShowOverview ? (
-          <TerminalCreateButton
-            buttonRef={createButtonRef}
-            canOpenPanel={canOpenCreatePanel}
-            onCreateDefault={onCreateTerminal}
-            onRequestOpen={setCreatePanelPosition}
-            panelOpen={Boolean(createPanelPosition)}
-            placement="inline"
-          />
-        ) : null}
-        </div>
-        <div
-          aria-hidden="true"
-          className="h-full min-w-3 flex-1"
-          data-tauri-drag-region
-        />
-      </div>
-      {shouldShowOverview ? (
-        <div
-          className="relative z-20 flex shrink-0 items-center gap-1 pl-1"
-          data-terminal-tab-actions
-        >
-          <button
-            aria-expanded={overviewOpen}
-            aria-label="查看所有标签"
+          <div
             className={cn(
-              "kerminal-focus-ring kerminal-pressable kerminal-muted-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--border-subtle)] text-[var(--text-secondary)] shadow-sm shadow-black/10 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] dark:shadow-black/30",
-              overviewOpen &&
-                "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
+              "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] shadow-[inset_0_-1px_0_var(--border-subtle)]",
+              heightClassName,
             )}
-            onClick={onToggleOverview}
-            ref={overviewButtonRef}
-            title="查看所有标签"
-            type="button"
+            style={{ ...style, paddingRight: rightTitleBarInset }}
           >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-          <TerminalCreateButton
-            buttonRef={createButtonRef}
-            canOpenPanel={canOpenCreatePanel}
-            onCreateDefault={onCreateTerminal}
-            onRequestOpen={setCreatePanelPosition}
-            panelOpen={Boolean(createPanelPosition)}
-            placement="fixed"
-          />
+            <div className="flex min-w-0 flex-1 items-center self-stretch">
+              <div
+                aria-label="终端标签栏"
+                className="scrollbar-none flex min-w-0 max-w-full flex-[0_1_auto] items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+                onWheel={onWheel}
+                onKeyDown={handleTabListKeyDown}
+                ref={tabListRef}
+              >
+                <DropGap disabled={!dragEnabled} index={0} />
+                {tabGroups.map((group) => {
+                  const collapsed = collapsedGroupIds.has(group.id);
+                  const groupActive = group.tabs.some(
+                    (tab) => tab.id === activeTabId,
+                  );
+                  const groupPresentation = resolveTerminalTabGroupPresentation(
+                    group.tabs.map(
+                      (tab) =>
+                        tabPresentationById.get(tab.id) ??
+                        resolveTerminalTabPresentation([]),
+                    ),
+                    !collapsed,
+                  );
+                  const groupStartIndex = Math.max(
+                    0,
+                    tabs.findIndex((tab) => tab.id === group.tabs[0]?.id),
+                  );
+                  if (!group.grouped) {
+                    return group.tabs.flatMap((tab) => [
+                      <DraggableTabItem
+                        disabled={!dragEnabled}
+                        groupId={undefined}
+                        key={tab.id}
+                        label={tab.title}
+                        tabId={tab.id}
+                      >
+                        {(dragProps) => (
+                          <TerminalTabButton
+                            {...dragProps}
+                            active={tab.id === activeTabId}
+                            identityAccent={group.identityAccent}
+                            onCloseTab={onRequestCloseTab}
+                            onContextMenu={(event) =>
+                              onOpenContextMenu(event, {
+                                tabId: tab.id,
+                                type: "tab",
+                              })
+                            }
+                            onSelectTab={onSelectTab}
+                            presentation={tabPresentationById.get(tab.id)}
+                            showClose
+                            status={tabStatusById.get(tab.id)}
+                            tab={tab}
+                            tabNumber={
+                              terminalAppearance.showTabNumbers
+                                ? tabs.findIndex(
+                                    (candidate) => candidate.id === tab.id,
+                                  ) + 1
+                                : undefined
+                            }
+                            workspaceFileDirty={workspaceFileDirtyState[tab.id]}
+                          />
+                        )}
+                      </DraggableTabItem>,
+                      <DropGap
+                        disabled={!dragEnabled}
+                        index={
+                          tabs.findIndex(
+                            (candidate) => candidate.id === tab.id,
+                          ) + 1
+                        }
+                        key={`gap:tab:${tab.id}`}
+                      />,
+                    ]);
+                  }
+
+                  return [
+                    <DraggableGroupItem
+                      disabled={!dragEnabled}
+                      groupId={group.id}
+                      key={group.id}
+                      label={group.title}
+                    >
+                      {(dragProps) => (
+                        <div className="relative flex h-9 shrink-0 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] px-1 shadow-sm shadow-black/5 dark:shadow-black/20">
+                          <TerminalTabGroupHeader
+                            {...dragProps}
+                            active={collapsed && groupActive}
+                            collapsed={collapsed}
+                            group={group}
+                            onContextMenu={(event) =>
+                              onOpenContextMenu(event, {
+                                groupId: group.id,
+                                type: "group",
+                              })
+                            }
+                            onToggle={() => onToggleGroup(group.id)}
+                            presentation={groupPresentation}
+                          />
+                          {!collapsed ? (
+                            <MaybeSortableContext
+                              enabled={dragEnabled}
+                              items={group.tabs.map((tab) => `tab:${tab.id}`)}
+                              strategy={horizontalListSortingStrategy}
+                            >
+                              {group.tabs.map((tab) => (
+                                <DraggableTabItem
+                                  disabled={!dragEnabled}
+                                  groupId={group.id}
+                                  key={tab.id}
+                                  label={tab.title}
+                                  tabId={tab.id}
+                                >
+                                  {(tabDragProps) => (
+                                    <TerminalTabButton
+                                      {...tabDragProps}
+                                      active={tab.id === activeTabId}
+                                      compact
+                                      onCloseTab={onRequestCloseTab}
+                                      onContextMenu={(event) =>
+                                        onOpenContextMenu(event, {
+                                          tabId: tab.id,
+                                          type: "tab",
+                                        })
+                                      }
+                                      onSelectTab={onSelectTab}
+                                      presentation={tabPresentationById.get(
+                                        tab.id,
+                                      )}
+                                      showClose
+                                      status={tabStatusById.get(tab.id)}
+                                      tab={tab}
+                                      tabNumber={
+                                        terminalAppearance.showTabNumbers
+                                          ? tabs.findIndex(
+                                              (candidate) =>
+                                                candidate.id === tab.id,
+                                            ) + 1
+                                          : undefined
+                                      }
+                                      workspaceFileDirty={
+                                        workspaceFileDirtyState[tab.id]
+                                      }
+                                    />
+                                  )}
+                                </DraggableTabItem>
+                              ))}
+                            </MaybeSortableContext>
+                          ) : null}
+                        </div>
+                      )}
+                    </DraggableGroupItem>,
+                    <DropGap
+                      disabled={!dragEnabled}
+                      index={groupStartIndex + group.tabs.length}
+                      key={`gap:${group.id}`}
+                    />,
+                  ];
+                })}
+                {!shouldShowOverview ? (
+                  <TerminalCreateButton
+                    buttonRef={createButtonRef}
+                    canOpenPanel={canOpenCreatePanel}
+                    onCreateDefault={onCreateTerminal}
+                    onRequestOpen={setCreatePanelPosition}
+                    panelOpen={Boolean(createPanelPosition)}
+                    placement="inline"
+                  />
+                ) : null}
+              </div>
+              <div
+                aria-hidden="true"
+                className="h-full min-w-3 flex-1"
+                data-tauri-drag-region
+              />
+            </div>
+            {shouldShowOverview ? (
+              <div
+                className="relative z-20 flex shrink-0 items-center gap-1 pl-1"
+                data-terminal-tab-actions
+              >
+                <button
+                  aria-expanded={overviewOpen}
+                  aria-label="查看所有标签"
+                  className={cn(
+                    "kerminal-focus-ring kerminal-pressable kerminal-muted-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--border-subtle)] text-[var(--text-secondary)] shadow-sm shadow-black/10 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] dark:shadow-black/30",
+                    overviewOpen &&
+                      "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
+                  )}
+                  onClick={onToggleOverview}
+                  ref={overviewButtonRef}
+                  title="查看所有标签"
+                  type="button"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                <TerminalCreateButton
+                  buttonRef={createButtonRef}
+                  canOpenPanel={canOpenCreatePanel}
+                  onCreateDefault={onCreateTerminal}
+                  onRequestOpen={setCreatePanelPosition}
+                  panelOpen={Boolean(createPanelPosition)}
+                  placement="fixed"
+                />
+              </div>
+            ) : null}
+          </div>
+        </MaybeSortableContext>
+        <div aria-live="polite" className="sr-only">
+          {dragAnnouncement}
         </div>
-      ) : null}
-      </div>
-      </MaybeSortableContext>
-      <div aria-live="polite" className="sr-only">
-        {dragAnnouncement}
-      </div>
-      <MaybeDragOverlay enabled={dragEnabled} draggingLabel={draggingLabel} />
+        <MaybeDragOverlay enabled={dragEnabled} draggingLabel={draggingLabel} />
       </MaybeDndContext>
       {createPanelPosition ? (
         <TerminalCreatePanel
@@ -578,234 +593,3 @@ export function TerminalTabBar({
     </>
   );
 }
-
-/**
- * Tab 的拖拽壳只注册 droppable/排序矩阵，pointer listener 下沉到真实 Tab 按钮；
- * 这样关闭按钮、右键和普通点击不会启动父级拖拽，也不会增加无效键盘焦点。
- */
-function DraggableTabItem({
-  children,
-  disabled = false,
-  groupId,
-  label,
-  tabId,
-}: {
-  children: (props: TerminalTabDragActivatorProps) => React.ReactNode;
-  disabled?: boolean;
-  groupId?: string;
-  label: string;
-  tabId: string;
-}) {
-  if (disabled) {
-    return (
-      <div data-terminal-tab-id={tabId}>
-        {children({})}
-      </div>
-    );
-  }
-  return (
-    <DraggableTabItemDnd groupId={groupId} label={label} tabId={tabId}>
-      {children}
-    </DraggableTabItemDnd>
-  );
-}
-
-/** dnd-kit hook 只能在 DndContext 下调用，单 Tab 兼容路径由外层组件绕过本实现。 */
-function DraggableTabItemDnd({
-  children,
-  groupId,
-  label,
-  tabId,
-}: {
-  children: (props: TerminalTabDragActivatorProps) => React.ReactNode;
-  groupId?: string;
-  label: string;
-  tabId: string;
-}) {
-  const id = `tab:${tabId}`;
-  const sortable = useSortable({
-    data: { groupId, kind: "tab", label, tabId },
-    id,
-  });
-  return (
-    <div
-      data-terminal-tab-id={tabId}
-      ref={sortable.setNodeRef}
-      style={{
-        opacity: sortable.isDragging ? 0.35 : undefined,
-        transform: CSS.Translate.toString(sortable.transform),
-        transition: sortable.isDragging ? undefined : sortable.transition,
-      }}
-    >
-      {children({
-        dragActivatorRef: sortable.setActivatorNodeRef,
-        dragAttributes: sortable.attributes,
-        dragListeners: sortable.listeners,
-      })}
-    </div>
-  );
-}
-
-/** 整组拖拽壳保持组成员连续，组头按钮是唯一的父级 activator。 */
-function DraggableGroupItem({
-  children,
-  disabled = false,
-  groupId,
-  label,
-}: {
-  children: (props: TerminalTabDragActivatorProps) => React.ReactNode;
-  disabled?: boolean;
-  groupId: string;
-  key?: string;
-  label: string;
-}) {
-  if (disabled) {
-    return (
-      <div data-terminal-tab-group-id={groupId}>
-        {children({})}
-      </div>
-    );
-  }
-  return (
-    <DraggableGroupItemDnd groupId={groupId} label={label}>
-      {children}
-    </DraggableGroupItemDnd>
-  );
-}
-
-/** 组头拖动仅注册父级排序节点，activator 绑定组头按钮避免嵌套成员抢事件。 */
-function DraggableGroupItemDnd({
-  children,
-  groupId,
-  label,
-}: {
-  children: (props: TerminalTabDragActivatorProps) => React.ReactNode;
-  groupId: string;
-  label: string;
-}) {
-  const id = `group:${groupId}`;
-  const sortable = useSortable({
-    data: { groupId, kind: "group", label },
-    id,
-  });
-  return (
-    <div
-      data-terminal-tab-group-id={groupId}
-      ref={sortable.setNodeRef}
-      style={{
-        opacity: sortable.isDragging ? 0.35 : undefined,
-        transform: CSS.Translate.toString(sortable.transform),
-        transition: sortable.isDragging ? undefined : sortable.transition,
-      }}
-    >
-      {children({
-        dragActivatorRef: sortable.setActivatorNodeRef,
-        dragAttributes: sortable.attributes,
-        dragListeners: sortable.listeners,
-      })}
-    </div>
-  );
-}
-
-/** 顶层间隙是唯一的“移出分组” drop target，避免未分组 Tab 互相覆盖隐式建组。 */
-function DropGap({ disabled = false, index }: { disabled?: boolean; index: number }) {
-  if (disabled) {
-    return <DropGapView isOver={false} />;
-  }
-  return <DropGapDnd index={index} />;
-}
-
-/** 只有 dnd 上下文存在时注册间隙，避免单 Tab 渲染路径调用 context hook。 */
-function DropGapDnd({ index }: { index: number }) {
-  const { isOver, setNodeRef } = useDroppable({
-    data: { index, kind: "gap" },
-    id: `gap:${index}`,
-  });
-  return <DropGapView isOver={isOver} ref={setNodeRef} />;
-}
-
-/** 间隙的视觉层与 drop 注册层分离，保证禁用拖拽时仍保留稳定布局。 */
-const DropGapView = ({
-  isOver,
-  ref,
-}: {
-  isOver: boolean;
-  ref?: React.Ref<HTMLSpanElement>;
-}) => (
-  <span
-    aria-hidden="true"
-    className={cn(
-      "h-8 w-2 shrink-0 rounded-full transition-colors",
-      isOver ? "bg-sky-400/60" : "bg-transparent",
-    )}
-    ref={ref}
-  />
-);
-
-/** 没有可拖拽项时不创建 dnd-kit live region，避免与业务 status 提示冲突。 */
-function MaybeDndContext({
-  children,
-  enabled,
-  ...props
-}: React.ComponentProps<typeof DndContext> & { enabled: boolean }) {
-  if (!enabled) return <>{children}</>;
-  return <DndContext {...props}>{children}</DndContext>;
-}
-
-/** SortableContext 仅在 DndContext 已挂载时创建，保证兼容路径无需 dnd-kit context。 */
-function MaybeSortableContext({
-  children,
-  enabled,
-  ...props
-}: React.ComponentProps<typeof SortableContext> & { enabled: boolean }) {
-  if (!enabled) return <>{children}</>;
-  return <SortableContext {...props}>{children}</SortableContext>;
-}
-
-/** DragOverlay 同样不能脱离 DndContext 使用，禁用路径直接返回空节点。 */
-function MaybeDragOverlay({
-  draggingLabel,
-  enabled,
-}: {
-  draggingLabel: string | null;
-  enabled: boolean;
-}) {
-  if (!enabled) return null;
-  return (
-    <DragOverlay>
-      {draggingLabel ? (
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] px-3 py-2 text-sm shadow-xl">
-          {draggingLabel}
-        </div>
-      ) : null}
-    </DragOverlay>
-  );
-}
-
-/** 根据浮层中心相对目标中心决定前后插入，避免依赖不稳定的原生 Drag API。 */
-function resolveDropPosition(
-  event: Pick<DragEndEvent, "active" | "over">,
-): "before" | "after" {
-  const overRect = event.over?.rect;
-  const activeRect = event.active.rect.current.translated;
-  if (!overRect || !activeRect) return "after";
-  return activeRect.left < overRect.left + overRect.width / 2
-    ? "before"
-    : "after";
-}
-
-/** pointerWithin 命中具体按钮或 gap 时优先使用它，键盘/无指针场景再回退最近中心。 */
-const terminalTabCollisionDetection: CollisionDetection = (args) => {
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) {
-    const prioritizedIds = new Set(
-      prioritizeTerminalTabPointerTargetIds(
-        pointerCollisions.map((collision) => String(collision.id)),
-      ),
-    );
-    return pointerCollisions.filter((collision) =>
-      prioritizedIds.has(String(collision.id)),
-    );
-  }
-  return closestCenter(args);
-};

@@ -1,12 +1,8 @@
 // @author kongweiguang
 
-import {
-  collectPaneIds,
-  findFirstPaneId,
-} from "./workspaceLayout";
+import { collectPaneIds, findFirstPaneId } from "./workspaceLayout";
 import type {
   Machine,
-  MachineStatus,
   LocalMachineScope,
   TerminalLayoutNode,
   TerminalPane,
@@ -39,6 +35,20 @@ import {
   workspaceFileTargetHostId,
 } from "./workspaceFileTabModel";
 import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
+import {
+  isRecord,
+  normalizeMachineStatus,
+  normalizePaneMode,
+  normalizeStringArray,
+  normalizeStringRecord,
+  normalizeWorkspaceFileAccess,
+  normalizeWorkspaceFileSource,
+  numericSuffix,
+  readOptionalNumber,
+  readOptionalString,
+  readString,
+  uniqueStrings,
+} from "./workspaceSessionValueModel";
 
 export const WORKSPACE_SESSION_VERSION = 3;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
@@ -93,7 +103,9 @@ export function normalizeWorkspaceSessionSnapshot(
     .map(normalizeTerminalPane)
     .filter((pane): pane is TerminalPane => Boolean(pane));
   const paneIds = new Set(terminalPanes.map((pane) => pane.id));
-  const rawTabs = Array.isArray(source?.terminalTabs) ? source.terminalTabs : [];
+  const rawTabs = Array.isArray(source?.terminalTabs)
+    ? source.terminalTabs
+    : [];
   const terminalTabs = rawTabs
     .map((tab) => normalizeTerminalTab(tab, paneIds))
     .filter((tab): tab is TerminalTab => Boolean(tab));
@@ -143,7 +155,8 @@ export function normalizeWorkspaceSessionSnapshot(
     sidebarMachines,
     terminalTabGroups: migratedGroups.terminalTabGroups,
     terminalTabGroupPreferences:
-      legacyPreferences ?? legacyPreferencesFromGroups(migratedGroups.terminalTabGroups),
+      legacyPreferences ??
+      legacyPreferencesFromGroups(migratedGroups.terminalTabGroups),
     terminalPanes: selection.activeTabId ? referencedPanes : [],
     terminalTabs: migratedGroups.terminalTabs,
   };
@@ -163,13 +176,18 @@ export function decodeWorkspaceSessionSnapshot(
   }
   const version = value.version;
   if (version !== undefined) {
-    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+    if (
+      typeof version !== "number" ||
+      !Number.isInteger(version) ||
+      version < 1
+    ) {
       return invalidWorkspaceSessionResult();
     }
     if (version > WORKSPACE_SESSION_VERSION) {
       return {
         kind: "unsupported",
-        message: "工作区会话版本较新，原文件未覆盖；本次运行不会持久化标签变化。",
+        message:
+          "工作区会话版本较新，原文件未覆盖；本次运行不会持久化标签变化。",
         version,
       };
     }
@@ -206,7 +224,8 @@ export function decodeWorkspaceSessionSnapshot(
 function invalidWorkspaceSessionResult(): WorkspaceSessionDecodeResult {
   return {
     kind: "invalid",
-    message: "工作区会话内容无法验证，原文件未覆盖；本次运行不会持久化标签变化。",
+    message:
+      "工作区会话内容无法验证，原文件未覆盖；本次运行不会持久化标签变化。",
   };
 }
 
@@ -228,14 +247,22 @@ function normalizeWorkspaceShellLayout(
     ...(typeof value.leftPanelCollapsed === "boolean"
       ? { leftPanelCollapsed: value.leftPanelCollapsed }
       : {}),
-    ...normalizeShellLayoutSizeProperty(value.leftPanelWidth, "leftPanelWidth", {
-      max: 520,
-      min: 220,
-    }),
-    ...normalizeShellLayoutSizeProperty(value.toolPanelWidth, "toolPanelWidth", {
-      max: 620,
-      min: 300,
-    }),
+    ...normalizeShellLayoutSizeProperty(
+      value.leftPanelWidth,
+      "leftPanelWidth",
+      {
+        max: 520,
+        min: 220,
+      },
+    ),
+    ...normalizeShellLayoutSizeProperty(
+      value.toolPanelWidth,
+      "toolPanelWidth",
+      {
+        max: 620,
+        min: 300,
+      },
+    ),
     ...normalizeShellLayoutSizeProperty(
       value.leftToolPanelWidth,
       "leftToolPanelWidth",
@@ -278,7 +305,9 @@ function normalizeShellLayoutSizeProperty<
 }
 
 /** 从恢复快照提升 pane、split、tab 与显式组 ID 的单调计数下界。 */
-export function maxGeneratedTerminalCounters(session: WorkspaceSessionSnapshot) {
+export function maxGeneratedTerminalCounters(
+  session: WorkspaceSessionSnapshot,
+) {
   const paneCount = Math.max(
     0,
     ...session.terminalPanes.map((pane) => numericSuffix(pane.id)),
@@ -410,7 +439,8 @@ function normalizeSidebarMachine(value: unknown): Machine | undefined {
     args: normalizeStringArray(value.args),
     createdAt: readOptionalString(value.createdAt),
     cwd: readOptionalString(value.cwd),
-    description: readString(value.description) || (kind === "local" ? "本地会话" : name),
+    description:
+      readString(value.description) || (kind === "local" ? "本地会话" : name),
     env: normalizeStringRecord(value.env),
     id,
     name,
@@ -434,10 +464,14 @@ function normalizeSidebarMachine(value: unknown): Machine | undefined {
   const normalizedTarget = normalizeRemoteTargetRef(value.target);
   const parentMachineId =
     readOptionalString(value.parentMachineId) ??
-    (normalizedTarget?.kind === "dockerContainer" ? normalizedTarget.hostId : undefined);
+    (normalizedTarget?.kind === "dockerContainer"
+      ? normalizedTarget.hostId
+      : undefined);
   const containerId =
     readOptionalString(value.containerId) ??
-    (normalizedTarget?.kind === "dockerContainer" ? normalizedTarget.containerId : undefined);
+    (normalizedTarget?.kind === "dockerContainer"
+      ? normalizedTarget.containerId
+      : undefined);
   if (!parentMachineId || !containerId) {
     return undefined;
   }
@@ -449,13 +483,19 @@ function normalizeSidebarMachine(value: unknown): Machine | undefined {
         : "docker";
   const containerName =
     readOptionalString(value.containerName) ??
-    (normalizedTarget?.kind === "dockerContainer" ? normalizedTarget.containerName : undefined);
+    (normalizedTarget?.kind === "dockerContainer"
+      ? normalizedTarget.containerName
+      : undefined);
   const user =
     readOptionalString(value.user) ??
-    (normalizedTarget?.kind === "dockerContainer" ? normalizedTarget.user : undefined);
+    (normalizedTarget?.kind === "dockerContainer"
+      ? normalizedTarget.user
+      : undefined);
   const workdir =
     readOptionalString(value.workdir) ??
-    (normalizedTarget?.kind === "dockerContainer" ? normalizedTarget.workdir : undefined);
+    (normalizedTarget?.kind === "dockerContainer"
+      ? normalizedTarget.workdir
+      : undefined);
 
   return {
     ...base,
@@ -524,9 +564,7 @@ function normalizeTerminalTab(
       tabGroupId: readOptionalString(value.tabGroupId),
       machineId: workspaceFileMachineId(target),
       path,
-      ...(rootPath
-        ? { rootPath: normalizeWorkspaceFilePath(rootPath) }
-        : {}),
+      ...(rootPath ? { rootPath: normalizeWorkspaceFilePath(rootPath) } : {}),
       source,
       target,
       title: titleForWorkspaceFilePath(path),
@@ -540,8 +578,21 @@ function normalizeTerminalTab(
   }
 
   return value.kind === "terminal"
-    ? { id, kind: "terminal", layout, machineId, tabGroupId: readOptionalString(value.tabGroupId), title }
-    : { id, layout, machineId, tabGroupId: readOptionalString(value.tabGroupId), title };
+    ? {
+        id,
+        kind: "terminal",
+        layout,
+        machineId,
+        tabGroupId: readOptionalString(value.tabGroupId),
+        title,
+      }
+    : {
+        id,
+        layout,
+        machineId,
+        tabGroupId: readOptionalString(value.tabGroupId),
+        title,
+      };
 }
 
 /** 只接纳标题有效的显式组，并清除非法颜色，避免坏组阻断其余 Session 恢复。 */
@@ -602,7 +653,13 @@ function normalizeLayoutNode(
   }
 
   const sizes = normalizeSplitLayoutSizes(value.sizes, children);
-  return { children, direction, id, ...(sizes ? { sizes } : {}), type: "split" };
+  return {
+    children,
+    direction,
+    id,
+    ...(sizes ? { sizes } : {}),
+    type: "split",
+  };
 }
 
 function normalizeSplitLayoutSizes(
@@ -669,13 +726,12 @@ function resolveWorkspaceSessionSelection({
   const focusedPane = referencedPanes.find(
     (pane) => pane.id === focusedPaneId && activePaneIds.includes(pane.id),
   );
-  const fallbackFocusedPane =
-    isTerminalSessionTab(activeTab)
-      ? paneById(
-          referencedPanes,
-          focusedPane?.id ?? findFirstPaneId(activeTab.layout),
-        )
-      : undefined;
+  const fallbackFocusedPane = isTerminalSessionTab(activeTab)
+    ? paneById(
+        referencedPanes,
+        focusedPane?.id ?? findFirstPaneId(activeTab.layout),
+      )
+    : undefined;
   const resolvedFocusedPane = focusedPane ?? fallbackFocusedPane;
 
   return {
@@ -714,42 +770,6 @@ function selectedMachineIdFromTab(tab: TerminalTab | undefined) {
   return tab.machineId;
 }
 
-function normalizeWorkspaceFileAccess(value: unknown) {
-  return value === "readonly" || value === "editable" ? value : undefined;
-}
-
-function normalizeWorkspaceFileSource(value: unknown) {
-  return value === "sftp" ||
-    value === "container" ||
-    value === "composeYaml" ||
-    value === "workspace" ||
-    value === "local"
-    ? value
-    : undefined;
-}
-
-function numericSuffix(value: string) {
-  const match = /-(\d+)$/.exec(value);
-  return match ? Number.parseInt(match[1], 10) : 0;
-}
-
-function normalizePaneMode(value: unknown): TerminalPane["mode"] | undefined {
-  return value === "local" ||
-    value === "ssh" ||
-    value === "telnet" ||
-    value === "serial" ||
-    value === "container" ||
-    value === "preview"
-    ? value
-    : undefined;
-}
-
-function normalizeMachineStatus(value: unknown): MachineStatus {
-  return value === "online" || value === "offline" || value === "warning"
-    ? value
-    : "offline";
-}
-
 function normalizeTerminalOutputHistory(value: unknown) {
   return typeof value === "string" && value.length > 0
     ? trimTerminalOutputHistory(value)
@@ -766,42 +786,4 @@ function trimTerminalOutputHistory(value: string) {
   const startsWithLowSurrogate =
     firstCodeUnit >= 0xdc00 && firstCodeUnit <= 0xdfff;
   return startsWithLowSurrogate ? trimmed.slice(1) : trimmed;
-}
-
-function normalizeStringArray(value: unknown) {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? value
-    : undefined;
-}
-
-function uniqueStrings(values: string[]) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function normalizeStringRecord(value: unknown) {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  );
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-function readOptionalString(value: unknown) {
-  const text = readString(value);
-  return text || undefined;
-}
-
-function readOptionalNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

@@ -1,7 +1,7 @@
 {
   "name": "kerminal",
   "private": true,
-  "version": "0.3.30",
+  "version": "0.3.31",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "packageManager": "pnpm@10.33.0",

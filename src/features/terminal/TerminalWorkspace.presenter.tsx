@@ -10,16 +10,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
-import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import type { TerminalProfile } from "../../lib/profileApi";
-import type {
-  InterfaceDensity,
-  ResolvedTheme,
-  TerminalAppearance,
-} from "../settings/contracts/index";
 import {
   analyzeBroadcastCommand,
   canBroadcastCommand,
@@ -28,22 +19,10 @@ import {
 import { collectPaneIds } from "../workspace/contracts/index";
 import {
   isTerminalSessionTab,
-  type MachineGroup,
-  type TerminalPane,
-  type TerminalSplitDirection,
-  type TerminalSplitLayoutSizes,
   type TerminalTab,
-  type TerminalTabGroupDefinition,
-  type TerminalTabGroups,
-  type TerminalTabGroupPreference,
-  type TerminalTabGroupPreferences,
-  type WorkspaceFileDirtyState,
 } from "../workspace/contracts/index";
-import { dispatchWorkspaceFileTabCommand } from "../workspace/contracts/index";
 import { resolveWorkspaceTabCloseDecision } from "../workspace/contracts/index";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
-import { TerminalTabOverviewMenu } from "./TerminalTabOverviewMenu";
-import { TerminalTabGroupEditDialog } from "./TerminalTabGroupEditDialog";
 import { TerminalTabBar } from "./TerminalTabBar";
 import { terminalChromeRuntimeStore } from "./terminalChromeRuntimeStore";
 import {
@@ -51,129 +30,29 @@ import {
   type TerminalTabPresentation,
 } from "./terminalTabPresentationModel";
 import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
-import type {
-  TerminalPaneMoveDropZone,
-  TerminalPaneMoveScope,
-} from "./terminalPaneMoveDropZones";
-import type { TerminalSplitDropIndicator } from "./TerminalSplitDropOverlay";
-import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
-import type { ConnectionState } from "./XtermPane.helpers";
 import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
 import { useTerminalTabOverview } from "./TerminalWorkspace.tabOverview";
-import { resolveTerminalTabStatus, sameTerminalTabGroupSnapshot } from "./terminalTabWorkspaceModel";
+import {
+  resolveTerminalTabStatus,
+  sameTerminalTabGroupSnapshot,
+} from "./terminalTabWorkspaceModel";
 import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
-  CloseTabsConfirmationDialog,
-  CloseWorkspaceFileTabsConfirmationDialog,
-  TerminalTabContextMenuItems,
-  TerminalTabGroupContextMenuItems,
-  TerminalTabRenameDialog,
   type TerminalTabGroup,
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
 } from "./terminalTabChrome";
-import type {
-  TerminalTabGroupMoveRequest,
-  TerminalTabMoveRequest,
-} from "../workspace/contracts/index";
+import { TerminalWorkspaceTabOverlays } from "./TerminalWorkspaceTabOverlays";
+import type { TerminalWorkspaceProps } from "./TerminalWorkspace.types";
+export type {
+  BroadcastCommandRequest,
+  BroadcastCommandResult,
+} from "./TerminalWorkspace.types";
 
-const terminalContextMenuPanelClassName =
-  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 const EMPTY_PANE_CHROME_SNAPSHOTS: ReturnType<
   typeof terminalChromeRuntimeStore.getSnapshots
 > = Object.freeze([]);
-export interface BroadcastCommandRequest {
-  command: string;
-  data: string;
-  targetPaneIds: string[];
-}
-
-export interface BroadcastCommandResult {
-  missingPaneIds: string[];
-  sentPaneIds: string[];
-}
-
-interface TerminalWorkspaceProps {
-  activeTabId: string;
-  backgroundImageVisible?: boolean;
-  broadcastDraft: string;
-  contentLeftInset?: number;
-  contentRightInset?: number;
-  focusedPaneId: string;
-  interfaceDensity?: InterfaceDensity;
-  machineGroups?: MachineGroup[];
-  profiles?: TerminalProfile[];
-  panes: TerminalPane[];
-  resolvedTheme: ResolvedTheme;
-  tabs: TerminalTab[];
-  terminalTabGroups?: TerminalTabGroups;
-  tabGroupPreferences?: TerminalTabGroupPreferences;
-  terminalAppearance: TerminalAppearance;
-  onBroadcastCommand: (
-    request: BroadcastCommandRequest,
-  ) => Promise<BroadcastCommandResult>;
-  onBroadcastDraftChange: (draft: string) => void;
-  onClosePane: (paneId: string) => void;
-  onCloseTabs: (tabIds: string[]) => void;
-  onCreateTerminal?: (profileId?: string) => void;
-  onFocusPane: (paneId: string) => void;
-  onOpenAgentTool?: () => void;
-  onOpenConnection?: () => void;
-  onOpenSavedTerminal?: (machineId: string) => void;
-  onRevealWorkspaceFileInSftp?: (tabId: string) => void;
-  onMovePane?: (
-    sourcePaneId: string,
-    targetPaneId: string,
-    placement: TerminalPaneMoveDropZone,
-    scope?: TerminalPaneMoveScope,
-  ) => void;
-  onPaneConnectionStateChange?: (
-    paneId: string,
-    state: ConnectionState,
-  ) => void;
-  onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
-  onPaneOutputHistoryChange?: (
-    paneId: string,
-    outputHistory: string | undefined,
-  ) => void;
-  onSplitLayoutSizesChange?: (
-    splitId: string,
-    sizes: TerminalSplitLayoutSizes,
-  ) => void;
-  onOpenLogs?: () => void;
-  onRenameTab: (tabId: string, title: string) => void;
-  onUpdateTabGroupPreference?: (
-    groupId: string,
-    preference: TerminalTabGroupPreference,
-  ) => void;
-  onCreateTerminalTabGroup?: (
-    tabId: string,
-    definition?: Partial<TerminalTabGroupDefinition>,
-  ) => string | undefined;
-  onUpdateTerminalTabGroup?: (
-    groupId: string,
-    definition: Partial<TerminalTabGroupDefinition>,
-  ) => void;
-  onSetTerminalTabGroupCollapsed?: (groupId: string, collapsed: boolean) => void;
-  onMoveTerminalTab?: (request: TerminalTabMoveRequest) => void;
-  onMoveTerminalTabGroup?: (request: TerminalTabGroupMoveRequest) => void;
-  onRemoveTerminalTabFromGroup?: (tabId: string) => void;
-  onUngroupTerminalTabGroup?: (groupId: string) => void;
-  leftTitleBarInset?: number;
-  rightTitleBarInset?: number;
-  resolvePaneLines?: (paneId: string) => string[];
-  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
-  renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
-  onSelectTab: (tabId: string) => void;
-  onSplitPane: (
-    direction: TerminalSplitDirection,
-    options?: TerminalSplitPaneOptions,
-  ) => void;
-  splitDropIndicator?: TerminalSplitDropIndicator | null;
-  workspaceFileDirtyState?: WorkspaceFileDirtyState;
-}
-
 /**
  * 组合标签、广播栏和活动终端内容；左右 inset 只施加到标签栏下方，既让导航横跨
  * 停靠面板上方，也避免面板覆盖实际终端与广播交互区。
@@ -266,9 +145,9 @@ export function TerminalWorkspace({
   );
   const [editingTabGroup, setEditingTabGroup] =
     useState<TerminalTabGroup | null>(null);
-  const [creatingGroupForTabId, setCreatingGroupForTabId] = useState<string | null>(
-    null,
-  );
+  const [creatingGroupForTabId, setCreatingGroupForTabId] = useState<
+    string | null
+  >(null);
   const [renamingTab, setRenamingTab] = useState<TerminalTab | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
@@ -588,19 +467,22 @@ export function TerminalWorkspace({
     },
     [onBroadcastDraftChange],
   );
-  const toggleTabGroup = useCallback((groupId: string) => {
-    setCollapsedTabGroupIds((current) => {
-      const next = new Set(current);
-      const collapsed = !next.has(groupId);
-      if (!collapsed) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      onSetTerminalTabGroupCollapsed?.(groupId, collapsed);
-      return next;
-    });
-  }, [onSetTerminalTabGroupCollapsed]);
+  const toggleTabGroup = useCallback(
+    (groupId: string) => {
+      setCollapsedTabGroupIds((current) => {
+        const next = new Set(current);
+        const collapsed = !next.has(groupId);
+        if (!collapsed) {
+          next.delete(groupId);
+        } else {
+          next.add(groupId);
+        }
+        onSetTerminalTabGroupCollapsed?.(groupId, collapsed);
+        return next;
+      });
+    },
+    [onSetTerminalTabGroupCollapsed],
+  );
   const openContextMenu = useCallback(
     (event: ReactMouseEvent, menu: TerminalTabContextMenuPayload) => {
       event.preventDefault();
@@ -724,106 +606,6 @@ export function TerminalWorkspace({
     requestCloseTabs(pendingDirtyCloseTabIds, true);
     setPendingDirtyCloseTabIds(null);
   }, [pendingDirtyCloseTabIds, requestCloseTabs]);
-  const contextMenuElement =
-    contextMenu && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            aria-label="终端标签操作菜单"
-            className={terminalContextMenuPanelClassName}
-            onClick={(event) => event.stopPropagation()}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            ref={contextMenuRef}
-            role="menu"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {contextMenu.type === "tab" && contextTab ? (
-              <TerminalTabContextMenuItems
-                activeTabId={activeTabId}
-                availableGroups={tabGroups.filter((group) => group.grouped)}
-                group={contextTabGroup}
-                onCloseTabs={requestCloseTabs}
-                onCopyWorkspaceFilePath={(tab) => {
-                  void writeDesktopClipboardText(tab.path);
-                }}
-                onReloadWorkspaceFile={(tabId) =>
-                  dispatchWorkspaceFileTabCommand({
-                    command: "reload",
-                    tabId,
-                  })
-                }
-                onRequestEditIdentity={
-                  !explicitTabGroups &&
-                  (onUpdateTerminalTabGroup || onUpdateTabGroupPreference)
-                    ? setEditingTabGroup
-                    : undefined
-                }
-                onRequestCreateGroup={
-                  onCreateTerminalTabGroup
-                    ? (tabId) => setCreatingGroupForTabId(tabId)
-                    : undefined
-                }
-                onMoveToGroup={
-                  onMoveTerminalTab
-                    ? moveTabToGroup
-                    : undefined
-                }
-                onRemoveFromGroup={
-                  onRemoveTerminalTabFromGroup
-                    ? (tabId) => onRemoveTerminalTabFromGroup(tabId)
-                    : undefined
-                }
-                onMoveWithinGroup={
-                  onMoveTerminalTab ? moveTabWithinGroup : undefined
-                }
-                onRequestRename={setRenamingTab}
-                onRevealWorkspaceFileInSftp={onRevealWorkspaceFileInSftp}
-                onSelectTab={onSelectTab}
-                runMenuAction={runMenuAction}
-                tab={contextTab}
-                tabs={tabs}
-              />
-            ) : null}
-            {contextMenu.type === "group" && contextTabGroup ? (
-              <TerminalTabGroupContextMenuItems
-                collapsed={collapsedTabGroupIds.has(contextTabGroup.id)}
-                group={contextTabGroup}
-                onCloseTabs={requestCloseTabs}
-                onRequestEdit={
-                  onUpdateTerminalTabGroup
-                    ? setEditingTabGroup
-                    : onUpdateTabGroupPreference
-                      ? setEditingTabGroup
-                      : undefined
-                }
-                onMoveGroup={onMoveTerminalTabGroup ? moveGroup : undefined}
-                onUngroup={onUngroupTerminalTabGroup}
-                runMenuAction={runMenuAction}
-                tabs={tabs}
-                toggleTabGroup={toggleTabGroup}
-              />
-            ) : null}
-          </div>,
-          document.body,
-        )
-      : null;
-  const tabOverviewElement = (
-      <TerminalTabOverviewMenu
-        activeTabId={activeTabId}
-        menuRef={tabOverviewMenuRef}
-      onSelectTab={selectTabFromOverview}
-      open={tabOverviewOpen}
-      position={tabOverviewPosition}
-      tabGroups={tabGroups}
-      tabs={tabs}
-      tabStatusById={tabStatusById}
-      tabPresentationById={tabPresentationById}
-      terminalAppearance={terminalAppearance}
-    />
-  );
-
   return (
     <main
       aria-label="终端工作区"
@@ -861,55 +643,74 @@ export function TerminalWorkspace({
         terminalAppearance={terminalAppearance}
         workspaceFileDirtyState={workspaceFileDirtyState}
       />
-      {contextMenuElement}
-      {tabOverviewElement}
-      <TerminalTabRenameDialog
-        onClose={() => {
+      <TerminalWorkspaceTabOverlays
+        activeTabId={activeTabId}
+        collapsedGroupIds={collapsedTabGroupIds}
+        contextMenu={contextMenu}
+        contextMenuRef={contextMenuRef}
+        contextTab={contextTab}
+        contextTabGroup={contextTabGroup}
+        creatingGroupForTabId={creatingGroupForTabId}
+        editingTabGroup={editingTabGroup}
+        explicitTabGroups={explicitTabGroups}
+        onCloseContextDialog={() => {
           setRenamingTab(null);
-          restoreContextMenuFocus();
-        }}
-        onRenameTab={onRenameTab}
-        tab={renamingTab}
-      />
-      <TerminalTabGroupEditDialog
-        createForTabId={creatingGroupForTabId}
-        group={editingTabGroup}
-        onClose={() => {
           setEditingTabGroup(null);
           setCreatingGroupForTabId(null);
           restoreContextMenuFocus();
         }}
-        onCreate={(tabId, definition) => {
+        onCloseTabs={requestCloseTabs}
+        onConfirmCloseTabs={confirmCloseTabs}
+        onConfirmDirtyCloseTabs={confirmDirtyFileCloseTabs}
+        onCreateGroup={(tabId, definition) => {
           onCreateTerminalTabGroup?.(tabId, definition);
           setCreatingGroupForTabId(null);
         }}
-        onSave={(groupId, preference) =>
+        onDismissCloseTabs={() => setPendingCloseTabIds(null)}
+        onDismissDirtyCloseTabs={() => setPendingDirtyCloseTabIds(null)}
+        onMoveGroup={onMoveTerminalTabGroup ? moveGroup : undefined}
+        onMoveTabToGroup={onMoveTerminalTab ? moveTabToGroup : undefined}
+        onMoveTabWithinGroup={
+          onMoveTerminalTab ? moveTabWithinGroup : undefined
+        }
+        onRemoveTabFromGroup={onRemoveTerminalTabFromGroup}
+        onRequestCreateGroup={
+          onCreateTerminalTabGroup ? setCreatingGroupForTabId : undefined
+        }
+        onRequestEditGroup={
+          onUpdateTerminalTabGroup || onUpdateTabGroupPreference
+            ? setEditingTabGroup
+            : undefined
+        }
+        onRequestRenameTab={setRenamingTab}
+        onRenameTab={onRenameTab}
+        onRevealWorkspaceFileInSftp={onRevealWorkspaceFileInSftp}
+        onSaveGroup={(groupId, preference) =>
           onUpdateTerminalTabGroup
             ? onUpdateTerminalTabGroup(groupId, {
-                // 显式传 undefined 让模型覆盖旧颜色并恢复自动派色；不传字段会
-                // 被对象合并误解为“保持旧值”，导致“自动”按钮无法生效。
                 color: preference.color ?? undefined,
                 title: preference.title ?? undefined,
               })
             : onUpdateTabGroupPreference?.(groupId, preference)
         }
+        onSelectTab={onSelectTab}
+        onSelectTabFromOverview={selectTabFromOverview}
+        onToggleGroup={toggleTabGroup}
+        onUngroup={onUngroupTerminalTabGroup}
+        overviewMenuRef={tabOverviewMenuRef}
+        overviewOpen={tabOverviewOpen}
+        overviewPosition={tabOverviewPosition}
+        pendingCloseTabIds={pendingCloseTabIds}
+        pendingDirtyCloseTabIds={pendingDirtyCloseTabIds}
+        renamingTab={renamingTab}
+        runMenuAction={runMenuAction}
+        tabGroups={tabGroups}
+        tabPresentationById={tabPresentationById}
+        tabs={tabs}
+        tabStatusById={tabStatusById}
+        terminalAppearance={terminalAppearance}
+        workspaceFileDirtyState={workspaceFileDirtyState}
       />
-      <CloseTabsConfirmationDialog
-        onClose={() => setPendingCloseTabIds(null)}
-        onConfirm={confirmCloseTabs}
-        tabCount={pendingCloseTabIds?.length ?? 0}
-      />
-      <CloseWorkspaceFileTabsConfirmationDialog
-        dirtyTabCount={
-          pendingDirtyCloseTabIds?.filter(
-            (tabId) => workspaceFileDirtyState[tabId],
-          ).length ?? 0
-        }
-        onClose={() => setPendingDirtyCloseTabIds(null)}
-        onConfirm={confirmDirtyFileCloseTabs}
-        tabCount={pendingDirtyCloseTabIds?.length ?? 0}
-      />
-
       {hasActiveSplit ? (
         <TerminalBroadcastBar
           analysis={broadcastAnalysis}
