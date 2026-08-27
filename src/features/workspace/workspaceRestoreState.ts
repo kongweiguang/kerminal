@@ -12,6 +12,7 @@ import {
   restoredSelectedMachineId,
   sanitizeRestoredSftpTransferTabs,
 } from "./workspaceSelectionModel";
+import { normalizeTerminalTabGroupState } from "./workspaceTabGroupsModel";
 
 interface WorkspaceRestoreStateInput {
   machineGroups: MachineGroup[];
@@ -33,9 +34,15 @@ export function restoreWorkspaceSessionState(
       session.sidebarMachines,
     ).filter((machine) => !removedMachineIds.has(machine.id)),
   );
-  const terminalTabs = sanitizeRestoredSftpTransferTabs(
+  const sanitizedTerminalTabs = sanitizeRestoredSftpTransferTabs(
     session.terminalTabs,
     machineGroups,
+  );
+  // SFTP 恢复可能丢弃失效远端引用；再次归一化组元数据，避免留下空组或孤儿
+  // tabGroupId，同时保持 session 原有扁平顺序和活动/焦点选择不被分组逻辑改写。
+  const { terminalTabs, terminalTabGroups } = normalizeTerminalTabGroupState(
+    sanitizedTerminalTabs,
+    session.terminalTabGroups ?? {},
   );
   return {
     activeTabId: session.activeTabId,
@@ -47,6 +54,7 @@ export function restoreWorkspaceSessionState(
     machineGroups,
     removedSidebarMachineIds,
     terminalPanes: session.terminalPanes,
+    terminalTabGroups,
     terminalTabGroupPreferences: session.terminalTabGroupPreferences ?? {},
     terminalTabs,
     selectedMachineId: restoredSelectedMachineId({
@@ -54,6 +62,7 @@ export function restoreWorkspaceSessionState(
       fallbackSelectedMachineId: state.selectedMachineId,
       machineGroups,
       selectedMachineId: session.selectedMachineId,
+      terminalPanes: session.terminalPanes,
       terminalTabs,
     }),
   };

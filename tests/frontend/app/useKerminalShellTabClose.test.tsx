@@ -36,6 +36,18 @@ const externalTerminalTab: TerminalTab = {
   machineId: "external:launch-terminal",
   title: "临时堡垒机终端",
 };
+const externalTerminalTabPeer: TerminalTab = {
+  id: "tab-external-terminal-peer",
+  layout: { paneId: "pane-external-terminal-peer", type: "pane" },
+  machineId: externalTerminalTab.machineId,
+  title: "临时堡垒机终端（二）",
+};
+const externalTerminalTabOwner: TerminalTab = {
+  id: "tab-external-terminal-owner",
+  layout: { paneId: "pane-external-terminal-owner", type: "pane" },
+  machineId: externalTerminalTab.machineId,
+  title: "临时堡垒机终端（保留）",
+};
 
 describe("useKerminalShellTabClose", () => {
   it("requires dirty-file confirmation before closing a workspace file", () => {
@@ -135,6 +147,227 @@ describe("useKerminalShellTabClose", () => {
     expect(result.current.pendingTerminalTabCount).toBe(0);
   });
 
+  it("closes a confirmed batch and releases a shared external launch once", async () => {
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        removeSidebarMachine,
+        terminalTabs: [externalTerminalTab, externalTerminalTabPeer],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        externalTerminalTab.id,
+        externalTerminalTabPeer.id,
+      ]),
+    );
+
+    expect(closeTerminalTab).toHaveBeenNthCalledWith(
+      1,
+      externalTerminalTab.id,
+    );
+    expect(closeTerminalTab).toHaveBeenNthCalledWith(
+      2,
+      externalTerminalTabPeer.id,
+    );
+    expect(onTabsClosed).toHaveBeenCalledWith([
+      externalTerminalTab.id,
+      externalTerminalTabPeer.id,
+    ]);
+    expect(removeSidebarMachine).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(closeExternalLaunch).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("keeps a shared external launch while a non-closing owner remains", async () => {
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        removeSidebarMachine,
+        terminalTabs: [
+          externalTerminalTab,
+          externalTerminalTabPeer,
+          externalTerminalTabOwner,
+        ],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        externalTerminalTab.id,
+        externalTerminalTabPeer.id,
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(onTabsClosed).toHaveBeenCalledWith([
+        externalTerminalTab.id,
+        externalTerminalTabPeer.id,
+      ]),
+    );
+    expect(closeExternalLaunch).not.toHaveBeenCalled();
+    expect(removeSidebarMachine).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicate and stale IDs and reports only tabs that actually closed", () => {
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        terminalTabs: [terminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        terminalTab.id,
+        terminalTab.id,
+        "tab-does-not-exist",
+      ]),
+    );
+
+    expect(closeTerminalTab).toHaveBeenCalledTimes(1);
+    expect(closeTerminalTab).toHaveBeenCalledWith(terminalTab.id);
+    expect(onTabsClosed).toHaveBeenCalledTimes(1);
+    expect(onTabsClosed).toHaveBeenCalledWith([terminalTab.id]);
+  });
+
+  it("does not release an external owner when SFTP cleanup declines part of a batch", async () => {
+    const blockedSftpTab: TerminalTab = {
+      externalLaunchId: "launch-terminal",
+      id: "tab-blocked-sftp",
+      kind: "sftpTransfer",
+      machineId: externalTerminalTab.machineId,
+      rightHostId: externalTerminalTab.machineId,
+      title: "仍在传输",
+    };
+    const unregister = registerExternalSftpTabCloseHandler(
+      blockedSftpTab.id,
+      () => ({ canClose: false }),
+    );
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: true,
+        onTabsClosed,
+        removeSidebarMachine,
+        terminalTabs: [blockedSftpTab, externalTerminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        blockedSftpTab.id,
+        externalTerminalTab.id,
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(onTabsClosed).toHaveBeenCalledWith([externalTerminalTab.id]),
+    );
+    expect(closeTerminalTab).toHaveBeenCalledTimes(1);
+    expect(closeTerminalTab).toHaveBeenCalledWith(externalTerminalTab.id);
+    expect(closeExternalLaunch).not.toHaveBeenCalled();
+    expect(removeSidebarMachine).not.toHaveBeenCalled();
+    unregister();
+  });
+
+  it("keeps a shared launch when only its SFTP tab closes", async () => {
+    const sharedSftpTab: TerminalTab = {
+      ...externalSftpTab,
+      externalLaunchId: "launch-terminal",
+      machineId: externalTerminalTab.machineId,
+    };
+    const unregister = registerExternalSftpTabCloseHandler(
+      sharedSftpTab.id,
+      () => ({ canClose: true, cleanup: Promise.resolve() }),
+    );
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        removeSidebarMachine,
+        terminalTabs: [sharedSftpTab, externalTerminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() => result.current.closeConfirmedTabs([sharedSftpTab.id]));
+    await waitFor(() =>
+      expect(closeTerminalTab).toHaveBeenCalledWith(sharedSftpTab.id),
+    );
+    expect(closeExternalLaunch).not.toHaveBeenCalled();
+    expect(removeSidebarMachine).not.toHaveBeenCalled();
+    unregister();
+  });
+
+  it("releases a mixed SSH and SFTP external launch once after both close", async () => {
+    const sharedSftpTab: TerminalTab = {
+      ...externalSftpTab,
+      externalLaunchId: "launch-terminal",
+      machineId: externalTerminalTab.machineId,
+    };
+    const unregister = registerExternalSftpTabCloseHandler(
+      sharedSftpTab.id,
+      () => ({ canClose: true, cleanup: Promise.resolve() }),
+    );
+    const closeExternalLaunch = vi.fn().mockResolvedValue(1);
+    const closeTerminalTab = vi.fn();
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeExternalLaunch,
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        removeSidebarMachine,
+        terminalTabs: [sharedSftpTab, externalTerminalTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        sharedSftpTab.id,
+        externalTerminalTab.id,
+      ]),
+    );
+    await waitFor(() => expect(closeExternalLaunch).toHaveBeenCalledTimes(1));
+    expect(removeSidebarMachine).toHaveBeenCalledTimes(1);
+    unregister();
+  });
+
   it("releases an external SSH launch only when its terminal tab explicitly closes", async () => {
     const closeExternalLaunch = vi.fn().mockResolvedValue(1);
     const closeTerminalTab = vi.fn();
@@ -161,7 +394,7 @@ describe("useKerminalShellTabClose", () => {
     );
   });
 
-  it("removes an external SFTP tab while its cleanup is still pending", async () => {
+  it("removes an external SFTP tab only after its cleanup succeeds", async () => {
     let resolveCleanup: (() => void) | undefined;
     const cleanup = new Promise<void>((resolve) => {
       resolveCleanup = resolve;
@@ -184,12 +417,59 @@ describe("useKerminalShellTabClose", () => {
 
     act(() => result.current.requestCloseTab(externalSftpTab.id));
 
+    expect(closeTerminalTab).not.toHaveBeenCalled();
+    resolveCleanup?.();
     await waitFor(() =>
       expect(closeTerminalTab).toHaveBeenCalledWith(externalSftpTab.id),
     );
     expect(removeSidebarMachine).toHaveBeenCalledWith(externalSftpTab.machineId);
-    resolveCleanup?.();
     unregister();
+  });
+
+  it("keeps only the external SFTP tab whose cleanup fails", async () => {
+    const failedSftpTab: TerminalTab = {
+      ...externalSftpTab,
+      id: "tab-external-sftp-failed",
+    };
+    const successfulSftpTab: TerminalTab = {
+      ...externalSftpTab,
+      id: "tab-external-sftp-successful",
+      machineId: "external:launch-sftp-successful",
+    };
+    const unregisterFailed = registerExternalSftpTabCloseHandler(
+      failedSftpTab.id,
+      () => ({ canClose: true, cleanup: Promise.reject(new Error("cleanup failed")) }),
+    );
+    const unregisterSuccessful = registerExternalSftpTabCloseHandler(
+      successfulSftpTab.id,
+      () => ({ canClose: true, cleanup: Promise.resolve() }),
+    );
+    const closeTerminalTab = vi.fn();
+    const onTabsClosed = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellTabClose({
+        closeTerminalTab,
+        confirmTerminalClose: false,
+        onTabsClosed,
+        terminalTabs: [failedSftpTab, successfulSftpTab],
+        workspaceFileDirtyState: {},
+      }),
+    );
+
+    act(() =>
+      result.current.closeConfirmedTabs([
+        failedSftpTab.id,
+        successfulSftpTab.id,
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(onTabsClosed).toHaveBeenCalledWith([successfulSftpTab.id]),
+    );
+    expect(closeTerminalTab).toHaveBeenCalledTimes(1);
+    expect(closeTerminalTab).toHaveBeenCalledWith(successfulSftpTab.id);
+    unregisterFailed();
+    unregisterSuccessful();
   });
 
   it("keeps an external SFTP tab when active-transfer confirmation is cancelled", async () => {

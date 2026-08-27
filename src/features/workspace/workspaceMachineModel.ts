@@ -311,13 +311,21 @@ export function removeMachineFromGroups(
     );
 }
 
+/**
+ * 只从历史侧栏范围的 pane 重建本地 Machine；workspace 临时终端由 pane 本身
+ * 提供运行上下文，恢复时不得因此重新出现在左栏。
+ */
 export function localMachinesFromSession(
   session: WorkspaceSessionSnapshot,
 ): Machine[] {
   const machines = new Map<string, Machine>();
 
   for (const pane of session.terminalPanes) {
-    if (pane.mode !== "local" || machines.has(pane.machineId)) {
+    if (
+      pane.mode !== "local" ||
+      pane.localMachineScope === "workspace" ||
+      machines.has(pane.machineId)
+    ) {
       continue;
     }
 

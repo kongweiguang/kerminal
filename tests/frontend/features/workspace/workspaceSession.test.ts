@@ -3,11 +3,185 @@
 import { describe, expect, it } from "vitest";
 import {
   appendTerminalOutputHistory,
+  decodeWorkspaceSessionSnapshot,
   normalizeWorkspaceSessionSnapshot,
   TERMINAL_OUTPUT_HISTORY_MAX_CHARS,
 } from "../../../../src/features/workspace/workspaceSession";
 
 describe("workspaceSession", () => {
+  it("returns a discriminated result for future and invalid snapshots", () => {
+    expect(
+      decodeWorkspaceSessionSnapshot({ version: 4 }),
+    ).toMatchObject({
+      kind: "unsupported",
+      version: 4,
+    });
+    expect(decodeWorkspaceSessionSnapshot({ version: 3 })).toMatchObject({
+      kind: "invalid",
+    });
+    expect(
+      decodeWorkspaceSessionSnapshot({
+        sidebarMachines: [],
+        terminalPanes: [],
+        terminalTabs: [],
+      }),
+    ).toMatchObject({ kind: "loaded" });
+  });
+
+  it("uses the first legacy tab title when no sidebar machine is available", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      version: 2,
+      activeTabId: "tab-prod-1",
+      focusedPaneId: "pane-prod-1",
+      selectedMachineId: "host-prod",
+      sidebarMachines: [],
+      terminalPanes: [
+        {
+          id: "pane-prod-1",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "生产终端",
+        },
+        {
+          id: "pane-prod-2",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "生产终端 2",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-prod-1",
+          layout: { paneId: "pane-prod-1", type: "pane" },
+          machineId: "host-prod",
+          title: "生产终端",
+        },
+        {
+          id: "tab-prod-2",
+          layout: { paneId: "pane-prod-2", type: "pane" },
+          machineId: "host-prod",
+          title: "生产终端 2",
+        },
+      ],
+    });
+
+    const group = Object.values(session.terminalTabGroups ?? {})[0];
+    expect(group?.title).toBe("生产终端");
+  });
+
+  it("keeps a legacy preference title ahead of migration fallback", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      version: 2,
+      activeTabId: "tab-prod-1",
+      focusedPaneId: "pane-prod-1",
+      selectedMachineId: "host-prod",
+      sidebarMachines: [],
+      terminalTabGroupPreferences: {
+        "host-prod": { title: "自定义生产标签", color: "blue" },
+      },
+      terminalPanes: [
+        {
+          id: "pane-prod-1",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "生产终端",
+        },
+        {
+          id: "pane-prod-2",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "生产终端 2",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-prod-1",
+          layout: { paneId: "pane-prod-1", type: "pane" },
+          machineId: "host-prod",
+          title: "生产终端",
+        },
+        {
+          id: "tab-prod-2",
+          layout: { paneId: "pane-prod-2", type: "pane" },
+          machineId: "host-prod",
+          title: "生产终端 2",
+        },
+      ],
+    });
+
+    const group = Object.values(session.terminalTabGroups ?? {})[0];
+    expect(group).toMatchObject({
+      color: "blue",
+      title: "自定义生产标签",
+    });
+  });
+
+  it("uses a sidebar machine name only when the legacy tab title is a host id fallback", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      version: 2,
+      activeTabId: "tab-prod-1",
+      focusedPaneId: "pane-prod-1",
+      selectedMachineId: "host-prod",
+      sidebarMachines: [
+        {
+          id: "host-prod",
+          kind: "local",
+          name: "生产服务器",
+          status: "online",
+          tags: [],
+        },
+      ],
+      terminalPanes: [
+        {
+          id: "pane-prod-1",
+          machineId: "host-prod",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "host-prod",
+        },
+        {
+          id: "pane-prod-2",
+          machineId: "host-prod",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "host-prod #2",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-prod-1",
+          layout: { paneId: "pane-prod-1", type: "pane" },
+          machineId: "host-prod",
+          title: "host-prod",
+        },
+        {
+          id: "tab-prod-2",
+          layout: { paneId: "pane-prod-2", type: "pane" },
+          machineId: "host-prod",
+          title: "host-prod #2",
+        },
+      ],
+    });
+
+    expect(Object.values(session.terminalTabGroups ?? {})[0]?.title).toBe(
+      "生产服务器",
+    );
+  });
+
   it("归一化空工作区时清除持久化的最近主机选择", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "",
@@ -315,6 +489,55 @@ describe("workspaceSession", () => {
         },
       },
     });
+  });
+
+  it("preserves workspace local scope and defaults legacy local panes to sidebar", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-local",
+      focusedPaneId: "pane-workspace",
+      selectedMachineId: "machine-workspace",
+      sidebarMachines: [],
+      terminalPanes: [
+        {
+          id: "pane-workspace",
+          localMachineScope: "workspace",
+          machineId: "machine-workspace",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "Workspace",
+        },
+        {
+          id: "pane-legacy",
+          machineId: "machine-legacy",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "Legacy",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local",
+          layout: {
+            children: [
+              { paneId: "pane-workspace", type: "pane" },
+              { paneId: "pane-legacy", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-local",
+            type: "split",
+          },
+          machineId: "machine-workspace",
+          title: "Local",
+        },
+      ],
+    });
+
+    expect(session.terminalPanes).toMatchObject([
+      { id: "pane-workspace", localMachineScope: "workspace" },
+      { id: "pane-legacy", localMachineScope: "sidebar" },
+    ]);
   });
 
   it("preserves local sidebar machine group assignment", () => {

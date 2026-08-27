@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -69,7 +71,7 @@ test("frontend literal invoke contract remains auditable against command registr
   }
 });
 
-test("workspace session remains normalized to version 2", () => {
+test("workspace session remains normalized to version 3", () => {
   const source = fs.readFileSync(
     path.join(root, "src/features/workspace/workspaceSession.ts"),
     "utf8",

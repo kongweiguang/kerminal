@@ -3,6 +3,7 @@
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import type {
+  LocalMachineScope,
   TerminalSplitPlacement,
   ToolId,
   WorkspaceFileAccess,
@@ -40,6 +41,7 @@ export interface AddTerminalTabOptions {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
+  localMachineScope?: LocalMachineScope;
   tmuxBinding?: TmuxPaneBinding;
 }
 

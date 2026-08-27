@@ -38,6 +38,34 @@
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalTabBar.tsx",
+      "lines": 812,
+      "deadline": "before TASK-080",
+      "owner": "terminal-runtime",
+      "targetTask": "TASK-050/TASK-052"
+    },
+    {
+      "file": "src/features/terminal/terminalTabChrome.tsx",
+      "lines": 823,
+      "deadline": "before TASK-080",
+      "owner": "terminal-runtime",
+      "targetTask": "TASK-050/TASK-052"
+    },
+    {
+      "file": "src/features/terminal/TerminalWorkspace.presenter.tsx",
+      "lines": 965,
+      "deadline": "before TASK-080",
+      "owner": "terminal-runtime",
+      "targetTask": "TASK-050/TASK-052"
+    },
+    {
+      "file": "src/features/workspace/workspaceSession.ts",
+      "lines": 808,
+      "deadline": "before TASK-080",
+      "owner": "workspace-composition",
+      "targetTask": "TASK-030/TASK-031"
     }
   ]
 }

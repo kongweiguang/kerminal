@@ -10,6 +10,8 @@ use kerminal_lib::{
         KERMINAL_TERMINAL_ENV,
     },
 };
+#[cfg(target_os = "windows")]
+use std::process::{Command, Stdio};
 use std::{collections::HashMap, fs, path::PathBuf};
 use tempfile::tempdir;
 
@@ -68,6 +70,7 @@ fn builds_windows_powershell7_command_with_kerminal_env_and_script() {
 }
 
 #[test]
+/// 同时锁定命令净化和退出码变量约束，避免生成脚本再次使用 zsh 的只读 `status`。
 fn shell_integration_scripts_emit_command_start_with_sanitized_payload() {
     let temp = tempdir().unwrap();
     let cache = temp.path().join("cache");
@@ -132,8 +135,78 @@ fn shell_integration_scripts_emit_command_start_with_sanitized_payload() {
     assert!(bash.contains("__kerminal_osc \"133;C;$command\""));
     assert!(zsh.contains("command=\"$(__kerminal_sanitize_command \"$1\")\""));
     assert!(zsh.contains("__kerminal_osc \"133;C;$command\""));
+    assert!(zsh.contains("local command_status=$?"));
+    assert!(zsh.contains("__kerminal_osc \"133;D;$command_status\""));
+    assert!(!zsh.contains("local status=$?"));
     assert!(fish.contains("set -l command (__kerminal_sanitize_command \"$argv[1]\")"));
     assert!(fish.contains("__kerminal_osc \"133;C;$command\""));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+/// 在真实 WSL zsh 中执行生成的 hook，证明非零退出码可上报且不会触碰只读参数。
+fn generated_zsh_precmd_runs_in_wsl_without_read_only_parameter_errors() {
+    let zsh_available = Command::new("wsl.exe")
+        .args(["-e", "sh", "-lc", "command -v zsh >/dev/null 2>&1"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !zsh_available {
+        println!("WSL zsh unavailable; skipping real generated-hook execution");
+        return;
+    }
+
+    let temp = tempdir().expect("create shell integration temp dir");
+    let plan = build_terminal_shell_launch_with_catalog(
+        "wsl:zsh",
+        &[],
+        &HashMap::new(),
+        temp.path(),
+        &catalog(
+            ShellIntegrationPlatform::Windows,
+            vec![AllowedShell::new(
+                IntegratedShellKind::WslZsh,
+                "wsl.exe",
+                ["wsl:zsh"],
+            )],
+        ),
+    );
+    let script = script_path(&plan);
+    let converted = Command::new("wsl.exe")
+        .args(["-e", "wslpath", "-a"])
+        .arg(&script)
+        .output()
+        .expect("convert generated script path for WSL");
+    assert!(
+        converted.status.success(),
+        "wslpath failed: {}",
+        String::from_utf8_lossy(&converted.stderr)
+    );
+    let wsl_script = String::from_utf8(converted.stdout)
+        .expect("wslpath output must be UTF-8")
+        .trim()
+        .to_owned();
+    let command = format!(
+        ". '{}'; false; __kerminal_precmd",
+        wsl_script.replace('\'', "'\\''")
+    );
+    let output = Command::new("wsl.exe")
+        .args(["-e", "zsh", "-f", "-c", &command])
+        .output()
+        .expect("execute generated zsh hook in WSL");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "zsh hook failed: {stderr}");
+    assert!(
+        stdout.contains("\u{1b}]133;D;1\u{7}"),
+        "zsh hook did not preserve the previous exit status: {stdout:?}"
+    );
+    assert!(
+        !stderr.contains("read-only variable"),
+        "zsh hook wrote a read-only special parameter: {stderr}"
+    );
 }
 
 #[test]

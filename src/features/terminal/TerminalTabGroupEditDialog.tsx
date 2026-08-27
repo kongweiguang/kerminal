@@ -1,9 +1,12 @@
+// @author kongweiguang
+
 import { Check, Layers2, RotateCcw } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import type {
+  TerminalTabGroupDefinition,
   TerminalTabGroupColor,
   TerminalTabGroupPreference,
 } from "../workspace/contracts/index";
@@ -13,6 +16,8 @@ import {
   terminalTabIdentityPalette,
 } from "./terminalTabIdentityModel";
 
+const TERMINAL_TAB_GROUP_TITLE_MAX_LENGTH = 64;
+
 /**
  * 编辑终端标签组的用户可持久化展示偏好。
  *
@@ -20,12 +25,19 @@ import {
  * identity model 在后续接线中统一处理。
  */
 export function TerminalTabGroupEditDialog({
+  createForTabId = null,
   group,
   onClose,
+  onCreate,
   onSave,
 }: {
+  createForTabId?: string | null;
   group: TerminalTabGroup | null;
   onClose: () => void;
+  onCreate?: (
+    tabId: string,
+    definition: Partial<TerminalTabGroupDefinition>,
+  ) => void;
   onSave: (groupId: string, preference: TerminalTabGroupPreference) => void;
 }) {
   const [title, setTitle] = useState("");
@@ -34,22 +46,47 @@ export function TerminalTabGroupEditDialog({
   const editingSingleton = Boolean(group && !group.grouped);
 
   useEffect(() => {
-    if (!group) {
+    if (!group && !createForTabId) {
       return;
     }
 
-    setTitle(group.preference?.title ?? "");
-    setColor(group.preference?.color ?? null);
+    setTitle(
+      group?.preference?.title ?? group?.title ?? (createForTabId ? "新建分组" : ""),
+    );
+    setColor(group?.preference?.color ?? null);
     setError(null);
-  }, [group]);
+  }, [createForTabId, group]);
 
+  /** 创建和编辑都在 Dialog 内校验标题，避免空名称被规范化后静默关闭。 */
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!group) {
+    if (!group && !createForTabId) {
       return;
     }
 
-    const preference = normalizeTerminalTabGroupPreference({ color, title });
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError("请输入分组名称。");
+      return;
+    }
+    if (trimmedTitle.length > TERMINAL_TAB_GROUP_TITLE_MAX_LENGTH) {
+      setError(`分组名称不能超过 ${TERMINAL_TAB_GROUP_TITLE_MAX_LENGTH} 个字符。`);
+      return;
+    }
+    const preference = normalizeTerminalTabGroupPreference({
+      color,
+      title: trimmedTitle,
+    });
+    if (createForTabId) {
+      onCreate?.(createForTabId, {
+        collapsed: false,
+        ...(color ? { color } : {}),
+        title: trimmedTitle,
+      });
+      onClose();
+      return;
+    }
+    if (!group) return;
     onSave(group.id, preference ?? {});
     onClose();
   };
@@ -57,29 +94,30 @@ export function TerminalTabGroupEditDialog({
   return (
     <ModalShell
       onClose={onClose}
-      open={Boolean(group)}
+      open={Boolean(group || createForTabId)}
       size="small"
-      title={editingSingleton ? "设置标签标识" : "编辑标签组"}
+      title={createForTabId ? "新建标签组" : editingSingleton ? "设置标签标识" : "编辑标签组"}
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers2 className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            {editingSingleton ? "标签标识" : "分组信息"}
+            {createForTabId ? "新建分组" : editingSingleton ? "标签标识" : "分组信息"}
           </div>
           <label className="mt-4 block">
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              {editingSingleton ? "标签名称（可选）" : "分组名称（可选）"}
+               {createForTabId || !editingSingleton ? "分组名称" : "标签名称"}
             </span>
             <input
               aria-label="分组名称"
               autoFocus
               className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
+              maxLength={64}
               onChange={(event) => {
                 setTitle(event.currentTarget.value);
                 setError(null);
               }}
-              placeholder={`默认：${group?.title ?? ""}`}
+              placeholder={createForTabId ? "新建分组" : `默认：${group?.title ?? ""}`}
               value={title}
             />
           </label>
@@ -151,7 +189,7 @@ export function TerminalTabGroupEditDialog({
             取消
           </Button>
           <Button type="submit" variant="primary">
-            保存
+            {createForTabId ? "创建" : "保存"}
           </Button>
         </div>
       </form>

@@ -32,6 +32,10 @@ const nativeTextEditCommandByAction: Partial<
   editUndo: "undo",
 };
 
+/**
+ * 统一 Shell 菜单和键盘命令；快速新建始终创建 workspace 范围本地终端，且仅
+ * 该明确 action 可以穿透 xterm 输入层，避免放宽其它终端按键。
+ */
 export function useKerminalShellCommands({
   activeTabId,
   addTerminalTab,
@@ -64,6 +68,11 @@ export function useKerminalShellCommands({
   toggleTool: (toolId: ToolId) => void;
 }) {
   const openLogsTool = useCallback(() => openTool("logs"), [openTool]);
+  /** 所有 Shell 命令入口共享同一 workspace 范围动作，防止菜单与快捷键行为漂移。 */
+  const createWorkspaceTerminal = useCallback(
+    () => addTerminalTab({ localMachineScope: "workspace" }),
+    [addTerminalTab],
+  );
 
   const activateTool = useCallback(
     (toolId: ToolId) => {
@@ -97,7 +106,7 @@ export function useKerminalShellCommands({
   const focusTerminalWorkspace = useCallback(() => {
     closeAllTools();
     if (!activeTabId) {
-      addTerminalTab();
+      createWorkspaceTerminal();
       return true;
     }
 
@@ -108,11 +117,11 @@ export function useKerminalShellCommands({
     return true;
   }, [
     activeTabId,
-    addTerminalTab,
     focusPane,
     focusedPaneId,
     selectTab,
     closeAllTools,
+    createWorkspaceTerminal,
   ]);
 
   const runKeybindingAction = useCallback(
@@ -137,7 +146,7 @@ export function useKerminalShellCommands({
         return focusTerminalWorkspace();
       }
       if (action === "terminal.newTab") {
-        addTerminalTab();
+        createWorkspaceTerminal();
         return true;
       }
       if (action === "terminal.closeTab") {
@@ -172,9 +181,9 @@ export function useKerminalShellCommands({
     [
       activateTool,
       activeTabId,
-      addTerminalTab,
       closePane,
       closeTerminalTab,
+      createWorkspaceTerminal,
       focusTerminalWorkspace,
       focusedPaneId,
       openSettingsTool,
@@ -189,7 +198,7 @@ export function useKerminalShellCommands({
       if (textEditCommand) {
         dispatchKerminalTextEditCommand(textEditCommand);
       } else if (action === "newTerminal") {
-        addTerminalTab();
+        createWorkspaceTerminal();
       } else if (action === "closeTab") {
         if (activeTabId) {
           closeTerminalTab(activeTabId);
@@ -220,9 +229,9 @@ export function useKerminalShellCommands({
     },
     [
       activeTabId,
-      addTerminalTab,
       closePane,
       closeTerminalTab,
+      createWorkspaceTerminal,
       focusedPaneId,
       openSettingsTool,
       openTool,
@@ -255,14 +264,19 @@ export function useKerminalShellCommands({
   useEffect(() => {
     const platform = shortcutPlatform();
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (!shouldAppHandleKeybinding(event)) {
-        return;
-      }
-
       const matchedKeybinding = keybindings.find((keybinding) =>
         keybindingMatchesEvent(keybinding, event, platform),
       );
       if (!matchedKeybinding) {
+        return;
+      }
+
+      if (
+        !shouldAppHandleKeybinding(event, {
+          allowTerminalTarget:
+            matchedKeybinding.action === "terminal.newTab",
+        })
+      ) {
         return;
       }
 

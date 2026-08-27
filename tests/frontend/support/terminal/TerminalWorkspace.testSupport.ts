@@ -101,7 +101,7 @@ export function workspaceProps(
     }),
     onBroadcastDraftChange: vi.fn(),
     onClosePane: vi.fn(),
-    onCloseTab: vi.fn(),
+    onCloseTabs: vi.fn(),
     onFocusPane: vi.fn(),
     onRenameTab: vi.fn(),
     onSelectTab: vi.fn(),
@@ -110,6 +110,12 @@ export function workspaceProps(
     panes: [baseTerminalPane],
     resolvedTheme: "dark",
     tabs: [baseTerminalTab],
+    terminalTabGroups: {
+      "group-dev": {
+        collapsed: false,
+        title: "dev.internal",
+      },
+    },
     terminalAppearance: defaultAppSettings.terminal,
     ...overrides,
   };
@@ -274,6 +280,7 @@ export const groupedSshTabs = [
       paneId: "pane-dev-a",
     },
     machineId: "host-dev",
+    tabGroupId: "group-dev",
     title: "dev.internal",
   },
   {
@@ -283,6 +290,7 @@ export const groupedSshTabs = [
       paneId: "pane-dev-b",
     },
     machineId: "host-dev",
+    tabGroupId: "group-dev",
     title: "dev.internal #2",
   },
   {

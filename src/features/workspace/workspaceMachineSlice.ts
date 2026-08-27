@@ -106,6 +106,7 @@ export function createWorkspaceMachineSlice(
           selectedMachineId: selectedMachineIdFromWorkspaceTab(
             state.terminalTabs.find((tab) => tab.id === activeTabId),
             state.machineGroups,
+            state.terminalPanes,
           ),
         });
       }),

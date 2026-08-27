@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { afterEach, beforeEach, describe } from "vitest";
 import {
   cleanupTerminalWorkspaceTestState,
@@ -10,6 +12,9 @@ const { registerPaneAndContentTests } = await import(
 const { registerTabAndMenuTests } = await import(
   "./terminal-workspace/tabs-and-menus"
 );
+const { registerTerminalCreatePanelTests } = await import(
+  "./terminal-workspace/terminal-create-panel"
+);
 const { registerGroupAndSplitTests } = await import(
   "./terminal-workspace/groups-and-splits"
 );
@@ -19,6 +24,7 @@ describe("TerminalWorkspace", () => {
   beforeEach(resetTerminalWorkspaceTestState);
 
   registerPaneAndContentTests();
+  registerTerminalCreatePanelTests();
   registerTabAndMenuTests();
   registerGroupAndSplitTests();
 });

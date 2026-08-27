@@ -28,6 +28,7 @@ import type { WorkspaceStoreCounterRuntime } from "./workspaceStoreCounterRuntim
 import { createLocalTerminalOpenState } from "./workspaceTerminalOpenState";
 import {
   isWorkspaceFileTab,
+  type LocalMachineScope,
   type SftpTransferWorkspaceTab,
   type WorkspaceFileTab,
 } from "./types";
@@ -51,6 +52,7 @@ export function createWorkspaceTabSlice(
         const tabId = counters.nextTabId("tab-local");
         const paneId = counters.nextPaneId("pane-local");
         const generatedIndex = numberSuffix(tabId);
+        const localMachineScope = options?.localMachineScope ?? "sidebar";
         const usesDirectRuntimeConfig = Boolean(
           options?.shell || options?.args || options?.cwd || options?.env,
         );
@@ -59,18 +61,24 @@ export function createWorkspaceTabSlice(
           : undefined;
         const profile =
           requestedProfile ??
-          (usesDirectRuntimeConfig ? undefined : activeProfile(state));
+          (usesDirectRuntimeConfig
+            ? undefined
+            : localProfileForOpen(state, localMachineScope));
         const persistedProfile =
           profile && isPersistedLocalProfile(profile) ? profile : undefined;
         const title = options?.title ?? profile?.name ?? `本地终端 ${generatedIndex}`;
-        const machineId = persistedProfile
-          ? localMachineIdForProfile(persistedProfile.id)
-          : `machine-local-${generatedIndex}`;
+        const machineId =
+          localMachineScope === "workspace"
+            ? `machine-local-${generatedIndex}`
+            : persistedProfile
+              ? localMachineIdForProfile(persistedProfile.id)
+              : `machine-local-${generatedIndex}`;
         const nextState = createLocalTerminalOpenState(state, {
           args: options?.args ?? profile?.args,
           cwd: options?.cwd ?? profile?.cwd,
           env: options?.env ?? profile?.env,
           groupId: options?.groupId,
+          localMachineScope,
           machineId,
           machineProfileId: persistedProfile?.id,
           paneId,
@@ -82,10 +90,13 @@ export function createWorkspaceTabSlice(
         });
         return withToolPanelTabTransition(state, {
           ...nextState,
-          removedSidebarMachineIds: removeRemovedSidebarMachineId(
-            state.removedSidebarMachineIds,
-            machineId,
-          ),
+          removedSidebarMachineIds:
+            localMachineScope === "workspace"
+              ? state.removedSidebarMachineIds
+              : removeRemovedSidebarMachineId(
+                  state.removedSidebarMachineIds,
+                  machineId,
+                ),
         });
       }),
     openSftpTransferTab: (options) =>
@@ -210,7 +221,22 @@ function openWorkspaceFileTabState(
   };
 }
 
-function activeProfile(state: WorkspaceState): TerminalProfile | undefined {
+/**
+ * 快速 workspace 终端遵循持久化的默认 Profile；侧栏创建仍尊重当前选择，避免
+ * 新能力悄然改变连接管理流程已有的 Profile 语义。
+ */
+function localProfileForOpen(
+  state: WorkspaceState,
+  scope: LocalMachineScope,
+): TerminalProfile | undefined {
+  if (scope === "workspace") {
+    return (
+      state.profiles.find((profile) => profile.isDefault) ??
+      state.profiles.find((profile) => profile.id === state.activeProfileId) ??
+      state.profiles[0]
+    );
+  }
+
   return (
     state.profiles.find((profile) => profile.id === state.activeProfileId) ??
     state.profiles.find((profile) => profile.isDefault) ??

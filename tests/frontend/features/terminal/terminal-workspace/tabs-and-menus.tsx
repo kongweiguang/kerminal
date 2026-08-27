@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useState } from "react";
 import {
   fireEvent,
@@ -11,7 +13,6 @@ import { expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../../../../../src/features/settings/settingsModel";
 import type {
   TerminalTab,
-  TerminalTabGroupPreferences,
 } from "../../../../../src/features/workspace/types";
 import { TerminalWorkspace } from "../../../../../src/features/terminal/TerminalWorkspace";
 import {
@@ -33,7 +34,201 @@ import {
   xtermPaneMockState,
 } from "./setup";
 
+/**
+ * 汇总标签栏与菜单的交互契约；这里使用真实按钮键盘语义，避免把可访问性
+ * 仅验证成 class 或 DOM 结构而遗漏浏览器原生 Enter/Space 激活路径。
+ */
 export function registerTabAndMenuTests() {
+  it("places the transparent temporary-terminal action at the end of a fitting tab strip", async () => {
+    const user = userEvent.setup();
+    const onCreateTerminal = vi.fn();
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "",
+          focusedPaneId: "",
+          onCreateTerminal,
+          panes: [],
+          tabs: [],
+        })}
+      />,
+    );
+
+    const tabList = screen.getByLabelText("终端标签栏");
+    const createButton = screen.getByRole("button", {
+      name: "新建临时终端",
+    });
+    expect(tabList.closest(".kerminal-material-nav")).toHaveStyle({
+      paddingRight: "112px",
+    });
+    expect(tabList).toContainElement(createButton);
+    expect(createButton).toHaveAttribute(
+      "data-terminal-create-placement",
+      "inline",
+    );
+    expect(createButton).toHaveClass(
+      "bg-transparent",
+      "border-0",
+      "shadow-none",
+    );
+    expect(createButton).not.toHaveClass("kerminal-muted-surface");
+    expect(
+      tabList.parentElement?.querySelector("[data-terminal-tab-actions]"),
+    ).toBeNull();
+
+    await user.click(createButton);
+    expect(onCreateTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Profiles and terminal-capable saved hosts from the create-button context menu", async () => {
+    const user = userEvent.setup();
+    const onCreateTerminal = vi.fn();
+    const onOpenConnection = vi.fn();
+    const onOpenSavedTerminal = vi.fn();
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          machineGroups: [
+            {
+              id: "group-remote",
+              machines: [
+                {
+                  authType: "agent",
+                  description: "dev host",
+                  host: "10.0.0.8",
+                  id: "host-ssh",
+                  kind: "ssh",
+                  name: "dev-server",
+                  port: 22,
+                  status: "online",
+                  tags: [],
+                  username: "ubuntu",
+                },
+                {
+                  description: "desktop",
+                  host: "10.0.0.9",
+                  id: "host-rdp",
+                  kind: "rdp",
+                  name: "office-rdp",
+                  port: 3389,
+                  status: "online",
+                  tags: [],
+                },
+              ],
+              title: "开发环境",
+            },
+          ],
+          onCreateTerminal,
+          onOpenConnection,
+          onOpenSavedTerminal,
+          profiles: [
+            {
+              args: ["-NoLogo"],
+              createdAt: "test",
+              env: {},
+              id: "profile-pwsh",
+              isDefault: true,
+              name: "PowerShell 7",
+              shell: "pwsh.exe",
+              sortOrder: 20,
+              updatedAt: "test",
+            },
+            {
+              args: [],
+              createdAt: "test",
+              env: {},
+              id: "profile-cmd",
+              isDefault: false,
+              name: "命令提示符",
+              shell: "cmd.exe",
+              sortOrder: 10,
+              updatedAt: "test",
+            },
+          ],
+        })}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", {
+      name: "新建临时终端",
+    });
+    fireEvent.contextMenu(createButton, { clientX: 120, clientY: 36 });
+
+    let panel = screen.getByRole("dialog", { name: "新建终端" });
+    let menu = within(panel).getByRole("menu", { name: "终端目标" });
+    const searchInput = within(panel).getByRole("textbox", {
+      name: "搜索终端或主机",
+    });
+    const profileGroup = within(menu).getByRole("group", {
+      name: "本地 Profile",
+    });
+    const hostGroup = within(menu).getByRole("group", {
+      name: "已保存主机",
+    });
+    expect(within(profileGroup).getByText("默认")).toBeInTheDocument();
+    expect(
+      within(hostGroup).getByRole("menuitem", {
+        name: /dev-server.*ubuntu@10\.0\.0\.8:22/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByText("office-rdp")).not.toBeInTheDocument();
+    await user.type(searchInput, "开发 dev");
+    expect(within(menu).queryByText("PowerShell 7")).not.toBeInTheDocument();
+    expect(within(menu).getByText("dev-server")).toBeInTheDocument();
+    await user.click(
+      within(panel).getByRole("button", { name: "清除终端搜索" }),
+    );
+
+    await user.click(
+      within(profileGroup).getByRole("menuitem", { name: /PowerShell 7/ }),
+    );
+    expect(onCreateTerminal).toHaveBeenCalledWith("profile-pwsh");
+
+    fireEvent.contextMenu(createButton, { clientX: 120, clientY: 36 });
+    panel = screen.getByRole("dialog", { name: "新建终端" });
+    menu = within(panel).getByRole("menu", { name: "终端目标" });
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /dev-server/ }),
+    );
+    expect(onOpenSavedTerminal).toHaveBeenCalledWith("host-ssh");
+
+    fireEvent.contextMenu(createButton, { clientX: 120, clientY: 36 });
+    panel = screen.getByRole("dialog", { name: "新建终端" });
+    menu = within(panel).getByRole("menu", { name: "终端目标" });
+    await user.click(
+      within(menu).getByRole("menuitem", { name: "添加连接..." }),
+    );
+    expect(onOpenConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("activates the temporary-terminal action with Enter and Space", async () => {
+    const user = userEvent.setup();
+    const onCreateTerminal = vi.fn();
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "",
+          focusedPaneId: "",
+          onCreateTerminal,
+          panes: [],
+          tabs: [],
+        })}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", {
+      name: "新建临时终端",
+    });
+    expect(createButton).toHaveClass("h-8", "w-8", "kerminal-focus-ring");
+
+    createButton.focus();
+    await user.keyboard("{Enter}");
+    createButton.focus();
+    await user.keyboard(" ");
+
+    expect(onCreateTerminal).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the tab strip horizontal and maps wheel movement sideways when tabs overflow", () => {
     render(
       <TerminalWorkspace
@@ -143,8 +338,25 @@ export function registerTabAndMenuTests() {
 
       await user.click(screen.getByRole("button", { name: "查看所有标签" }));
 
+      expect(
+        screen.getByRole("button", { name: "查看所有标签" }).parentElement,
+      ).toBe(
+        screen.getByRole("button", { name: "新建临时终端" }).parentElement,
+      );
+      const overflowCreateButton = screen.getByRole("button", {
+        name: "新建临时终端",
+      });
+      expect(overflowCreateButton).toHaveAttribute(
+        "data-terminal-create-placement",
+        "fixed",
+      );
+      expect(
+        screen.getByRole("button", { name: "查看所有标签" })
+          .nextElementSibling,
+      ).toBe(overflowCreateButton);
+
       const menu = screen.getByRole("menu", { name: "所有终端标签" });
-      expect(within(menu).getByText("2 组 / 3 个")).toBeInTheDocument();
+      expect(within(menu).getByText("1 组 / 3 个")).toBeInTheDocument();
       const devGroup = within(menu).getByRole("group", {
         name: "dev.internal 标签组",
       });
@@ -155,7 +367,7 @@ export function registerTabAndMenuTests() {
         ),
       ).not.toBeNull();
       expect(
-        within(menu).getByRole("group", { name: "lab.internal 标签组" }),
+        within(menu).getByRole("menuitem", { name: "lab.internal" }),
       ).toBeInTheDocument();
 
       await user.click(
@@ -257,16 +469,27 @@ export function registerTabAndMenuTests() {
   it("groups repeated host tabs and lets the group collapse", async () => {
     const user = userEvent.setup();
 
-    render(
-      <TerminalWorkspace
-        {...workspaceProps({
-          activeTabId: "tab-dev-a",
-          focusedPaneId: "pane-dev-a",
-          panes: groupedSshPanes,
-          tabs: groupedSshTabs,
-        })}
-      />,
-    );
+    /** 模拟生产 store 同步回写折叠定义，显式组不依赖 legacy 本地伪状态。 */
+    function ControlledGroupedWorkspace() {
+      const [collapsed, setCollapsed] = useState(false);
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onSetTerminalTabGroupCollapsed: (_groupId, nextCollapsed) =>
+              setCollapsed(nextCollapsed),
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+            terminalTabGroups: {
+              "group-dev": { collapsed, title: "dev.internal" },
+            },
+          })}
+        />
+      );
+    }
+
+    render(<ControlledGroupedWorkspace />);
 
     expect(
       screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
@@ -292,14 +515,14 @@ export function registerTabAndMenuTests() {
 
   it("opens a right-click menu for terminal tabs", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
 
     render(
       <TerminalWorkspace
         {...workspaceProps({
           activeTabId: "tab-dev-a",
           focusedPaneId: "pane-dev-a",
-          onCloseTab,
+          onCloseTabs,
           panes: groupedSshPanes,
           tabs: groupedSshTabs,
         })}
@@ -314,7 +537,7 @@ export function registerTabAndMenuTests() {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
-    expect(onCloseTab).toHaveBeenCalledWith("tab-lab");
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-lab"]);
   });
 
   it("adds workspace file actions to the tab right-click menu", async () => {
@@ -380,14 +603,14 @@ export function registerTabAndMenuTests() {
 
   it("closes tabs immediately when close confirmation is disabled", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
 
     render(
       <TerminalWorkspace
         {...workspaceProps({
           activeTabId: "tab-dev-a",
           focusedPaneId: "pane-dev-a",
-          onCloseTab,
+          onCloseTabs,
           panes: groupedSshPanes,
           tabs: groupedSshTabs,
           terminalAppearance: {
@@ -406,7 +629,7 @@ export function registerTabAndMenuTests() {
     expect(
       screen.queryByRole("dialog", { name: "确认关闭标签" }),
     ).not.toBeInTheDocument();
-    expect(onCloseTab).toHaveBeenCalledWith("tab-lab");
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-lab"]);
   });
 
   it("lets the tab right-click menu follow the document theme", () => {
@@ -431,6 +654,79 @@ export function registerTabAndMenuTests() {
     expect(menu).not.toHaveClass("dark");
     document.documentElement.classList.remove("dark");
     expect(menu).not.toHaveClass("dark");
+  });
+
+  it("navigates the tab menu by keyboard and restores focus on Escape", async () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-dev-a",
+          focusedPaneId: "pane-dev-a",
+          panes: groupedSshPanes,
+          tabs: groupedSshTabs,
+        })}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "dev.internal #2" });
+
+    fireEvent.contextMenu(trigger);
+    const firstItem = screen.getByRole("menuitem", { name: "切换到此标签" });
+    await waitFor(() => expect(firstItem).toHaveFocus());
+    fireEvent.keyDown(firstItem, { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "关闭其他标签" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    expect(firstItem).toHaveFocus();
+    fireEvent.keyDown(firstItem, { key: "Escape" });
+
+    expect(
+      screen.queryByRole("menu", { name: "终端标签操作菜单" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("opens the move-to-group submenu and returns focus across keyboard layers", async () => {
+    const user = userEvent.setup();
+    const onMoveTerminalTab = vi.fn();
+    const tabs = groupedSshTabs.map((tab) =>
+      tab.id === "tab-lab" ? { ...tab, tabGroupId: "group-lab" } : tab,
+    );
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-dev-a",
+          focusedPaneId: "pane-dev-a",
+          onMoveTerminalTab,
+          panes: groupedSshPanes,
+          tabs,
+          terminalTabGroups: {
+            "group-dev": { collapsed: false, title: "开发" },
+            "group-lab": { collapsed: false, title: "实验室" },
+          },
+        })}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "dev.internal #2" });
+    fireEvent.contextMenu(trigger);
+    const moveItem = screen.getByRole("menuitem", { name: /移动到标签组/ });
+    moveItem.focus();
+    await user.keyboard("{ArrowRight}");
+
+    const submenu = await screen.findByRole("menu", { name: "移动到标签组" });
+    expect(submenu).toHaveClass("overflow-y-auto");
+    const targetItem = screen.getByRole("menuitem", { name: "移入「实验室」" });
+    await waitFor(() => expect(targetItem).toHaveFocus());
+    await user.keyboard("{ArrowLeft}");
+    expect(moveItem).toHaveFocus();
+
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("menuitem", { name: "移入「实验室」" }));
+    expect(onMoveTerminalTab).toHaveBeenCalledWith({
+      position: "after",
+      tabId: "tab-dev-b",
+      targetGroupId: "group-lab",
+      targetTabId: "tab-lab",
+    });
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("renames a terminal tab from the right-click menu", async () => {
@@ -481,58 +777,9 @@ export function registerTabAndMenuTests() {
     expect(
       screen.queryByRole("button", { name: "dev.internal #2" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("edits a terminal tab group name and color from the group menu", async () => {
-    const user = userEvent.setup();
-    const onUpdateTabGroupPreference = vi.fn();
-
-    function ControlledWorkspace() {
-      const [tabGroupPreferences, setTabGroupPreferences] =
-        useState<TerminalTabGroupPreferences>({});
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-dev-a",
-            focusedPaneId: "pane-dev-a",
-            onUpdateTabGroupPreference: (groupId, preference) => {
-              onUpdateTabGroupPreference(groupId, preference);
-              setTabGroupPreferences((current) => ({
-                ...current,
-                [groupId]: preference,
-              }));
-            },
-            panes: groupedSshPanes,
-            tabGroupPreferences,
-            tabs: groupedSshTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    fireEvent.contextMenu(
-      screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "生产日志" })).toHaveFocus(),
     );
-    await user.click(screen.getByRole("menuitem", { name: "编辑分组" }));
-    expect(
-      screen.getByRole("dialog", { name: "编辑标签组" }),
-    ).toBeInTheDocument();
-
-    await user.clear(screen.getByLabelText("分组名称"));
-    await user.type(screen.getByLabelText("分组名称"), "生产组");
-    await user.click(screen.getByRole("button", { name: "选择粉色分组颜色" }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    expect(onUpdateTabGroupPreference).toHaveBeenCalledWith("host-dev", {
-      color: "pink",
-      title: "生产组",
-    });
-    expect(
-      screen.getByRole("button", { name: "折叠 生产组 标签组" }),
-    ).toBeInTheDocument();
   });
 
 }

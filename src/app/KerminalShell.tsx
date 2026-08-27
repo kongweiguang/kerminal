@@ -123,6 +123,8 @@ export function KerminalShell() {
     useState(false);
   const viewportSize = useViewportSize();
   const [shellNoticeVisible, setShellNoticeVisible] = useState(false);
+  const [workspaceSessionPersistenceNotice, setWorkspaceSessionPersistenceNotice] =
+    useState<string | null>(null);
   const [machineSidebarView, setMachineSidebarView] =
     useState<MachineSidebarViewMode>("hosts");
   const [hostContainersHostId, setHostContainersHostId] = useState<
@@ -247,7 +249,7 @@ export function KerminalShell() {
   const {
     cancelDirtyFileTabs,
     cancelTerminalTabs,
-    closeConfirmedTab,
+    closeConfirmedTabs,
     confirmDirtyFileTabs,
     confirmTerminalTabs,
     dirtyFileTabCount,
@@ -385,7 +387,7 @@ export function KerminalShell() {
     connectionConfigConflict,
     leftTitleBarInset,
     remoteGroupConfigConflict,
-    reserveRightTitleBarControls,
+    rightTitleBarInset,
     rightToolRailTitleBarFillWidth,
     shellNoticeMessage,
   } = useKerminalShellViewModel({
@@ -402,6 +404,7 @@ export function KerminalShell() {
     settingsLoadError,
     toolPanelDocked: effectiveRightPanelOpen,
     windowChrome,
+    workspaceSessionPersistenceNotice,
   });
   const {
     createdSftpHostTarget,
@@ -417,6 +420,7 @@ export function KerminalShell() {
     configRefreshCoordinator, handleWorkspaceShellLayoutRestored,
     refreshRemoteHostTree, settingsDialogDirtyRef, settingsSaveState,
     setProfileLoadError, setProfiles, setShellNoticeVisible,
+    setWorkspaceSessionPersistenceNotice,
     shellNoticeMessage, workspaceShellLayout,
   });
 
@@ -589,10 +593,10 @@ export function KerminalShell() {
         interfaceDensity: settings.interfaceDensity, leftTitleBarInset,
         machineGroups, onBroadcastCommand: writeBroadcastCommand,
         onCreateSftpHost: openSftpTransferHostCreateDialog,
-        onCloseConfirmedTab: closeConfirmedTab,
+        onCloseConfirmedTabs: closeConfirmedTabs,
         onOpenAgentTool: () => openTool("agentLauncher"),
         onOpenConnection: () => openConnectionDialog({ mode: "ssh" }),
-        onOpenLogs: openLogsTool, reserveRightTitleBarControls,
+        onOpenLogs: openLogsTool, rightTitleBarInset,
         resolvedTheme, splitDropIndicator: terminalSplitDropIndicator,
         terminalAppearance: settings.terminal,
       }}

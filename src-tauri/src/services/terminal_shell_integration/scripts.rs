@@ -1,4 +1,5 @@
 //! Shell discovery and integration-script materialization.
+//! @author kongweiguang
 
 use std::{
     collections::HashMap,
@@ -425,6 +426,8 @@ trap '__kerminal_preexec' DEBUG
 "#
 }
 
+/// 生成 zsh shell integration；退出码必须避开 zsh 的只读特殊参数 `status`，
+/// 否则每次 `precmd` 都会报错并污染 TUI 退出后的提示符。
 fn zsh_script() -> &'static str {
     r#"export KERMINAL_TERMINAL=1
 export KERMINAL_SHELL_INTEGRATION=1
@@ -447,8 +450,8 @@ __kerminal_preexec() {
   fi
 }
 __kerminal_precmd() {
-  local status=$?
-  __kerminal_osc "133;D;$status"
+  local command_status=$?
+  __kerminal_osc "133;D;$command_status"
   __kerminal_osc "133;A"
   __kerminal_osc "7;$(__kerminal_cwd_uri)"
   __kerminal_osc "133;B"

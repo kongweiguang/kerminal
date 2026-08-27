@@ -13,7 +13,7 @@
     ·
     <a href="#源码开发">源码开发</a>
   </p>
-  <p><sub>当前稳定版 v0.3.29 · Tauri 2 · Windows / Linux / macOS</sub></p>
+  <p><sub>当前稳定版 v0.3.30 · Tauri 2 · Windows / Linux / macOS</sub></p>
 </div>
 
 ![Kerminal 中的 SSH 终端与 Codex Agent 并行工作](docs/assets/kerminal-hero.png)
@@ -29,7 +29,7 @@ Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围�
 | 领域 | 当前已实现能力 |
 | --- | --- |
 | 连接 | Local、SSH、独立 SFTP、RDP、Telnet、Serial；SSH 支持密码、私钥、SSH Agent、代理、跳板机和多跳。 |
-| 终端工作区 | 多 Tab、多 Pane、横向/纵向分屏、拖拽调整、批量发送、命令块、搜索、日志、自动重连、命令建议和 URL Ctrl/Command 点击。 |
+| 终端工作区 | 多 Tab、多 Pane、跨主机自定义标签组、标签与整组拖拽排序、横向/纵向分屏、批量发送、命令块、搜索、日志、自动重连、命令建议和 URL Ctrl/Command 点击。 |
 | 文件与传输 | SFTP 文件浏览、双面板传输、队列与进度、取消/重试、断点续传、冲突策略、远程预览与文本编辑。 |
 | 容器 | 在 SSH 主机上管理 Docker、Podman 与 Compose，查看容器、镜像、服务、日志和状态，进入终端并操作容器内文件。 |
 | 远程工具 | SSH 本地/远程/SOCKS 隧道、tmux 会话、CPU/内存/磁盘/网络/GPU/NPU/进程信息和命令历史。 |
@@ -39,7 +39,7 @@ Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围�
 
 ## 下载与安装
 
-前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.29 已公开提供以下产物：
+前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.30 已公开提供以下产物：
 
 | 平台 | 发布产物 |
 | --- | --- |

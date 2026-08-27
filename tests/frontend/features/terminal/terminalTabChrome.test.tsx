@@ -16,6 +16,7 @@ import {
   TerminalTabGroupContextMenuItems,
   type TerminalTabGroup,
 } from "../../../../src/features/terminal/terminalTabChrome";
+import { TerminalTabGroupEditDialog } from "../../../../src/features/terminal/TerminalTabGroupEditDialog";
 
 const localTab: TerminalTab = {
   id: "tab-local",
@@ -28,6 +29,34 @@ const localTab: TerminalTab = {
 };
 
 describe("TerminalTabButton", () => {
+  it("puts the pointer activator on the real button without adding a wrapper focus stop", () => {
+    const onPointerDown = vi.fn();
+    const activatorRef = vi.fn();
+    render(
+      <TerminalTabButton
+        active={false}
+        dragActivatorRef={activatorRef}
+        dragListeners={{ onPointerDown }}
+        onCloseTab={vi.fn()}
+        onContextMenu={vi.fn()}
+        onSelectTab={vi.fn()}
+        showClose
+        tab={localTab}
+      />,
+    );
+
+    const tabButton = screen.getByRole("button", {
+      name: "本地 PowerShell",
+    });
+    const wrapper = tabButton.closest("div");
+    fireEvent.pointerDown(tabButton);
+
+    expect(onPointerDown).toHaveBeenCalledTimes(1);
+    expect(activatorRef).toHaveBeenCalledWith(tabButton);
+    expect(wrapper).not.toHaveAttribute("role");
+    expect(wrapper).not.toHaveAttribute("tabindex");
+  });
+
   it("keeps the active top tab as a standalone framed control", () => {
     render(
       <TerminalTabButton
@@ -147,6 +176,74 @@ describe("TerminalTabGroupHeader", () => {
   });
 });
 
+describe("TerminalTabGroupEditDialog", () => {
+  it("keeps an empty edited group name in the dialog with an error", () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <TerminalTabGroupEditDialog
+        group={{
+          color: "blue",
+          colorLabel: "蓝色",
+          grouped: true,
+          id: "group-local",
+          identityAccent: {
+            accentClassName: "bg-sky-500",
+            color: "blue",
+            source: "explicit",
+            visible: true,
+          },
+          tabs: [localTab],
+          title: "本地组",
+        }}
+        onClose={onClose}
+        onSave={onSave}
+      />,
+    );
+
+    const input = screen.getByRole("textbox", { name: "分组名称" });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("请输入分组名称");
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("keeps an overlong group name in the dialog with an error", () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <TerminalTabGroupEditDialog
+        group={{
+          color: "blue",
+          colorLabel: "蓝色",
+          grouped: true,
+          id: "group-local",
+          identityAccent: {
+            accentClassName: "bg-sky-500",
+            color: "blue",
+            source: "explicit",
+            visible: true,
+          },
+          tabs: [localTab],
+          title: "本地组",
+        }}
+        onClose={onClose}
+        onSave={onSave}
+      />,
+    );
+
+    const input = screen.getByRole("textbox", { name: "分组名称" });
+    fireEvent.change(input, { target: { value: "a".repeat(65) } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("不能超过 64 个字符");
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
 describe("terminal tab context menu close actions", () => {
   const groupedTab: TerminalTab = {
     ...localTab,
@@ -212,7 +309,7 @@ describe("terminal tab context menu close actions", () => {
       />,
     );
 
-    for (const label of ["关闭分组", "关闭其他分组"]) {
+    for (const label of ["关闭分组", "关闭组外其它标签"]) {
       expect(screen.getByRole("menuitem", { name: label })).toHaveClass(
         "kerminal-context-menu-item--danger",
       );

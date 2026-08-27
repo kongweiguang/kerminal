@@ -1,15 +1,18 @@
+// @author kongweiguang
+
 import { useState } from "react";
 import {
   act,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type {
-  TerminalTabGroupPreferences,
+  TerminalTabGroups,
 } from "../../../../../src/features/workspace/types";
 import { TerminalWorkspace } from "../../../../../src/features/terminal/TerminalWorkspace";
 import { terminalChromeRuntimeStore } from "../../../../../src/features/terminal/terminalChromeRuntimeStore";
@@ -64,25 +67,33 @@ export function registerGroupAndSplitTests() {
     }
   });
 
-  it("shows a singleton identity accent only after an explicit color is saved", async () => {
+  it("keeps and recolors an explicit single-member group", async () => {
     const user = userEvent.setup();
-    const onUpdateTabGroupPreference = vi.fn();
+    const onUpdateTerminalTabGroup = vi.fn();
 
+    /** 用受控状态验证单成员组编辑后不会被投影层自动清理。 */
     function ControlledWorkspace() {
-      const [tabGroupPreferences, setTabGroupPreferences] =
-        useState<TerminalTabGroupPreferences>({});
+      const [terminalTabGroups, setTerminalTabGroups] =
+        useState<TerminalTabGroups>({
+          "group-local": { collapsed: false, title: "本地 PowerShell" },
+        });
+      const groupedTabs = workspaceProps().tabs.map((tab) => ({
+        ...tab,
+        tabGroupId: "group-local",
+      }));
 
       return (
         <TerminalWorkspace
           {...workspaceProps({
-            onUpdateTabGroupPreference: (groupId, preference) => {
-              onUpdateTabGroupPreference(groupId, preference);
-              setTabGroupPreferences((current) => ({
+            onUpdateTerminalTabGroup: (groupId, definition) => {
+              onUpdateTerminalTabGroup(groupId, definition);
+              setTerminalTabGroups((current) => ({
                 ...current,
-                [groupId]: preference,
+                [groupId]: { ...current[groupId], ...definition },
               }));
             },
-            tabGroupPreferences,
+            tabs: groupedTabs,
+            terminalTabGroups,
           })}
         />
       );
@@ -90,43 +101,77 @@ export function registerGroupAndSplitTests() {
 
     render(<ControlledWorkspace />);
 
-    const tabButton = screen.getByRole("button", { name: "本地 PowerShell" });
+    const groupButton = screen.getByRole("button", {
+      name: "折叠 本地 PowerShell 标签组",
+    });
+    fireEvent.contextMenu(groupButton);
+    await user.click(screen.getByRole("menuitem", { name: "编辑分组" }));
     expect(
-      tabButton.parentElement?.querySelector("[data-terminal-identity-accent]"),
-    ).toBeNull();
-
-    fireEvent.contextMenu(tabButton);
-    await user.click(screen.getByRole("menuitem", { name: "设置标识颜色" }));
-    expect(
-      screen.getByRole("dialog", { name: "设置标签标识" }),
+      screen.getByRole("dialog", { name: "编辑标签组" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "选择粉色分组颜色" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(onUpdateTabGroupPreference).toHaveBeenLastCalledWith(
-      "local-powershell",
-      { color: "pink" },
-    );
+    expect(onUpdateTerminalTabGroup).toHaveBeenLastCalledWith("group-local", {
+      color: "pink",
+      title: "本地 PowerShell",
+    });
     expect(
-      tabButton.parentElement?.querySelector(
-        '[data-terminal-identity-accent="pink"][data-terminal-identity-source="explicit"]',
-      ),
+      screen
+        .getByRole("button", { name: "折叠 本地 PowerShell 标签组" })
+        .querySelector(".bg-pink-500"),
     ).not.toBeNull();
+  });
 
-    fireEvent.contextMenu(tabButton);
-    await user.click(screen.getByRole("menuitem", { name: "设置标识颜色" }));
-    await user.click(
-      screen.getByRole("button", { name: "选择自动标识颜色" }),
+  it("edits an explicit terminal tab group name and color", async () => {
+    const user = userEvent.setup();
+    const onUpdateTerminalTabGroup = vi.fn();
+
+    /** 用受控状态同步组定义，覆盖 Dialog 保存后的真实重新渲染路径。 */
+    function ControlledWorkspace() {
+      const [terminalTabGroups, setTerminalTabGroups] =
+        useState<TerminalTabGroups>({
+          "group-dev": { collapsed: false, title: "dev.internal" },
+        });
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onUpdateTerminalTabGroup: (groupId, definition) => {
+              onUpdateTerminalTabGroup(groupId, definition);
+              setTerminalTabGroups((current) => ({
+                ...current,
+                [groupId]: { ...current[groupId], ...definition },
+              }));
+            },
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+            terminalTabGroups,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "编辑分组" }));
+    await user.clear(screen.getByLabelText("分组名称"));
+    await user.type(screen.getByLabelText("分组名称"), "生产组");
+    await user.click(screen.getByRole("button", { name: "选择粉色分组颜色" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(onUpdateTabGroupPreference).toHaveBeenLastCalledWith(
-      "local-powershell",
-      {},
-    );
+    expect(onUpdateTerminalTabGroup).toHaveBeenCalledWith("group-dev", {
+      color: "pink",
+      title: "生产组",
+    });
     expect(
-      tabButton.parentElement?.querySelector("[data-terminal-identity-accent]"),
-    ).toBeNull();
+      screen.getByRole("button", { name: "折叠 生产组 标签组" }),
+    ).toBeInTheDocument();
   });
 
   it("subscribes tab chrome to pane activity snapshots", async () => {
@@ -144,16 +189,28 @@ export function registerGroupAndSplitTests() {
 
   it("aggregates attention on collapsed groups without duplicating it while expanded", async () => {
     const user = userEvent.setup();
-    render(
-      <TerminalWorkspace
-        {...workspaceProps({
-          activeTabId: "tab-dev-a",
-          focusedPaneId: "pane-dev-a",
-          panes: groupedSshPanes,
-          tabs: groupedSshTabs,
-        })}
-      />,
-    );
+
+    /** 以受控 store 形态回写折叠值，确保注意力聚合覆盖真实 explicit 组路径。 */
+    function ControlledAttentionWorkspace() {
+      const [collapsed, setCollapsed] = useState(false);
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onSetTerminalTabGroupCollapsed: (_groupId, nextCollapsed) =>
+              setCollapsed(nextCollapsed),
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+            terminalTabGroups: {
+              "group-dev": { collapsed, title: "dev.internal" },
+            },
+          })}
+        />
+      );
+    }
+
+    render(<ControlledAttentionWorkspace />);
 
     act(() => {
       terminalChromeRuntimeStore.register("pane-dev-a", { visible: false });
@@ -183,14 +240,14 @@ export function registerGroupAndSplitTests() {
 
   it("opens a right-click menu for terminal tab groups", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
 
     render(
       <TerminalWorkspace
         {...workspaceProps({
           activeTabId: "tab-dev-a",
           focusedPaneId: "pane-dev-a",
-          onCloseTab,
+          onCloseTabs,
           panes: groupedSshPanes,
           tabs: groupedSshTabs,
         })}
@@ -201,13 +258,150 @@ export function registerGroupAndSplitTests() {
       name: "折叠 dev.internal 标签组",
     });
     fireEvent.contextMenu(groupButton);
-    await user.click(screen.getByRole("menuitem", { name: "关闭其他分组" }));
+    await user.click(screen.getByRole("menuitem", { name: "关闭组外其它标签" }));
     expect(
       screen.getByRole("dialog", { name: "确认关闭标签" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
-    expect(onCloseTab).toHaveBeenCalledWith("tab-lab");
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-lab"]);
+  });
+
+  it("submits every group member in one close batch", async () => {
+    const user = userEvent.setup();
+    const onCloseTabs = vi.fn();
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-dev-a",
+          focusedPaneId: "pane-dev-a",
+          onCloseTabs,
+          panes: groupedSshPanes,
+          tabs: groupedSshTabs,
+        })}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "关闭分组" }));
+    await user.click(screen.getByRole("button", { name: "关闭标签" }));
+
+    expect(onCloseTabs).toHaveBeenCalledTimes(1);
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-dev-a", "tab-dev-b"]);
+  });
+
+  it("moves a real pointer drag over 6px into a specific group member and suppresses the trailing click", async () => {
+    const onMoveTerminalTab = vi.fn();
+    const onSelectTab = vi.fn();
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const tabId = this.dataset.terminalTabId;
+        const groupId = this.dataset.terminalTabGroupId;
+        const left =
+          tabId === "tab-dev-a"
+            ? 40
+            : tabId === "tab-dev-b"
+              ? 140
+              : tabId === "tab-lab"
+                ? 320
+                : groupId === "group-dev"
+                  ? 0
+                  : 0;
+        const width = groupId === "group-dev" ? 300 : tabId ? 90 : 8;
+        return {
+          bottom: 36,
+          height: 36,
+          left,
+          right: left + width,
+          top: 0,
+          width,
+          x: left,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      });
+
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onMoveTerminalTab,
+            onSelectTab,
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+          })}
+        />,
+      );
+
+      const source = screen.getByRole("button", { name: "lab.internal" });
+      fireEvent.pointerDown(source, {
+        button: 0,
+        buttons: 1,
+        clientX: 350,
+        clientY: 18,
+        isPrimary: true,
+        pointerId: 31,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerMove(document, {
+        buttons: 1,
+        clientX: 90,
+        clientY: 18,
+        isPrimary: true,
+        pointerId: 31,
+        pointerType: "mouse",
+      });
+      await waitFor(() => {
+        expect(screen.getAllByText("lab.internal").length).toBeGreaterThan(1);
+      });
+      fireEvent.pointerMove(document, {
+        buttons: 1,
+        clientX: 91,
+        clientY: 18,
+        isPrimary: true,
+        pointerId: 31,
+        pointerType: "mouse",
+      });
+      await screen.findByText("移动到标签 dev.internal 前");
+      fireEvent.pointerUp(document, {
+        button: 0,
+        clientX: 90,
+        clientY: 18,
+        isPrimary: true,
+        pointerId: 31,
+        pointerType: "mouse",
+      });
+
+      await waitFor(() =>
+        expect(onMoveTerminalTab).toHaveBeenCalledWith({
+          position: "before",
+          tabId: "tab-lab",
+          targetGroupId: "group-dev",
+          targetTabId: "tab-dev-a",
+        }),
+      );
+      const currentSource = screen.getByRole("button", { name: "lab.internal" });
+      fireEvent.click(currentSource);
+      expect(onSelectTab).not.toHaveBeenCalled();
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            // dnd-kit 6.3.1 在 detach 后保留 50ms click blocker；等待其明确
+            // 清理边界后验证下一次用户点击，避免依赖任意测试 sleep。
+            window.setTimeout(resolve, 60);
+          }),
+      );
+      fireEvent.click(currentSource);
+      expect(onSelectTab).toHaveBeenCalledWith("tab-lab");
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 
   it("requests horizontal and vertical splits", async () => {

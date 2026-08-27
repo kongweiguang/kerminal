@@ -622,6 +622,43 @@ describe("workspaceTerminalState tab and pane focus", () => {
     });
   });
 
+  it("selects the right neighbor when closing the active middle tab", () => {
+    const state = terminalState({
+      activeTabId: "tab-ssh-2",
+      focusedPaneId: "pane-ssh-2",
+      terminalPanes: [
+        terminalPane({ id: "pane-ssh-1" }),
+        terminalPane({ id: "pane-ssh-2" }),
+        terminalPane({ id: "pane-ssh-3" }),
+      ],
+      terminalTabs: [
+        {
+          id: "tab-ssh-1",
+          layout: { paneId: "pane-ssh-1", type: "pane" },
+          machineId: "host-lab",
+          title: "lab server 1",
+        },
+        {
+          id: "tab-ssh-2",
+          layout: { paneId: "pane-ssh-2", type: "pane" },
+          machineId: "host-lab",
+          title: "lab server 2",
+        },
+        {
+          id: "tab-ssh-3",
+          layout: { paneId: "pane-ssh-3", type: "pane" },
+          machineId: "host-lab",
+          title: "lab server 3",
+        },
+      ],
+    });
+
+    expect(closeTerminalTabState(state, "tab-ssh-2")).toMatchObject({
+      activeTabId: "tab-ssh-3",
+      focusedPaneId: "pane-ssh-3",
+    });
+  });
+
   it("does not remove panes outside the active terminal tab", () => {
     const state = terminalState({
       activeTabId: "tab-ssh-1",

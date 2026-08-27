@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 
 import type { MachineGroup } from "../../../src/features/workspace/types";
@@ -29,6 +31,7 @@ const groups: MachineGroup[] = [
   },
 ];
 
+/** 为视图模型测试提供最小稳定壳状态，单个用例只覆盖自身差异。 */
 function build(overrides: Partial<Parameters<typeof buildKerminalShellViewModel>[0]> = {}) {
   return buildKerminalShellViewModel({
     activeTool: "settings",
@@ -39,6 +42,7 @@ function build(overrides: Partial<Parameters<typeof buildKerminalShellViewModel>
     profileLoadError: null,
     remoteHostLoadError: null,
     settingsLoadError: null,
+    workspaceSessionPersistenceNotice: null,
     windowChrome: {
       controlMode: "custom",
       frameRadiusMode: "rounded",
@@ -60,8 +64,20 @@ describe("buildKerminalShellViewModel", () => {
 
   it("按显示状态和平台模型计算窗口留白", () => {
     expect(build().rightToolRailTitleBarFillWidth).toBe(48);
+    expect(build().rightTitleBarInset).toBe(112);
     expect(build({ interfaceDensity: "spacious" }).rightToolRailTitleBarFillWidth).toBe(56);
     expect(build({ compactShell: true }).rightToolRailTitleBarFillWidth).toBe(44);
+    expect(
+      build({
+        windowChrome: {
+          controlMode: "native",
+          frameRadiusMode: "native",
+          reserveTrafficLightInset: false,
+          showMaximizeControl: false,
+          showRestoreIcon: false,
+        },
+      }).rightTitleBarInset,
+    ).toBe(56);
     expect(
       build({
         effectiveLeftPanelCollapsed: true,
@@ -87,5 +103,14 @@ describe("buildKerminalShellViewModel", () => {
 
     expect(model.shellNoticeMessage).toBe("profile");
     expect(model.remoteGroupConfigConflict?.message).toContain("外部删除");
+  });
+
+  it("Session 数据保护告警优先于普通配置加载错误", () => {
+    expect(
+      build({
+        profileLoadError: "profile",
+        workspaceSessionPersistenceNotice: "session blocked",
+      }).shellNoticeMessage,
+    ).toBe("session blocked");
   });
 });

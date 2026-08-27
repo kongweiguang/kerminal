@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   useCallback,
   useEffect,
@@ -22,6 +24,7 @@ interface UseKerminalShellStartupSyncOptions {
   settingsSaveState: SettingsSaveState;
   setProfileLoadError: Dispatch<SetStateAction<string | null>>;
   setProfiles: (profiles: TerminalProfile[]) => void;
+  setWorkspaceSessionPersistenceNotice: Dispatch<SetStateAction<string | null>>;
   setShellNoticeVisible: Dispatch<SetStateAction<boolean>>;
   shellNoticeMessage: string | null;
   workspaceShellLayout: WorkspaceShellLayout;
@@ -36,6 +39,7 @@ export function useKerminalShellStartupSync({
   settingsSaveState,
   setProfileLoadError,
   setProfiles,
+  setWorkspaceSessionPersistenceNotice,
   setShellNoticeVisible,
   shellNoticeMessage,
   workspaceShellLayout,
@@ -53,6 +57,7 @@ export function useKerminalShellStartupSync({
 
   useWorkspaceSessionPersistence({
     beforeRestore: reapLocalOrphanTerminalSessions,
+    onPersistenceBlocked: setWorkspaceSessionPersistenceNotice,
     onShellLayoutRestored: handleWorkspaceShellLayoutRestored,
     shellLayout: workspaceShellLayout,
   });

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   Machine,
   MachineGroup,
@@ -37,11 +39,13 @@ export interface TerminalWorkspaceSnapshot {
   focusedPaneId: string;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
+  terminalTabGroups: WorkspaceState["terminalTabGroups"];
   terminalTabGroupPreferences: WorkspaceState["terminalTabGroupPreferences"];
   workspaceFileDirtyState: WorkspaceFileDirtyState;
 }
 
 interface ParsedTerminalWorkspaceSnapshotCache {
+  groupsSnapshot: string;
   panesSnapshot: string;
   preferencesSnapshot: string;
   snapshot: string;
@@ -111,6 +115,7 @@ export function buildTerminalWorkspaceSnapshot(state: WorkspaceState): string {
       terminalPaneWithoutHighFrequencyOutput,
     ),
     terminalTabs: state.terminalTabs,
+    terminalTabGroups: state.terminalTabGroups,
     terminalTabGroupPreferences: state.terminalTabGroupPreferences,
     workspaceFileDirtyState: state.workspaceFileDirtyState,
   } satisfies TerminalWorkspaceSnapshot);
@@ -126,6 +131,7 @@ export function parseTerminalWorkspaceSnapshot(
   const next = JSON.parse(snapshot) as TerminalWorkspaceSnapshot;
   const panesSnapshot = JSON.stringify(next.terminalPanes);
   const tabsSnapshot = JSON.stringify(next.terminalTabs);
+  const groupsSnapshot = JSON.stringify(next.terminalTabGroups);
   const preferencesSnapshot = JSON.stringify(next.terminalTabGroupPreferences);
   const previous = parsedTerminalWorkspaceSnapshotCache;
 
@@ -135,6 +141,9 @@ export function parseTerminalWorkspaceSnapshot(
   if (previous && previous.tabsSnapshot === tabsSnapshot) {
     next.terminalTabs = previous.value.terminalTabs;
   }
+  if (previous && previous.groupsSnapshot === groupsSnapshot) {
+    next.terminalTabGroups = previous.value.terminalTabGroups;
+  }
   if (previous && previous.preferencesSnapshot === preferencesSnapshot) {
     next.terminalTabGroupPreferences =
       previous.value.terminalTabGroupPreferences;
@@ -142,6 +151,7 @@ export function parseTerminalWorkspaceSnapshot(
 
   parsedTerminalWorkspaceSnapshotCache = {
     panesSnapshot,
+    groupsSnapshot,
     preferencesSnapshot,
     snapshot,
     tabsSnapshot,

@@ -81,9 +81,12 @@ export function closeTerminalTabState(
   const terminalPanes = state.terminalPanes.filter(
     (pane) => !paneIds.includes(pane.id),
   );
+  // 关闭当前 Tab 时优先选择拖拽排序后位于其右侧的邻居，只有右侧不存在
+  // 才回退左侧；这样排序不会因为一次关闭操作跳回列表首项。
+  const closedIndex = state.terminalTabs.findIndex((item) => item.id === tabId);
   const nextActiveTab =
     state.activeTabId === tabId
-      ? terminalTabs[0]
+      ? terminalTabs[closedIndex] ?? terminalTabs[closedIndex - 1]
       : terminalTabs.find((item) => item.id === state.activeTabId);
   const focusedPaneId =
     nextActiveTab && isTerminalSessionTab(nextActiveTab)

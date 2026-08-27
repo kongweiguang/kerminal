@@ -15,6 +15,7 @@ import {
 } from "../../../src/features/terminal/terminalOutputHistoryBuffer";
 import {
   type WorkspaceSessionSnapshot,
+  type WorkspaceSessionLoadResult,
 } from "../../../src/features/workspace/workspaceSession";
 import {
   useWorkspaceStore,
@@ -74,6 +75,16 @@ function machine(overrides: Partial<Machine> & Pick<Machine, "id" | "kind">) {
 
 function WorkspaceSessionPersistenceHost() {
   useWorkspaceSessionPersistence();
+  return null;
+}
+
+/** 为持久化阻断场景提供可观察回调；实际 Shell 只需把通知转给现有提示层。 */
+function WorkspaceSessionPersistenceNoticeHost({
+  onPersistenceBlocked,
+}: {
+  onPersistenceBlocked: (message: string | null) => void;
+}) {
+  useWorkspaceSessionPersistence({ onPersistenceBlocked });
   return null;
 }
 
@@ -340,6 +351,76 @@ describe("buildWorkspaceSessionSnapshot", () => {
         }),
       ]),
     );
+  });
+
+  it.each([
+    {
+      kind: "unsupported",
+      message: "ignored detail",
+      version: 4,
+    },
+    {
+      kind: "invalid",
+      message: "ignored detail",
+    },
+    {
+      kind: "transport-failure",
+      message: "ignored detail",
+    },
+  ] satisfies WorkspaceSessionLoadResult[])(
+    "blocks writes after a $kind session load result",
+    async (loadResult) => {
+      const onPersistenceBlocked = vi.fn();
+      workspaceSessionApiMocks.loadWorkspaceSessionFile.mockResolvedValue(
+        loadResult,
+      );
+
+      const { unmount } = render(
+        createElement(WorkspaceSessionPersistenceNoticeHost, {
+          onPersistenceBlocked,
+        }),
+      );
+      await settleWorkspaceSessionPersistence();
+
+      act(() => {
+        useWorkspaceStore.getState().addTerminalTab();
+      });
+      fireEvent(window, new Event("pagehide"));
+      await settleWorkspaceSessionPersistence();
+
+      expect(onPersistenceBlocked).toHaveBeenCalledWith(
+        expect.stringContaining("原文件未覆盖"),
+      );
+      expect(workspaceSessionApiMocks.saveWorkspaceSessionFile).not.toHaveBeenCalled();
+      unmount();
+    },
+  );
+
+  it("stops retrying and reports a save failure", async () => {
+    const onPersistenceBlocked = vi.fn();
+    workspaceSessionApiMocks.saveWorkspaceSessionFile.mockRejectedValueOnce(
+      new Error("write failure"),
+    );
+    const { unmount } = render(
+      createElement(WorkspaceSessionPersistenceNoticeHost, {
+        onPersistenceBlocked,
+      }),
+    );
+    await settleWorkspaceSessionPersistence();
+
+    act(() => {
+      useWorkspaceStore.getState().addTerminalTab();
+    });
+    await settleWorkspaceSessionPersistence();
+    expect(onPersistenceBlocked).toHaveBeenCalledWith(
+      expect.stringContaining("已停止继续写入"),
+    );
+
+    workspaceSessionApiMocks.saveWorkspaceSessionFile.mockClear();
+    fireEvent(window, new Event("pagehide"));
+    await settleWorkspaceSessionPersistence();
+    expect(workspaceSessionApiMocks.saveWorkspaceSessionFile).not.toHaveBeenCalled();
+    unmount();
   });
 
   it("does not save an empty startup session when no file session is loaded", async () => {

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { Check, Layers2 } from "lucide-react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -37,6 +39,10 @@ interface TerminalTabOverviewMenuProps {
   terminalAppearance: TerminalAppearance;
 }
 
+/**
+ * 展示扁平 Tab 顺序和显式组数量；未分组 Tab 仅作为普通行呈现，避免把单 Tab
+ * 再包装成主机组，同时由 portal 继承全局 surface 主题变量。
+ */
 export function TerminalTabOverviewMenu({
   activeTabId,
   menuRef,
@@ -70,19 +76,19 @@ export function TerminalTabOverviewMenu({
           标签分组
         </div>
         <div className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-          {tabGroups.length} 组 / {tabs.length} 个
+          {tabGroups.filter((group) => group.grouped).length} 组 / {tabs.length} 个
         </div>
       </div>
       <div className="max-h-[min(70vh,420px)] overflow-y-auto p-1.5">
         {tabGroups.map((group) => {
           return (
             <div
-              aria-label={`${group.title} 标签组`}
+            aria-label={group.grouped ? `${group.title} 标签组` : undefined}
               className="py-1"
               key={group.id}
-              role="group"
+              role={group.grouped ? "group" : undefined}
             >
-              <div className="flex items-center gap-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
+              {group.grouped ? <div className="flex items-center gap-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
                 <span
                   aria-hidden="true"
                   className={cn(
@@ -99,8 +105,8 @@ export function TerminalTabOverviewMenu({
                 <span className="rounded-full bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium leading-none">
                   {group.tabs.length} 个
                 </span>
-              </div>
-              <div className="space-y-0.5">
+              </div> : null}
+              <div className={cn("space-y-0.5", !group.grouped && "pt-0") }>
                 {group.tabs.map((tab) => {
                   const active = tab.id === activeTabId;
                   const tabIndex = tabs.findIndex(
@@ -120,7 +126,7 @@ export function TerminalTabOverviewMenu({
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         terminalOverviewItemClassName,
-                        "pl-5",
+                        group.grouped ? "pl-5" : "pl-2.5",
                         active
                           ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
                           : terminalOverviewIdleClassName,

@@ -644,4 +644,43 @@ describe("workspaceStore terminal tabs", () => {
       "pane-local-9",
     ]);
   });
+
+  it("continues the tab group counter after restoring a v3 session", () => {
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "tab-local-7",
+      focusedPaneId: "pane-local-7",
+      selectedMachineId: "machine-local-7",
+      sidebarMachines: [],
+      terminalPanes: [
+        {
+          id: "pane-local-7",
+          lines: [],
+          machineId: "machine-local-7",
+          mode: "local",
+          prompt: "PS>",
+          shell: "pwsh.exe",
+          status: "online",
+          title: "恢复会话",
+        },
+      ],
+      terminalTabGroups: {
+        "tab-group-7": { collapsed: false, title: "恢复分组" },
+      },
+      terminalTabs: [
+        {
+          id: "tab-local-7",
+          layout: { type: "pane", paneId: "pane-local-7" },
+          machineId: "machine-local-7",
+          tabGroupId: "tab-group-7",
+          title: "恢复会话",
+        },
+      ],
+    });
+
+    expect(
+      useWorkspaceStore
+        .getState()
+        .createTerminalTabGroup("tab-local-7", { title: "新分组" }),
+    ).toBe("tab-group-8");
+  });
 });

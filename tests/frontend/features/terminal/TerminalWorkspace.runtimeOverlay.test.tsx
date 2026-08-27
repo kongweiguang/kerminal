@@ -151,7 +151,8 @@ describe("TerminalWorkspace runtime overlay", () => {
           {...workspaceProps({
             activeTabId: secondTab.id,
             focusedPaneId: secondPane.id,
-            onCloseTab: (tabId) => {
+            onCloseTabs: (tabIds) => {
+              const tabId = tabIds[0];
               const closedTab = tabs.find((tab) => tab.id === tabId);
               const closedPaneId =
                 closedTab && "layout" in closedTab

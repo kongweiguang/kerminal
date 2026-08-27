@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
@@ -23,6 +24,41 @@ import {
 } from "./setup";
 
 export function registerRemoteHostTests() {
+  it("opens a saved SSH host directly from the tab-bar create menu", async () => {
+    const user = userEvent.setup();
+
+    render(<KerminalShell />);
+
+    await findExpandedSidebarMachine(/172\.16\.41\.60/);
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "新建临时终端" }),
+      { clientX: 240, clientY: 36 },
+    );
+    const createPanel = screen.getByRole("dialog", { name: "新建终端" });
+    const createMenu = within(createPanel).getByRole("menu", {
+      name: "终端目标",
+    });
+    await user.click(
+      within(createMenu).getByRole("menuitem", {
+        name: /172\.16\.41\.60.*ubuntu@172\.16\.41\.60:22/,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.terminalApi.createSshTerminalSession).toHaveBeenCalledWith(
+        {
+          cols: 80,
+          hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+          rows: 24,
+        },
+        expect.any(Function),
+      );
+    });
+    expect(
+      await findExpandedSidebarMachine(/172\.16\.41\.60/),
+    ).toBeInTheDocument();
+  });
+
   it("opens an SSH host and then renders the remote system panel", async () => {
     const user = userEvent.setup();
 
@@ -185,6 +221,7 @@ export function registerRemoteHostTests() {
       isDefault: true,
       name: "PowerShell 7",
       shell: "pwsh.exe",
+      sidebarGroupId: "group-default",
       sortOrder: 10,
       updatedAt: "test",
     };
@@ -194,12 +231,6 @@ export function registerRemoteHostTests() {
     await waitFor(() =>
       expect(mocks.profileApi.listProfiles).toHaveBeenCalled(),
     );
-
-    fireEvent.keyDown(window, {
-      ctrlKey: true,
-      key: "t",
-      shiftKey: true,
-    });
 
     const localButton = await findExpandedSidebarMachine(/PowerShell 7/);
     fireEvent.contextMenu(localButton);
@@ -366,6 +397,7 @@ export function registerRemoteHostTests() {
       isDefault: true,
       name: "PowerShell 7",
       shell: "pwsh.exe",
+      sidebarGroupId: "group-default",
       sortOrder: 10,
       updatedAt: "test",
     };
@@ -383,12 +415,6 @@ export function registerRemoteHostTests() {
     await waitFor(() =>
       expect(mocks.profileApi.listProfiles).toHaveBeenCalled(),
     );
-
-    fireEvent.keyDown(window, {
-      ctrlKey: true,
-      key: "t",
-      shiftKey: true,
-    });
 
     const localButton = await findExpandedSidebarMachine(/PowerShell 7/);
     fireEvent.contextMenu(localButton);

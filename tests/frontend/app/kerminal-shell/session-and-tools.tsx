@@ -183,6 +183,7 @@ export function registerSessionAndToolTests() {
       activeTabId: "tab-local-restore",
       focusedPaneId: "pane-local-restore",
       selectedMachineId: "machine-local-restore",
+      sidebarMachines: [],
       terminalPanes: [
         {
           id: "pane-local-restore",
@@ -233,6 +234,7 @@ export function registerSessionAndToolTests() {
       activeTabId: "tab-local-reap-failed",
       focusedPaneId: "pane-local-reap-failed",
       selectedMachineId: "machine-local-reap-failed",
+      sidebarMachines: [],
       terminalPanes: [
         {
           id: "pane-local-reap-failed",

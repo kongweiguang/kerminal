@@ -4,17 +4,22 @@ import {
   ChevronDown,
   ChevronRight,
   Layers2,
-  Pencil,
   X,
 } from "lucide-react";
+import type {
+  DraggableAttributes,
+  DraggableSyntheticListeners,
+} from "@dnd-kit/core";
 import {
-  useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
-  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type Ref,
+  type ReactNode,
 } from "react";
-import { Button } from "../../components/ui/button";
-import { ModalShell } from "../../components/ui/modal-shell";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import {
   isTerminalSessionTab,
@@ -23,19 +28,22 @@ import {
   type MachineStatus,
   type TerminalPane,
   type TerminalTab,
+  type TerminalTabGroupDefinition,
   type TerminalTabGroupColor,
   type TerminalTabGroupPreference,
-  type TerminalTabGroupPreferences,
   type WorkspaceFileTab,
 } from "../workspace/contracts/index";
-import { collectPaneIds } from "../workspace/contracts/index";
 import {
-  resolveTerminalTabIdentityAccent,
-  resolveTerminalTabIdentityPaletteToken,
   type TerminalTabIdentityAccent,
 } from "./terminalTabIdentityModel";
 import { TerminalTabAttention } from "./TerminalTabAttention";
 import type { TerminalTabPresentation } from "./terminalTabPresentationModel";
+export { buildTerminalTabGroups } from "./terminalTabGroupProjection";
+export {
+  CloseTabsConfirmationDialog,
+  CloseWorkspaceFileTabsConfirmationDialog,
+  TerminalTabRenameDialog,
+} from "./terminalTabDialogs";
 
 export interface TerminalTabGroup {
   color: TerminalTabGroupColor;
@@ -46,11 +54,22 @@ export interface TerminalTabGroup {
   preference?: TerminalTabGroupPreference;
   tabs: TerminalTab[];
   title: string;
+  /** 显式组定义；旧自动分组仅在迁移测试模式下没有该字段。 */
+  definition?: TerminalTabGroupDefinition;
+  collapsed?: boolean;
+}
+
+/** dnd-kit 的激活器契约只挂在真实按钮上，避免布局壳获得无效键盘焦点。 */
+export interface TerminalTabDragActivatorProps {
+  dragActivatorRef?: (node: HTMLElement | null) => void;
+  dragAttributes?: DraggableAttributes;
+  dragListeners?: DraggableSyntheticListeners;
 }
 
 export interface TerminalTabGroupBuildOptions {
   machineGroups?: MachineGroup[];
   panes?: TerminalPane[];
+  mode?: "explicit" | "legacy";
 }
 
 export type TerminalTabContextMenu =
@@ -87,6 +106,29 @@ const terminalTabCompactActiveClassName =
 const terminalTabMenuItemClassName = "kerminal-context-menu-item";
 const terminalTabMenuIdleClassName = "";
 
+/** 将菜单键和 Shift+F10 转成现有 contextmenu 链路，保证键盘不依赖鼠标坐标。 */
+function dispatchTerminalTabContextMenu(
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+) {
+  if (
+    event.key !== "ContextMenu" &&
+    event.key !== "Menu" &&
+    !(event.key === "F10" && event.shiftKey)
+  ) {
+    return;
+  }
+  event.preventDefault();
+  const rect = event.currentTarget.getBoundingClientRect();
+  event.currentTarget.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: Math.round(rect.left),
+      clientY: Math.round(rect.bottom),
+    }),
+  );
+}
+
 export function terminalTabStatusDotClassName(
   tab: TerminalTab,
   status: MachineStatus = "online",
@@ -120,6 +162,9 @@ export function TerminalTabButton({
   tabNumber,
   identityAccent,
   workspaceFileDirty,
+  dragActivatorRef,
+  dragAttributes,
+  dragListeners,
 }: {
   active: boolean;
   compact?: boolean;
@@ -133,7 +178,7 @@ export function TerminalTabButton({
   tabNumber?: number;
   identityAccent?: TerminalTabIdentityAccent;
   workspaceFileDirty?: boolean;
-}) {
+} & TerminalTabDragActivatorProps) {
   const title = tabNumber ? `${tabNumber} · ${tab.title}` : tab.title;
 
   return (
@@ -157,7 +202,11 @@ export function TerminalTabButton({
         aria-pressed={active}
         className="kerminal-focus-ring absolute inset-0 appearance-none rounded-[inherit] border-0 bg-transparent p-0"
         onClick={() => onSelectTab(tab.id)}
+        onKeyDown={dispatchTerminalTabContextMenu}
+        ref={dragActivatorRef}
         type="button"
+        {...dragAttributes}
+        {...dragListeners}
       />
       {identityAccent?.visible ? (
         <span
@@ -224,6 +273,9 @@ export function TerminalTabGroupHeader({
   onContextMenu,
   onToggle,
   presentation,
+  dragActivatorRef,
+  dragAttributes,
+  dragListeners,
 }: {
   active?: boolean;
   collapsed: boolean;
@@ -231,7 +283,7 @@ export function TerminalTabGroupHeader({
   onContextMenu: (event: ReactMouseEvent) => void;
   onToggle: () => void;
   presentation?: TerminalTabPresentation;
-}) {
+} & TerminalTabDragActivatorProps) {
   return (
     <button
       aria-expanded={!collapsed}
@@ -244,10 +296,14 @@ export function TerminalTabGroupHeader({
           ? "border-sky-500/40 bg-[var(--surface-selected)] text-sky-800 ring-1 ring-sky-400/20 dark:border-sky-300/30 dark:text-sky-100"
           : "border-transparent bg-transparent text-zinc-700 hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] dark:text-zinc-200",
       )}
+      onKeyDown={dispatchTerminalTabContextMenu}
       onClick={onToggle}
       onContextMenu={onContextMenu}
+      ref={dragActivatorRef}
       title={`${group.title} (${group.tabs.length})`}
       type="button"
+      {...dragAttributes}
+      {...dragListeners}
     >
       <span
         aria-hidden="true"
@@ -289,12 +345,17 @@ export function TerminalTabContextMenuItems({
   onCopyWorkspaceFilePath,
   onReloadWorkspaceFile,
   onRequestEditIdentity,
+  onRequestCreateGroup,
+  onMoveToGroup,
+  onRemoveFromGroup,
+  onMoveWithinGroup,
   onRequestRename,
   onRevealWorkspaceFileInSftp,
   onSelectTab,
   runMenuAction,
   tab,
   tabs,
+  availableGroups,
 }: {
   activeTabId: string;
   group: TerminalTabGroup | undefined;
@@ -302,12 +363,17 @@ export function TerminalTabContextMenuItems({
   onCopyWorkspaceFilePath?: (tab: WorkspaceFileTab) => void;
   onReloadWorkspaceFile?: (tabId: string) => void;
   onRequestEditIdentity?: (group: TerminalTabGroup) => void;
+  onRequestCreateGroup?: (tabId: string) => void;
+  onMoveToGroup?: (tabId: string, groupId: string) => void;
+  onRemoveFromGroup?: (tabId: string) => void;
+  onMoveWithinGroup?: (tabId: string, direction: "before" | "after") => void;
   onRequestRename: (tab: TerminalTab) => void;
   onRevealWorkspaceFileInSftp?: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
   runMenuAction: (action?: () => void) => void;
   tab: TerminalTab;
   tabs: TerminalTab[];
+  availableGroups?: TerminalTabGroup[];
 }) {
   const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
   const rightTabIds =
@@ -365,6 +431,38 @@ export function TerminalTabContextMenuItems({
         label="重命名标签"
         onClick={() => runMenuAction(() => onRequestRename(tab))}
       />
+      {onRequestCreateGroup ? (
+        <TerminalTabMenuItem
+          label="新建标签组…"
+          onClick={() => runMenuAction(() => onRequestCreateGroup(tab.id))}
+        />
+      ) : null}
+      {availableGroups?.some((candidate) => candidate.id !== group?.id) ? (
+        <TerminalTabMoveToGroupMenu
+          groups={availableGroups.filter((candidate) => candidate.id !== group?.id)}
+          onMoveToGroup={(groupId) =>
+            runMenuAction(() => onMoveToGroup?.(tab.id, groupId))
+          }
+        />
+      ) : null}
+      {group?.grouped && onRemoveFromGroup ? (
+        <TerminalTabMenuItem
+          label="移出标签组"
+          onClick={() => runMenuAction(() => onRemoveFromGroup(tab.id))}
+        />
+      ) : null}
+      {group?.grouped && onMoveWithinGroup ? (
+        <>
+          <TerminalTabMenuItem
+            label="组内向左移动"
+            onClick={() => runMenuAction(() => onMoveWithinGroup(tab.id, "before"))}
+          />
+          <TerminalTabMenuItem
+            label="组内向右移动"
+            onClick={() => runMenuAction(() => onMoveWithinGroup(tab.id, "after"))}
+          />
+        </>
+      ) : null}
       {group && !group.grouped && isTerminalSessionTab(tab) ? (
         <TerminalTabMenuItem
           disabled={!onRequestEditIdentity}
@@ -408,6 +506,8 @@ export function TerminalTabGroupContextMenuItems({
   group,
   onCloseTabs,
   onRequestEdit,
+  onMoveGroup,
+  onUngroup,
   runMenuAction,
   tabs,
   toggleTabGroup,
@@ -416,6 +516,8 @@ export function TerminalTabGroupContextMenuItems({
   group: TerminalTabGroup;
   onCloseTabs: (tabIds: string[]) => void;
   onRequestEdit?: (group: TerminalTabGroup) => void;
+  onMoveGroup?: (groupId: string, direction: "before" | "after") => void;
+  onUngroup?: (groupId: string) => void;
   runMenuAction: (action?: () => void) => void;
   tabs: TerminalTab[];
   toggleTabGroup: (groupId: string) => void;
@@ -445,187 +547,236 @@ export function TerminalTabGroupContextMenuItems({
       <TerminalTabMenuItem
         danger
         disabled={otherTabIds.length === 0}
-        label="关闭其他分组"
+        label="关闭组外其它标签"
         onClick={() => runMenuAction(() => onCloseTabs(otherTabIds))}
       />
+      {onMoveGroup ? (
+        <>
+          <TerminalTabMenuItem
+            label="整组向左移动"
+            onClick={() => runMenuAction(() => onMoveGroup(group.id, "before"))}
+          />
+          <TerminalTabMenuItem
+            label="整组向右移动"
+            onClick={() => runMenuAction(() => onMoveGroup(group.id, "after"))}
+          />
+        </>
+      ) : null}
+      {onUngroup ? (
+        <TerminalTabMenuItem
+          label="取消分组但保留标签"
+          onClick={() => runMenuAction(() => onUngroup(group.id))}
+        />
+      ) : null}
     </>
   );
 }
 
-export function CloseTabsConfirmationDialog({
-  onClose,
-  onConfirm,
-  tabCount,
+/**
+ * “移动到标签组”使用独立 portal，避免根菜单的 overflow:hidden 截断长组列表；
+ * 子菜单以 fixed 坐标翻转到视口内，并把方向键焦点限制在自身菜单层。
+ */
+function TerminalTabMoveToGroupMenu({
+  groups,
+  onMoveToGroup,
 }: {
-  onClose: () => void;
-  onConfirm: () => void;
-  tabCount: number;
+  groups: readonly TerminalTabGroup[];
+  onMoveToGroup: (groupId: string) => void;
 }) {
-  return (
-    <ModalShell
-      backdrop="solid"
-      footer={
-        <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            取消
-          </Button>
-          <Button onClick={onConfirm} type="button" variant="danger">
-            关闭标签
-          </Button>
-        </>
-      }
-      description={`将关闭 ${tabCount} 个终端标签。`}
-      onClose={onClose}
-      open={tabCount > 0}
-      size="compact"
-      title="确认关闭标签"
-    >
-      <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
-        当前标签内的会话会结束。
-      </div>
-    </ModalShell>
-  );
-}
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
 
-export function CloseWorkspaceFileTabsConfirmationDialog({
-  dirtyTabCount,
-  onClose,
-  onConfirm,
-  tabCount,
-}: {
-  dirtyTabCount: number;
-  onClose: () => void;
-  onConfirm: () => void;
-  tabCount: number;
-}) {
-  return (
-    <ModalShell
-      footer={
-        <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            取消
-          </Button>
-          <Button onClick={onConfirm} type="button" variant="danger">
-            放弃修改并关闭
-          </Button>
-        </>
-      }
-      description={`将关闭 ${tabCount} 个标签，其中 ${dirtyTabCount} 个文件有未保存修改。`}
-      onClose={onClose}
-      open={tabCount > 0}
-      size="compact"
-      title="关闭未保存文件"
-    >
-      <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
-        未保存的文件修改会丢失。
-      </div>
-    </ModalShell>
-  );
-}
+  /** 根据触发按钮和实际子菜单尺寸选择左右、上下方向，防止窄窗口溢出。 */
+  const updatePosition = () => {
+    const trigger = triggerRef.current;
+    const submenu = submenuRef.current;
+    if (!trigger) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const submenuRect = submenu?.getBoundingClientRect();
+    const width = submenuRect?.width || 232;
+    const height = submenuRect?.height || Math.min(window.innerHeight * 0.7, 360);
+    const margin = 8;
+    const placeRight = triggerRect.right + margin + width <= window.innerWidth - margin;
+    const left = placeRight
+      ? triggerRect.right + margin
+      : Math.max(margin, triggerRect.left - margin - width);
+    const top = Math.min(
+      Math.max(margin, triggerRect.top),
+      Math.max(margin, window.innerHeight - height - margin),
+    );
+    setPosition({ left: Math.round(left), top: Math.round(top) });
+  };
 
-export function TerminalTabRenameDialog({
-  onClose,
-  onRenameTab,
-  tab,
-}: {
-  onClose: () => void;
-  onRenameTab: (tabId: string, title: string) => void;
-  tab: TerminalTab | null;
-}) {
-  const [title, setTitle] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  /** 打开后先定位再把焦点交给第一个可用组，保持菜单键盘操作连续。 */
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const frame = window.requestAnimationFrame(() => {
+      submenuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')
+        ?.focus();
+    });
+    const handleViewportChange = () => updatePosition();
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [open]);
 
-  useEffect(() => {
-    if (!tab) {
+  /** 子菜单层只在自身可用项之间循环焦点，Escape/左键返回触发项。 */
+  const handleSubmenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menuItems = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not([disabled])',
+      ),
+    );
+    const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (menuItems.length === 0) return;
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      menuItems[(currentIndex + delta + menuItems.length) % menuItems.length]?.focus();
       return;
     }
-
-    setTitle(tab.title);
-    setError(null);
-  }, [tab]);
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!tab) {
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      (event.key === "Home" ? menuItems[0] : menuItems[menuItems.length - 1])?.focus();
       return;
     }
-
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setError("请输入标签名称。");
+    if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
       return;
     }
-
-    if (trimmedTitle !== tab.title) {
-      onRenameTab(tab.id, trimmedTitle);
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      event.stopPropagation();
     }
-    onClose();
   };
 
   return (
-    <ModalShell
-      onClose={onClose}
-      open={Boolean(tab)}
-      size="compact"
-      title="重命名标签"
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Pencil className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            标签信息
-          </div>
-          <label className="mt-4 block">
-            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              标签名称
-            </span>
-            <input
-              autoFocus
-              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
-              onChange={(event) => {
-                setTitle(event.currentTarget.value);
-                setError(null);
+    <>
+      <div className="relative" role="none">
+        <TerminalTabMenuItem
+          ariaExpanded={open}
+          ariaHasPopup="menu"
+          buttonRef={triggerRef}
+          label="移动到标签组"
+          onClick={() => setOpen(true)}
+          onMouseEnter={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight" || event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setOpen(true);
+            }
+            if (event.key === "Escape" || event.key === "ArrowLeft") {
+              setOpen(false);
+            }
+          }}
+          rightIcon={<ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-65" />}
+        />
+      </div>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label="移动到标签组"
+              className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed z-[1000] w-56 max-h-[min(70vh,360px)] overflow-y-auto"
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
               }}
-              placeholder="例如：生产日志"
-              value={title}
-            />
-          </label>
-          {error ? (
-            <p
-              className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
-              role="alert"
+              onKeyDown={handleSubmenuKeyDown}
+              ref={submenuRef}
+              role="menu"
+              style={{ left: position.left, top: position.top }}
             >
-              {error}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose} type="button" variant="ghost">
-            取消
-          </Button>
-          <Button disabled={!title.trim()} type="submit" variant="primary">
-            保存标签
-          </Button>
-        </div>
-      </form>
-    </ModalShell>
+              <div className="px-2 py-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                选择标签组
+              </div>
+              {groups.map((group) => (
+                <TerminalTabMenuItem
+                  key={group.id}
+                  label={`移入「${group.title}」`}
+                  onClick={() => onMoveToGroup(group.id)}
+                />
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
+/** 菜单项统一处理方向键焦点移动，同时保留浏览器原生 Enter/Space click 语义。 */
 function TerminalTabMenuItem({
   danger = false,
   disabled,
   label,
   onClick,
+  onKeyDown,
+  onMouseEnter,
+  ariaExpanded,
+  ariaHasPopup,
+  buttonRef,
+  rightIcon,
 }: {
   danger?: boolean;
   disabled?: boolean;
   label: string;
   onClick: () => void;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  onMouseEnter?: () => void;
+  ariaExpanded?: boolean;
+  ariaHasPopup?: boolean | "menu";
+  buttonRef?: Ref<HTMLButtonElement>;
+  rightIcon?: ReactNode;
 }) {
+  /** 在当前 menu 层内移动焦点，避免依赖浏览器对 role=menu 的默认实现。 */
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented) return;
+    if (
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    ) {
+      return;
+    }
+    const menu = event.currentTarget.closest<HTMLElement>('[role="menu"]');
+    if (!menu) return;
+    const items = Array.from(
+      menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
+    ).filter((item) => item.closest('[role="menu"]') === menu);
+    const index = items.indexOf(event.currentTarget);
+    if (index < 0 || items.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
+            items.length;
+    items[nextIndex]?.focus();
+  };
+
   return (
     <button
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHasPopup}
       className={cn(
         terminalTabMenuItemClassName,
         danger
@@ -634,109 +785,19 @@ function TerminalTabMenuItem({
       )}
       disabled={disabled}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      onMouseEnter={onMouseEnter}
+      ref={buttonRef}
       role="menuitem"
       type="button"
     >
       <span className="kerminal-context-menu-label">{label}</span>
+      {ariaHasPopup ? (
+        <span className="sr-only">子菜单</span>
+      ) : null}
+      {rightIcon}
     </button>
   );
-}
-
-export function buildTerminalTabGroups(
-  tabs: TerminalTab[],
-  preferences: TerminalTabGroupPreferences = {},
-  options: TerminalTabGroupBuildOptions = {},
-): TerminalTabGroup[] {
-  const orderedGroupIds: string[] = [];
-  const tabsByGroupId = new Map<string, TerminalTab[]>();
-  const panesById = new Map(
-    (options.panes ?? []).map((pane) => [pane.id, pane]),
-  );
-
-  for (const tab of tabs) {
-    const groupId = resolveTerminalTabGroupId(tab, panesById);
-    if (!tabsByGroupId.has(groupId)) {
-      orderedGroupIds.push(groupId);
-      tabsByGroupId.set(groupId, []);
-    }
-    tabsByGroupId.get(groupId)?.push(tab);
-  }
-
-  return orderedGroupIds.map((groupId) => {
-    const groupTabs = tabsByGroupId.get(groupId) ?? [];
-    const preference = preferences[groupId];
-    const title =
-      preference?.title?.trim() ||
-      defaultTerminalTabGroupTitle(groupId, groupTabs, options.machineGroups);
-    const identityAccent = resolveTerminalTabIdentityAccent({
-      groupId,
-      preference,
-      tabCount: groupTabs.length,
-    });
-    const paletteToken = resolveTerminalTabIdentityPaletteToken(
-      identityAccent.color,
-    );
-    return {
-      color: identityAccent.color,
-      colorLabel: paletteToken.label,
-      grouped: groupTabs.length > 1,
-      id: groupId,
-      identityAccent,
-      ...(preference ? { preference } : {}),
-      tabs: groupTabs,
-      title,
-    };
-  });
-}
-
-function resolveTerminalTabGroupId(
-  tab: TerminalTab,
-  panesById: Map<string, TerminalPane>,
-) {
-  if (isWorkspaceFileTab(tab) && tab.target.kind !== "local") {
-    return tab.target.hostId;
-  }
-
-  if (isTerminalSessionTab(tab)) {
-    const firstRemoteHostId = collectPaneIds(tab.layout)
-      .map((paneId) => panesById.get(paneId)?.remoteHostId)
-      .find((remoteHostId): remoteHostId is string => Boolean(remoteHostId));
-    if (firstRemoteHostId) {
-      return firstRemoteHostId;
-    }
-  }
-
-  return tab.machineId;
-}
-
-function defaultTerminalTabGroupTitle(
-  groupId: string,
-  groupTabs: TerminalTab[],
-  machineGroups: MachineGroup[] | undefined,
-) {
-  const firstTab = groupTabs[0];
-  if (!firstTab) {
-    return groupId;
-  }
-  if (firstTab.machineId === groupId) {
-    return firstTab.title;
-  }
-  return findMachineGroupTitle(machineGroups, groupId) ?? firstTab.title;
-}
-
-function findMachineGroupTitle(
-  machineGroups: MachineGroup[] | undefined,
-  machineId: string,
-) {
-  for (const group of machineGroups ?? []) {
-    const machine = group.machines.find(
-      (candidate) => candidate.id === machineId,
-    );
-    if (machine) {
-      return machine.name;
-    }
-  }
-  return undefined;
 }
 
 export function clampContextMenuPosition(

@@ -17,7 +17,6 @@ import {
 import { Button } from "../../components/ui/button";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
-import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
 import {
   cancelSftpTransfer,
   listSftpTransfers,
@@ -180,7 +179,6 @@ export function SftpTransferWorkbench({
             ),
           );
           await waitForTransferScopeIdle(transferViewScope);
-          await closeExternalSshLaunch(externalLaunchId);
         } catch (nextError) {
           setQueueError(buildSftpTransferQueueError(nextError));
           throw nextError;

@@ -5,7 +5,7 @@ import {
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
-import type { MachineGroup, TerminalTab } from "./types";
+import type { MachineGroup, TerminalPane, TerminalTab } from "./types";
 import {
   addPersistentSidebarMachines,
   buildMachineGroups,
@@ -23,6 +23,7 @@ interface WorkspaceProfileStateInput {
   machineGroups: MachineGroup[];
   removedSidebarMachineIds: string[];
   selectedMachineId: string;
+  terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
 
@@ -38,6 +39,7 @@ interface RemoteHostTreeStateInput {
   activeTabId: string;
   machineGroups: MachineGroup[];
   selectedMachineId: string;
+  terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
 
@@ -82,6 +84,7 @@ export function updateWorkspaceProfilesState(
       allowPendingActiveTabSelection: true,
       fallbackSelectedMachineId: state.selectedMachineId,
       machineGroups,
+      terminalPanes: state.terminalPanes,
       terminalTabs: state.terminalTabs,
     }),
   };
@@ -108,6 +111,7 @@ export function updateRemoteHostTreeState(
       allowPendingActiveTabSelection: false,
       fallbackSelectedMachineId: state.selectedMachineId,
       machineGroups,
+      terminalPanes: state.terminalPanes,
       terminalTabs: state.terminalTabs,
     }),
   };

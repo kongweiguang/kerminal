@@ -78,6 +78,7 @@ describe("workspaceSelectionModel", () => {
         fallbackSelectedMachineId: "local-pwsh",
         machineGroups: [],
         selectedMachineId: "missing-selected",
+        terminalPanes: [],
         terminalTabs: [terminalTab],
       }),
     ).toBe("host-pending");
@@ -90,6 +91,7 @@ describe("workspaceSelectionModel", () => {
         fallbackSelectedMachineId: "local-pwsh",
         machineGroups,
         selectedMachineId: "host-prod",
+        terminalPanes: [],
         terminalTabs: [],
       }),
     ).toBe("");
@@ -100,6 +102,7 @@ describe("workspaceSelectionModel", () => {
       activeTabId: terminalTab.id,
       fallbackSelectedMachineId: "",
       machineGroups: [],
+      terminalPanes: [],
       terminalTabs: [terminalTab],
     };
 
@@ -130,6 +133,7 @@ describe("workspaceSelectionModel", () => {
           title: "Transfer",
         },
         machineGroups,
+        [],
       ),
     ).toBe("host-prod");
   });
@@ -148,7 +152,43 @@ describe("workspaceSelectionModel", () => {
           title: "app.yaml",
         },
         machineGroups,
+        [],
       ),
     ).toBe("host-prod");
+  });
+
+  it("selects a workspace-scoped local terminal without a sidebar machine", () => {
+    const tab: TerminalTab = {
+      id: "tab-local-1",
+      layout: { paneId: "pane-local-1", type: "pane" },
+      machineId: "machine-local-1",
+      title: "Git Bash",
+    };
+    const panes = [
+      {
+        id: "pane-local-1",
+        lines: [],
+        localMachineScope: "workspace" as const,
+        machineId: "machine-local-1",
+        mode: "local" as const,
+        prompt: "PS>",
+        status: "online" as const,
+        title: "Git Bash",
+      },
+    ];
+
+    expect(selectedMachineIdFromWorkspaceTab(tab, [], panes)).toBe(
+      "machine-local-1",
+    );
+    expect(
+      selectedMachineIdForUpdatedGroups({
+        activeTabId: tab.id,
+        allowPendingActiveTabSelection: false,
+        fallbackSelectedMachineId: "",
+        machineGroups: [],
+        terminalPanes: panes,
+        terminalTabs: [tab],
+      }),
+    ).toBe("machine-local-1");
   });
 });

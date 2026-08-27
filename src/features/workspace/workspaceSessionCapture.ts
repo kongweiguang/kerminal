@@ -1,7 +1,10 @@
+// @author kongweiguang
+
 import type {
   MachineGroup,
   TerminalPane,
   TerminalTab,
+  TerminalTabGroups,
   TerminalTabGroupPreferences,
 } from "./types";
 import { sidebarMachinesForWorkspaceSession } from "./workspaceMachineModel";
@@ -18,6 +21,7 @@ export interface WorkspaceSessionCaptureInput {
   selectedMachineId: string;
   shellLayout?: WorkspaceShellLayout;
   terminalPanes: TerminalPane[];
+  terminalTabGroups?: TerminalTabGroups;
   terminalTabGroupPreferences: TerminalTabGroupPreferences;
   terminalTabs: TerminalTab[];
 }
@@ -33,6 +37,7 @@ export function captureWorkspaceSession(
     selectedMachineId: input.selectedMachineId,
     shellLayout: input.shellLayout,
     sidebarMachines: sidebarMachinesForWorkspaceSession(input.machineGroups),
+    terminalTabGroups: input.terminalTabGroups ?? {},
     terminalPanes: input.terminalPanes,
     terminalTabGroupPreferences: input.terminalTabGroupPreferences,
     terminalTabs: input.terminalTabs,
@@ -53,6 +58,7 @@ export function workspaceSessionStableKey(
     selectedMachineId: input.selectedMachineId,
     shellLayout: input.shellLayout,
     sidebarMachines: sidebarMachinesForWorkspaceSession(input.machineGroups),
+    terminalTabGroups: input.terminalTabGroups ?? {},
     terminalPanes: input.terminalPanes.map(
       terminalPaneWithoutVolatileSessionFields,
     ),

@@ -63,12 +63,12 @@ type WorkspaceTerminalSurfaceProps = {
     request: BroadcastCommandRequest,
   ) => Promise<BroadcastCommandResult>;
   onCreateSftpHost?: (request: SftpTransferCreateHostRequest) => void;
-  onCloseConfirmedTab: (tabId: string) => void;
+  onCloseConfirmedTabs: (tabIds: string[]) => void;
   onOpenAgentTool: () => void;
   onOpenConnection: () => void;
   onOpenLogs: () => void;
   leftTitleBarInset: number;
-  reserveRightTitleBarControls: boolean;
+  rightTitleBarInset: number;
   resolvedTheme: ResolvedTheme;
   splitDropIndicator?: TerminalSplitDropIndicator | null;
   terminalAppearance: TerminalAppearance;
@@ -148,11 +148,11 @@ export function WorkspaceTerminalSurface({
   machineGroups,
   onBroadcastCommand,
   onCreateSftpHost,
-  onCloseConfirmedTab,
+  onCloseConfirmedTabs,
   onOpenAgentTool,
   onOpenConnection,
   onOpenLogs,
-  reserveRightTitleBarControls,
+  rightTitleBarInset,
   resolvedTheme,
   splitDropIndicator,
   terminalAppearance,
@@ -177,6 +177,56 @@ export function WorkspaceTerminalSurface({
     (state) => state.revealWorkspaceFileInSftp,
   );
   const addTerminalTab = useWorkspaceStore((state) => state.addTerminalTab);
+  const openContainerTerminal = useWorkspaceStore(
+    (state) => state.openContainerTerminal,
+  );
+  const openSerialTerminal = useWorkspaceStore(
+    (state) => state.openSerialTerminal,
+  );
+  const openSshTerminal = useWorkspaceStore((state) => state.openSshTerminal);
+  const openTelnetTerminal = useWorkspaceStore(
+    (state) => state.openTelnetTerminal,
+  );
+  const profiles = useWorkspaceStore((state) => state.profiles);
+  /**
+   * Tab 栏入口始终创建 workspace 范围终端；显式 Profile 只替换运行参数来源，
+   * 不允许这个快捷入口反向生成或选中左栏本地 Machine。
+   */
+  const createWorkspaceTerminal = useCallback(
+    (profileId?: string) =>
+      addTerminalTab({
+        localMachineScope: "workspace",
+        ...(profileId ? { profileId } : {}),
+      }),
+    [addTerminalTab],
+  );
+  /**
+   * 右键菜单只负责按已保存 Machine 类型分派到现有 action；凭据解析、复用和
+   * runtime 回收继续由各协议 slice 负责，避免 TabBar 成为第二套连接实现。
+   */
+  const openSavedTerminal = useCallback(
+    (machineId: string) => {
+      const machine = machineGroups
+        .flatMap((group) => group.machines)
+        .find((candidate) => candidate.id === machineId);
+      if (machine?.kind === "ssh") {
+        openSshTerminal(machineId);
+      } else if (machine?.kind === "telnet") {
+        openTelnetTerminal(machineId);
+      } else if (machine?.kind === "serial") {
+        openSerialTerminal(machineId);
+      } else if (machine?.kind === "dockerContainer") {
+        openContainerTerminal(machineId);
+      }
+    },
+    [
+      machineGroups,
+      openContainerTerminal,
+      openSerialTerminal,
+      openSshTerminal,
+      openTelnetTerminal,
+    ],
+  );
   const focusPane = useWorkspaceStore((state) => state.focusPane);
   const moveTerminalPane = useWorkspaceStore((state) => state.moveTerminalPane);
   const renameTerminalTab = useWorkspaceStore(
@@ -187,8 +237,24 @@ export function WorkspaceTerminalSurface({
     (state) => state.setBroadcastDraft,
   );
   const splitFocusedPane = useWorkspaceStore((state) => state.splitFocusedPane);
-  const updateTerminalTabGroupPreference = useWorkspaceStore(
-    (state) => state.updateTerminalTabGroupPreference,
+  const createTerminalTabGroup = useWorkspaceStore(
+    (state) => state.createTerminalTabGroup,
+  );
+  const updateTerminalTabGroup = useWorkspaceStore(
+    (state) => state.updateTerminalTabGroup,
+  );
+  const setTerminalTabGroupCollapsed = useWorkspaceStore(
+    (state) => state.setTerminalTabGroupCollapsed,
+  );
+  const moveTerminalTab = useWorkspaceStore((state) => state.moveTerminalTab);
+  const moveTerminalTabGroup = useWorkspaceStore(
+    (state) => state.moveTerminalTabGroup,
+  );
+  const removeTerminalTabFromGroup = useWorkspaceStore(
+    (state) => state.removeTerminalTabFromGroup,
+  );
+  const ungroupTerminalTabGroup = useWorkspaceStore(
+    (state) => state.ungroupTerminalTabGroup,
   );
   const updatePaneCurrentCwd = useWorkspaceStore(
     (state) => state.updatePaneCurrentCwd,
@@ -226,12 +292,15 @@ export function WorkspaceTerminalSurface({
       onBroadcastCommand={onBroadcastCommand}
       onBroadcastDraftChange={setBroadcastDraft}
       onClosePane={closePane}
-      onCloseTab={onCloseConfirmedTab}
-      onCreateTerminal={() => addTerminalTab()}
+      onCloseTabs={onCloseConfirmedTabs}
+      onCreateTerminal={createWorkspaceTerminal}
       onFocusPane={focusPane}
       onOpenAgentTool={onOpenAgentTool}
       onOpenConnection={onOpenConnection}
+      onOpenSavedTerminal={openSavedTerminal}
       onMovePane={moveTerminalPane}
+      onMoveTerminalTab={moveTerminalTab}
+      onMoveTerminalTabGroup={moveTerminalTabGroup}
       onPaneConnectionStateChange={(paneId, state) =>
         updatePaneStatus(paneId, paneStatusForConnectionState(state))
       }
@@ -241,9 +310,13 @@ export function WorkspaceTerminalSurface({
       onOpenLogs={onOpenLogs}
       onRevealWorkspaceFileInSftp={revealWorkspaceFileInSftp}
       onRenameTab={renameTerminalTab}
-      onUpdateTabGroupPreference={updateTerminalTabGroupPreference}
+      onCreateTerminalTabGroup={createTerminalTabGroup}
+      onUpdateTerminalTabGroup={updateTerminalTabGroup}
+      onSetTerminalTabGroupCollapsed={setTerminalTabGroupCollapsed}
+      onRemoveTerminalTabFromGroup={removeTerminalTabFromGroup}
+      onUngroupTerminalTabGroup={ungroupTerminalTabGroup}
       leftTitleBarInset={leftTitleBarInset}
-      reserveRightTitleBarControls={reserveRightTitleBarControls}
+      rightTitleBarInset={rightTitleBarInset}
       resolvePaneLines={resolvePaneLines}
       resolvePaneOutputHistory={resolvePaneOutputHistory}
       renderCustomTab={(tab, active) =>
@@ -275,9 +348,11 @@ export function WorkspaceTerminalSurface({
       onSelectTab={selectTab}
       onSplitPane={splitFocusedPane}
       panes={terminalWorkspace.terminalPanes}
+      profiles={profiles}
       resolvedTheme={resolvedTheme}
       splitDropIndicator={splitDropIndicator}
       tabs={terminalWorkspace.terminalTabs}
+      terminalTabGroups={terminalWorkspace.terminalTabGroups}
       tabGroupPreferences={terminalWorkspace.terminalTabGroupPreferences}
       terminalAppearance={terminalAppearance}
       workspaceFileDirtyState={terminalWorkspace.workspaceFileDirtyState}

@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
+import type { TerminalProfile } from "../../lib/profileApi";
 import type {
   InterfaceDensity,
   ResolvedTheme,
@@ -27,12 +28,13 @@ import {
 import { collectPaneIds } from "../workspace/contracts/index";
 import {
   isTerminalSessionTab,
-  type MachineStatus,
   type MachineGroup,
   type TerminalPane,
   type TerminalSplitDirection,
   type TerminalSplitLayoutSizes,
   type TerminalTab,
+  type TerminalTabGroupDefinition,
+  type TerminalTabGroups,
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
   type WorkspaceFileDirtyState,
@@ -58,6 +60,7 @@ import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import type { ConnectionState } from "./XtermPane.helpers";
 import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
 import { useTerminalTabOverview } from "./TerminalWorkspace.tabOverview";
+import { resolveTerminalTabStatus, sameTerminalTabGroupSnapshot } from "./terminalTabWorkspaceModel";
 import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
@@ -70,13 +73,16 @@ import {
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
 } from "./terminalTabChrome";
+import type {
+  TerminalTabGroupMoveRequest,
+  TerminalTabMoveRequest,
+} from "../workspace/contracts/index";
 
 const terminalContextMenuPanelClassName =
   "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 const EMPTY_PANE_CHROME_SNAPSHOTS: ReturnType<
   typeof terminalChromeRuntimeStore.getSnapshots
 > = Object.freeze([]);
-
 export interface BroadcastCommandRequest {
   command: string;
   data: string;
@@ -97,9 +103,11 @@ interface TerminalWorkspaceProps {
   focusedPaneId: string;
   interfaceDensity?: InterfaceDensity;
   machineGroups?: MachineGroup[];
+  profiles?: TerminalProfile[];
   panes: TerminalPane[];
   resolvedTheme: ResolvedTheme;
   tabs: TerminalTab[];
+  terminalTabGroups?: TerminalTabGroups;
   tabGroupPreferences?: TerminalTabGroupPreferences;
   terminalAppearance: TerminalAppearance;
   onBroadcastCommand: (
@@ -107,11 +115,12 @@ interface TerminalWorkspaceProps {
   ) => Promise<BroadcastCommandResult>;
   onBroadcastDraftChange: (draft: string) => void;
   onClosePane: (paneId: string) => void;
-  onCloseTab: (tabId: string) => void;
-  onCreateTerminal?: () => void;
+  onCloseTabs: (tabIds: string[]) => void;
+  onCreateTerminal?: (profileId?: string) => void;
   onFocusPane: (paneId: string) => void;
   onOpenAgentTool?: () => void;
   onOpenConnection?: () => void;
+  onOpenSavedTerminal?: (machineId: string) => void;
   onRevealWorkspaceFileInSftp?: (tabId: string) => void;
   onMovePane?: (
     sourcePaneId: string,
@@ -138,8 +147,21 @@ interface TerminalWorkspaceProps {
     groupId: string,
     preference: TerminalTabGroupPreference,
   ) => void;
+  onCreateTerminalTabGroup?: (
+    tabId: string,
+    definition?: Partial<TerminalTabGroupDefinition>,
+  ) => string | undefined;
+  onUpdateTerminalTabGroup?: (
+    groupId: string,
+    definition: Partial<TerminalTabGroupDefinition>,
+  ) => void;
+  onSetTerminalTabGroupCollapsed?: (groupId: string, collapsed: boolean) => void;
+  onMoveTerminalTab?: (request: TerminalTabMoveRequest) => void;
+  onMoveTerminalTabGroup?: (request: TerminalTabGroupMoveRequest) => void;
+  onRemoveTerminalTabFromGroup?: (tabId: string) => void;
+  onUngroupTerminalTabGroup?: (groupId: string) => void;
   leftTitleBarInset?: number;
-  reserveRightTitleBarControls?: boolean;
+  rightTitleBarInset?: number;
   resolvePaneLines?: (paneId: string) => string[];
   resolvePaneOutputHistory?: (paneId: string) => string | undefined;
   renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
@@ -169,11 +191,12 @@ export function TerminalWorkspace({
   onBroadcastCommand,
   onBroadcastDraftChange,
   onClosePane,
-  onCloseTab,
+  onCloseTabs,
   onCreateTerminal,
   onFocusPane,
   onOpenAgentTool,
   onOpenConnection,
+  onOpenSavedTerminal,
   onMovePane,
   onPaneConnectionStateChange,
   onPaneCurrentCwdChange,
@@ -183,39 +206,72 @@ export function TerminalWorkspace({
   onRevealWorkspaceFileInSftp,
   onRenameTab,
   onUpdateTabGroupPreference,
-  reserveRightTitleBarControls = true,
+  onCreateTerminalTabGroup,
+  onUpdateTerminalTabGroup,
+  onSetTerminalTabGroupCollapsed,
+  onMoveTerminalTab,
+  onMoveTerminalTabGroup,
+  onRemoveTerminalTabFromGroup,
+  onUngroupTerminalTabGroup,
+  rightTitleBarInset = 112,
   resolvePaneLines,
   resolvePaneOutputHistory,
   renderCustomTab,
   onSelectTab,
   onSplitPane,
   panes,
+  profiles = [],
   resolvedTheme,
   splitDropIndicator,
   tabs,
+  terminalTabGroups,
   tabGroupPreferences = {},
   terminalAppearance,
   workspaceFileDirtyState = {},
 }: TerminalWorkspaceProps) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+  const explicitTabGroups = terminalTabGroups !== undefined;
   const tabGroups = useMemo(
     () =>
-      buildTerminalTabGroups(tabs, tabGroupPreferences, {
-        machineGroups,
-        panes,
-      }),
-    [machineGroups, panes, tabGroupPreferences, tabs],
+      buildTerminalTabGroups(
+        tabs,
+        explicitTabGroups ? terminalTabGroups : tabGroupPreferences,
+        {
+          machineGroups,
+          mode: explicitTabGroups ? "explicit" : "legacy",
+          panes,
+        },
+      ),
+    [
+      explicitTabGroups,
+      machineGroups,
+      panes,
+      tabGroupPreferences,
+      tabs,
+      terminalTabGroups,
+    ],
   );
   const [collapsedTabGroupIds, setCollapsedTabGroupIds] = useState<Set<string>>(
-    () => new Set(),
+    () =>
+      new Set(
+        terminalTabGroups
+          ? Object.entries(terminalTabGroups)
+              .filter(([, definition]) => definition.collapsed)
+              .map(([groupId]) => groupId)
+          : [],
+      ),
   );
   const [contextMenu, setContextMenu] = useState<TerminalTabContextMenu | null>(
     null,
   );
   const [editingTabGroup, setEditingTabGroup] =
     useState<TerminalTabGroup | null>(null);
+  const [creatingGroupForTabId, setCreatingGroupForTabId] = useState<string | null>(
+    null,
+  );
   const [renamingTab, setRenamingTab] = useState<TerminalTab | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
   const panesById = useMemo(
     () => new Map(panes.map((pane) => [pane.id, pane])),
     [panes],
@@ -344,13 +400,27 @@ export function TerminalWorkspace({
       const validIds = new Set(
         tabGroups.filter((group) => group.grouped).map((group) => group.id),
       );
-      const next = new Set([...current].filter((id) => validIds.has(id)));
-      if (next.size === current.size) {
+      // 显式组的折叠状态由 store 定义权威维护；不能只做并集，否则恢复到
+      // collapsed=false 时旧的本地 optimistic 状态会把组错误地重新折叠。
+      const next = terminalTabGroups
+        ? new Set(
+            Object.entries(terminalTabGroups)
+              .filter(
+                ([groupId, definition]) =>
+                  definition.collapsed && validIds.has(groupId),
+              )
+              .map(([groupId]) => groupId),
+          )
+        : new Set([...current].filter((id) => validIds.has(id)));
+      if (
+        next.size === current.size &&
+        [...next].every((groupId) => current.has(groupId))
+      ) {
         return current;
       }
       return next;
     });
-  }, [tabGroups]);
+  }, [tabGroups, terminalTabGroups]);
 
   useEffect(() => {
     if (hasActiveSplit) {
@@ -361,6 +431,26 @@ export function TerminalWorkspace({
     setBroadcastError(null);
   }, [hasActiveSplit]);
 
+  /**
+   * 菜单或其后续 Dialog 关闭时优先回到原触发按钮；若该 Tab 已随动作关闭，
+   * 下一帧改为聚焦新的活动 Tab，避免焦点落到被移除的 portal 节点。
+   */
+  const restoreContextMenuFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const trigger = contextMenuTriggerRef.current;
+      if (trigger?.isConnected) {
+        trigger.focus();
+        return;
+      }
+      const activeTabButton = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-terminal-tab-id]"),
+      )
+        .find((element) => element.dataset.terminalTabId === activeTabId)
+        ?.querySelector<HTMLElement>("button");
+      activeTabButton?.focus();
+    });
+  }, [activeTabId]);
+
   useEffect(() => {
     if (!contextMenu) {
       return undefined;
@@ -369,7 +459,8 @@ export function TerminalWorkspace({
     const close = () => setContextMenu(null);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setContextMenu(null);
+        close();
+        restoreContextMenuFocus();
       }
     };
     window.addEventListener("click", close);
@@ -380,7 +471,7 @@ export function TerminalWorkspace({
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", close);
     };
-  }, [contextMenu]);
+  }, [contextMenu, restoreContextMenuFocus]);
 
   useEffect(() => {
     if (!editingTabGroup) {
@@ -419,6 +510,10 @@ export function TerminalWorkspace({
     if (!menuElement) {
       return;
     }
+
+    menuElement
+      .querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')
+      ?.focus();
 
     const rect = menuElement.getBoundingClientRect();
     const nextPosition = clampContextMenuPosition(
@@ -496,18 +591,29 @@ export function TerminalWorkspace({
   const toggleTabGroup = useCallback((groupId: string) => {
     setCollapsedTabGroupIds((current) => {
       const next = new Set(current);
-      if (next.has(groupId)) {
+      const collapsed = !next.has(groupId);
+      if (!collapsed) {
         next.delete(groupId);
       } else {
         next.add(groupId);
       }
+      onSetTerminalTabGroupCollapsed?.(groupId, collapsed);
       return next;
     });
-  }, []);
+  }, [onSetTerminalTabGroupCollapsed]);
   const openContextMenu = useCallback(
     (event: ReactMouseEvent, menu: TerminalTabContextMenuPayload) => {
       event.preventDefault();
       event.stopPropagation();
+      const eventTarget = event.target as HTMLElement;
+      const currentTarget = event.currentTarget as HTMLElement;
+      // Tab 的 contextmenu 绑定在视觉外壳，实际可聚焦 activator 是其内层按钮；
+      // 组头则直接以 button 触发，因此优先从原始事件目标解析真实按钮。
+      contextMenuTriggerRef.current =
+        eventTarget.closest<HTMLElement>("button") ??
+        (currentTarget.matches("button")
+          ? currentTarget
+          : currentTarget.querySelector<HTMLElement>("button"));
       const position = clampContextMenuPosition(
         event.clientX,
         event.clientY,
@@ -518,10 +624,66 @@ export function TerminalWorkspace({
     },
     [],
   );
-  const runMenuAction = useCallback((action?: () => void) => {
-    setContextMenu(null);
-    action?.();
-  }, []);
+  const moveTabWithinGroup = useCallback(
+    (tabId: string, direction: "before" | "after") => {
+      const group = tabGroups.find((candidate) =>
+        candidate.tabs.some((tab) => tab.id === tabId),
+      );
+      if (!group || !onMoveTerminalTab) return;
+      const index = group.tabs.findIndex((tab) => tab.id === tabId);
+      const target = group.tabs[index + (direction === "before" ? -1 : 1)];
+      if (!target) return;
+      onMoveTerminalTab({
+        position: direction,
+        tabId,
+        targetGroupId: group.id,
+        targetTabId: target.id,
+      });
+    },
+    [onMoveTerminalTab, tabGroups],
+  );
+  const moveTabToGroup = useCallback(
+    (tabId: string, groupId: string) => {
+      const targetGroup = tabGroups.find((group) => group.id === groupId);
+      if (!targetGroup || !onMoveTerminalTab) return;
+      const lastTab = targetGroup.tabs[targetGroup.tabs.length - 1];
+      onMoveTerminalTab({
+        position: "after",
+        tabId,
+        targetGroupId: groupId,
+        ...(lastTab ? { targetTabId: lastTab.id } : {}),
+      });
+    },
+    [onMoveTerminalTab, tabGroups],
+  );
+  const moveGroup = useCallback(
+    (groupId: string, direction: "before" | "after") => {
+      if (!onMoveTerminalTabGroup) return;
+      const index = tabGroups.findIndex((group) => group.id === groupId);
+      const target = tabGroups[index + (direction === "before" ? -1 : 1)];
+      if (!target) return;
+      const targetIndex = target.grouped
+        ? undefined
+        : tabs.findIndex((tab) => tab.id === target.tabs[0]?.id) +
+          (direction === "after" ? 1 : 0);
+      onMoveTerminalTabGroup({
+        groupId,
+        position: direction,
+        ...(target.grouped
+          ? { targetGroupId: target.id }
+          : { targetIndex: Math.max(0, targetIndex ?? 0) }),
+      });
+    },
+    [onMoveTerminalTabGroup, tabGroups, tabs],
+  );
+  const runMenuAction = useCallback(
+    (action?: () => void) => {
+      setContextMenu(null);
+      action?.();
+      restoreContextMenuFocus();
+    },
+    [restoreContextMenuFocus],
+  );
   const requestCloseTabs = useCallback(
     (tabIds: string[], confirmedDirtyFiles = false) => {
       const decision = resolveWorkspaceTabCloseDecision({
@@ -539,12 +701,10 @@ export function TerminalWorkspace({
         setPendingCloseTabIds(decision.tabIds);
         return;
       }
-      for (const tabId of decision.tabIds) {
-        onCloseTab(tabId);
-      }
+      onCloseTabs(decision.tabIds);
     },
     [
-      onCloseTab,
+      onCloseTabs,
       tabs,
       terminalAppearance.confirmCloseTab,
       workspaceFileDirtyState,
@@ -554,11 +714,9 @@ export function TerminalWorkspace({
     if (!pendingCloseTabIds) {
       return;
     }
-    for (const tabId of pendingCloseTabIds) {
-      onCloseTab(tabId);
-    }
+    onCloseTabs(pendingCloseTabIds);
     setPendingCloseTabIds(null);
-  }, [onCloseTab, pendingCloseTabIds]);
+  }, [onCloseTabs, pendingCloseTabIds]);
   const confirmDirtyFileCloseTabs = useCallback(() => {
     if (!pendingDirtyCloseTabIds) {
       return;
@@ -584,6 +742,7 @@ export function TerminalWorkspace({
             {contextMenu.type === "tab" && contextTab ? (
               <TerminalTabContextMenuItems
                 activeTabId={activeTabId}
+                availableGroups={tabGroups.filter((group) => group.grouped)}
                 group={contextTabGroup}
                 onCloseTabs={requestCloseTabs}
                 onCopyWorkspaceFilePath={(tab) => {
@@ -596,9 +755,28 @@ export function TerminalWorkspace({
                   })
                 }
                 onRequestEditIdentity={
-                  onUpdateTabGroupPreference
+                  !explicitTabGroups &&
+                  (onUpdateTerminalTabGroup || onUpdateTabGroupPreference)
                     ? setEditingTabGroup
                     : undefined
+                }
+                onRequestCreateGroup={
+                  onCreateTerminalTabGroup
+                    ? (tabId) => setCreatingGroupForTabId(tabId)
+                    : undefined
+                }
+                onMoveToGroup={
+                  onMoveTerminalTab
+                    ? moveTabToGroup
+                    : undefined
+                }
+                onRemoveFromGroup={
+                  onRemoveTerminalTabFromGroup
+                    ? (tabId) => onRemoveTerminalTabFromGroup(tabId)
+                    : undefined
+                }
+                onMoveWithinGroup={
+                  onMoveTerminalTab ? moveTabWithinGroup : undefined
                 }
                 onRequestRename={setRenamingTab}
                 onRevealWorkspaceFileInSftp={onRevealWorkspaceFileInSftp}
@@ -614,8 +792,14 @@ export function TerminalWorkspace({
                 group={contextTabGroup}
                 onCloseTabs={requestCloseTabs}
                 onRequestEdit={
-                  onUpdateTabGroupPreference ? setEditingTabGroup : undefined
+                  onUpdateTerminalTabGroup
+                    ? setEditingTabGroup
+                    : onUpdateTabGroupPreference
+                      ? setEditingTabGroup
+                      : undefined
                 }
+                onMoveGroup={onMoveTerminalTabGroup ? moveGroup : undefined}
+                onUngroup={onUngroupTerminalTabGroup}
                 runMenuAction={runMenuAction}
                 tabs={tabs}
                 toggleTabGroup={toggleTabGroup}
@@ -626,9 +810,9 @@ export function TerminalWorkspace({
         )
       : null;
   const tabOverviewElement = (
-    <TerminalTabOverviewMenu
-      activeTabId={activeTabId}
-      menuRef={tabOverviewMenuRef}
+      <TerminalTabOverviewMenu
+        activeTabId={activeTabId}
+        menuRef={tabOverviewMenuRef}
       onSelectTab={selectTabFromOverview}
       open={tabOverviewOpen}
       position={tabOverviewPosition}
@@ -650,7 +834,13 @@ export function TerminalWorkspace({
         activeTabId={activeTabId}
         collapsedGroupIds={collapsedTabGroupIds}
         heightClassName={tabBarHeightClass}
+        machineGroups={machineGroups}
+        onCreateTerminal={onCreateTerminal}
+        onOpenConnection={onOpenConnection}
         onOpenContextMenu={openContextMenu}
+        onOpenSavedTerminal={onOpenSavedTerminal}
+        onMoveTerminalTab={onMoveTerminalTab}
+        onMoveTerminalTabGroup={onMoveTerminalTabGroup}
         onRequestCloseTab={(tabId) => requestCloseTabs([tabId])}
         onSelectTab={onSelectTab}
         onToggleGroup={toggleTabGroup}
@@ -658,10 +848,12 @@ export function TerminalWorkspace({
         onWheel={handleTabListWheel}
         overviewButtonRef={tabOverviewButtonRef}
         overviewOpen={tabOverviewOpen}
-        reserveRightTitleBarControls={reserveRightTitleBarControls}
+        profiles={profiles}
+        rightTitleBarInset={rightTitleBarInset}
         shouldShowOverview={shouldShowTabOverview}
         style={tabBarStyle}
         tabGroups={tabGroups}
+        terminalTabGroups={terminalTabGroups}
         tabListRef={tabListRef}
         tabPresentationById={tabPresentationById}
         tabs={tabs}
@@ -672,15 +864,34 @@ export function TerminalWorkspace({
       {contextMenuElement}
       {tabOverviewElement}
       <TerminalTabRenameDialog
-        onClose={() => setRenamingTab(null)}
+        onClose={() => {
+          setRenamingTab(null);
+          restoreContextMenuFocus();
+        }}
         onRenameTab={onRenameTab}
         tab={renamingTab}
       />
       <TerminalTabGroupEditDialog
+        createForTabId={creatingGroupForTabId}
         group={editingTabGroup}
-        onClose={() => setEditingTabGroup(null)}
+        onClose={() => {
+          setEditingTabGroup(null);
+          setCreatingGroupForTabId(null);
+          restoreContextMenuFocus();
+        }}
+        onCreate={(tabId, definition) => {
+          onCreateTerminalTabGroup?.(tabId, definition);
+          setCreatingGroupForTabId(null);
+        }}
         onSave={(groupId, preference) =>
-          onUpdateTabGroupPreference?.(groupId, preference)
+          onUpdateTerminalTabGroup
+            ? onUpdateTerminalTabGroup(groupId, {
+                // 显式传 undefined 让模型覆盖旧颜色并恢复自动派色；不传字段会
+                // 被对象合并误解为“保持旧值”，导致“自动”按钮无法生效。
+                color: preference.color ?? undefined,
+                title: preference.title ?? undefined,
+              })
+            : onUpdateTabGroupPreference?.(groupId, preference)
         }
       />
       <CloseTabsConfirmationDialog
@@ -749,41 +960,5 @@ export function TerminalWorkspace({
         workspacePaddingClass={workspacePaddingClass}
       />
     </main>
-  );
-}
-
-function resolveTerminalTabStatus(
-  tab: TerminalTab,
-  panesById: Map<string, TerminalPane>,
-): MachineStatus {
-  if (!isTerminalSessionTab(tab)) {
-    return "online";
-  }
-  const statuses = collectPaneIds(tab.layout)
-    .map((paneId) => panesById.get(paneId)?.status)
-    .filter((status): status is MachineStatus => Boolean(status));
-  if (statuses.length === 0) {
-    return "offline";
-  }
-  if (statuses.every((status) => status === "online")) {
-    return "online";
-  }
-  if (statuses.every((status) => status === "offline")) {
-    return "offline";
-  }
-  return "warning";
-}
-
-function sameTerminalTabGroupSnapshot(
-  left: TerminalTabGroup,
-  right: TerminalTabGroup,
-) {
-  return (
-    left.id === right.id &&
-    left.title === right.title &&
-    left.color === right.color &&
-    left.grouped === right.grouped &&
-    left.tabs.length === right.tabs.length &&
-    left.tabs.every((tab, index) => tab.id === right.tabs[index]?.id)
   );
 }

@@ -62,6 +62,8 @@ export interface MachineGroup {
 export interface TerminalSessionTab {
   kind?: "terminal";
   id: string;
+  /** 用户显式标签组；它只影响标签栏组织，不参与连接或权限身份。 */
+  tabGroupId?: string;
   title: string;
   machineId: string;
   layout: TerminalLayoutNode;
@@ -70,6 +72,8 @@ export interface TerminalSessionTab {
 export interface SftpTransferWorkspaceTab {
   kind: "sftpTransfer";
   id: string;
+  /** 用户显式标签组；SFTP 与终端可以共享同一组。 */
+  tabGroupId?: string;
   title: string;
   machineId: string;
   leftHostId?: string;
@@ -87,6 +91,8 @@ export type WorkspaceFileSource =
 export interface WorkspaceFileTab {
   kind: "workspaceFile";
   id: string;
+  /** 用户显式标签组；文件 Tab 与主机来源解耦。 */
+  tabGroupId?: string;
   title: string;
   machineId: string;
   target: RemoteTargetRef;
@@ -131,6 +137,18 @@ export type TerminalTabGroupPreferences = Record<
   TerminalTabGroupPreference
 >;
 
+/**
+ * 用户显式标签组定义。组定义不保存成员顺序，成员顺序唯一由 terminalTabs
+ * 扁平数组及每个 Tab 的 tabGroupId 决定，避免连接运行态与视觉组织耦合。
+ */
+export interface TerminalTabGroupDefinition {
+  title: string;
+  color?: TerminalTabGroupColor;
+  collapsed: boolean;
+}
+
+export type TerminalTabGroups = Record<string, TerminalTabGroupDefinition>;
+
 export function isTerminalTabGroupColor(
   value: unknown,
 ): value is TerminalTabGroupColor {
@@ -161,6 +179,7 @@ export function isWorkspaceFileTab(
 export type TerminalSplitDirection = "horizontal" | "vertical";
 export type TerminalSplitPlacement = "after" | "before";
 export type TerminalSplitLayoutSizes = Record<string, number>;
+export type LocalMachineScope = "sidebar" | "workspace";
 
 export type TerminalLayoutNode =
   | {
@@ -194,6 +213,7 @@ export interface TerminalPane {
   prompt: string;
   status: MachineStatus;
   latencyMs?: number;
+  localMachineScope?: LocalMachineScope;
   lines: string[];
   outputHistory?: string;
 }

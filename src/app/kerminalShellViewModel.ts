@@ -11,6 +11,9 @@ import {
   resolveRemoteGroupEditConflict,
 } from "./configDirtyGuardModel";
 
+const RIGHT_TITLE_BAR_ACTION_GAP = 8;
+const WINDOWS_CUSTOM_CONTROL_INSET = 112;
+
 /** 在远程动作 controller 初始化前冻结默认分组与主机目标。 */
 export function buildKerminalShellRemoteTargetModel(
   machineGroups: MachineGroup[],
@@ -52,6 +55,7 @@ interface BuildKerminalShellViewModelOptions {
   settingsLoadError: string | null;
   toolPanelDocked?: boolean;
   windowChrome: WindowChromeModel;
+  workspaceSessionPersistenceNotice: string | null;
 }
 
 /**
@@ -72,7 +76,16 @@ export function buildKerminalShellViewModel({
   settingsLoadError,
   toolPanelDocked = true,
   windowChrome,
+  workspaceSessionPersistenceNotice,
 }: BuildKerminalShellViewModelOptions) {
+  const rightToolRailTitleBarFillWidth =
+    activeTool === null || compactShell || !toolPanelDocked
+      ? 44
+      : interfaceDensity === "spacious"
+        ? 56
+        : interfaceDensity === "compact"
+          ? 44
+          : 48;
   return {
     connectionConfigConflict: resolveConnectionEditConflict({
       editingHost: editingRemoteHost,
@@ -88,17 +101,16 @@ export function buildKerminalShellViewModel({
       group: editingRemoteGroup,
       groups: machineGroups,
     }),
-    reserveRightTitleBarControls: windowChrome.controlMode === "custom",
-    rightToolRailTitleBarFillWidth:
-      activeTool === null || compactShell || !toolPanelDocked
-        ? 44
-        : interfaceDensity === "spacious"
-          ? 56
-          : interfaceDensity === "compact"
-            ? 44
-            : 48,
+    rightTitleBarInset:
+      windowChrome.controlMode === "custom"
+        ? WINDOWS_CUSTOM_CONTROL_INSET
+        : rightToolRailTitleBarFillWidth + RIGHT_TITLE_BAR_ACTION_GAP,
+    rightToolRailTitleBarFillWidth,
     shellNoticeMessage:
-      profileLoadError ?? remoteHostLoadError ?? settingsLoadError,
+      workspaceSessionPersistenceNotice ??
+      profileLoadError ??
+      remoteHostLoadError ??
+      settingsLoadError,
   };
 }
 
@@ -120,6 +132,7 @@ export function useKerminalShellViewModel(
     settingsLoadError,
     toolPanelDocked = true,
     windowChrome,
+    workspaceSessionPersistenceNotice,
   } = options;
   return useMemo(
     () =>
@@ -137,6 +150,7 @@ export function useKerminalShellViewModel(
         settingsLoadError,
         toolPanelDocked,
         windowChrome,
+        workspaceSessionPersistenceNotice,
       }),
     [
       activeTool,
@@ -152,6 +166,7 @@ export function useKerminalShellViewModel(
       settingsLoadError,
       toolPanelDocked,
       windowChrome,
+      workspaceSessionPersistenceNotice,
     ],
   );
 }

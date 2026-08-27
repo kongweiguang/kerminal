@@ -114,9 +114,9 @@ export function registerChromeAndRestoreTests() {
     expect(titleBar).toHaveClass("z-[var(--layer-chrome)]");
     expect(titleBar).not.toHaveClass("kerminal-material-nav");
     expect(titleBar).not.toHaveClass("border-b");
-    expect(screen.getByLabelText("终端标签栏").parentElement).toHaveClass(
-      "kerminal-material-nav",
-    );
+    expect(
+      screen.getByLabelText("终端标签栏").closest(".kerminal-material-nav"),
+    ).not.toBeNull();
   });
 
   it("keeps the terminal navigation width independent from the right tool panel", async () => {
@@ -329,9 +329,9 @@ export function registerChromeAndRestoreTests() {
       screen.queryByRole("complementary", { name: "主机侧边栏" }),
     ).not.toBeInTheDocument();
     expect(shell.style.gridTemplateColumns).toMatch(/^0px 0px /);
-    expect(screen.getByLabelText("终端标签栏").parentElement).toHaveStyle({
-      paddingLeft: "48px",
-    });
+    expect(
+      screen.getByLabelText("终端标签栏").closest(".kerminal-material-nav"),
+    ).toHaveStyle({ paddingLeft: "48px" });
   });
 
   it("applies appearance language and workspace background settings", async () => {
@@ -422,6 +422,7 @@ export function registerChromeAndRestoreTests() {
       activeTabId: "tab-local-3",
       focusedPaneId: "pane-local-3",
       selectedMachineId: "machine-local-3",
+      sidebarMachines: [],
       terminalPanes: [
         {
           args: ["-NoLogo"],
@@ -472,6 +473,7 @@ export function registerChromeAndRestoreTests() {
       activeTabId: "tab-file-1",
       focusedPaneId: "",
       selectedMachineId: "",
+      sidebarMachines: [],
       terminalPanes: [],
       terminalTabs: [
         {
@@ -543,6 +545,7 @@ export function registerChromeAndRestoreTests() {
       activeTabId: "tab-file-editable",
       focusedPaneId: "",
       selectedMachineId: "",
+      sidebarMachines: [],
       terminalPanes: [],
       terminalTabs: [
         {
@@ -614,6 +617,7 @@ export function registerChromeAndRestoreTests() {
       activeTabId: "tab-file-editable",
       focusedPaneId: "",
       selectedMachineId: "",
+      sidebarMachines: [],
       terminalPanes: [],
       terminalTabs: [
         {
@@ -714,6 +718,7 @@ export function registerChromeAndRestoreTests() {
       activeTabId: "tab-local-1",
       focusedPaneId: "pane-local-1",
       selectedMachineId: "machine-local-1",
+      sidebarMachines: [],
       terminalPanes: [
         {
           id: "pane-local-1",

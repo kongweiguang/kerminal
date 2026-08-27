@@ -28,10 +28,7 @@ export function registerExternalSftpTabCloseHandler(
 export function prepareExternalSftpTabClose(
   tabId: string,
 ): ExternalSftpTabClosePreparation {
-  const preparation = handlers.get(tabId)?.() ?? { canClose: false };
-  if (preparation.cleanup) {
-    // cleanup 由 owner 在 handler 内启动；关闭流程只消费同步确认，不能被远端取消/轮询拖住。
-    void preparation.cleanup.catch(() => undefined);
-  }
-  return { canClose: preparation.canClose };
+  // cleanup 必须交还批量关闭协调器等待；只有成功项才能进入 store、Agent 与
+  // external owner 的后续清理，避免远端取消失败后 UI 仍错误移除对应 Tab。
+  return handlers.get(tabId)?.() ?? { canClose: false };
 }

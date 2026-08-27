@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { useCallback, useEffect, useRef } from "react";
 import {
   useWorkspaceStore,
@@ -5,6 +7,7 @@ import {
 } from "../features/workspace/workspaceStore";
 import type {
   WorkspaceShellLayout,
+  WorkspaceSessionLoadResult,
   WorkspaceSessionSnapshot,
 } from "../features/workspace/workspaceSession";
 import {
@@ -16,6 +19,7 @@ import type {
   MachineGroup,
   TerminalPane,
   TerminalTab,
+  TerminalTabGroups,
   TerminalTabGroupPreferences,
 } from "../features/workspace/types";
 import {
@@ -32,12 +36,14 @@ interface WorkspaceSessionSnapshotInput {
   selectedMachineId: string;
   shellLayout?: WorkspaceShellLayout;
   terminalPanes: TerminalPane[];
+  terminalTabGroups?: TerminalTabGroups;
   terminalTabGroupPreferences: TerminalTabGroupPreferences;
   terminalTabs: TerminalTab[];
 }
 
 interface WorkspaceSessionPersistenceOptions {
   beforeRestore?: () => Promise<void> | void;
+  onPersistenceBlocked?: (message: string | null) => void;
   onShellLayoutRestored?: (shellLayout: WorkspaceShellLayout) => void;
   shellLayout?: WorkspaceShellLayout;
 }
@@ -50,6 +56,7 @@ export function buildWorkspaceSessionSnapshot({
   selectedMachineId,
   shellLayout,
   terminalPanes,
+  terminalTabGroups,
   terminalTabGroupPreferences,
   terminalTabs,
 }: WorkspaceSessionSnapshotInput): WorkspaceSessionSnapshot {
@@ -61,6 +68,7 @@ export function buildWorkspaceSessionSnapshot({
     selectedMachineId,
     shellLayout,
     terminalPanes,
+    terminalTabGroups: terminalTabGroups ?? {},
     terminalTabGroupPreferences,
     terminalTabs,
   });
@@ -74,6 +82,7 @@ export function buildWorkspaceSessionStableKey({
   selectedMachineId,
   shellLayout,
   terminalPanes,
+  terminalTabGroups,
   terminalTabGroupPreferences,
   terminalTabs,
 }: WorkspaceSessionSnapshotInput): string {
@@ -85,13 +94,19 @@ export function buildWorkspaceSessionStableKey({
     selectedMachineId,
     shellLayout,
     terminalPanes,
+    terminalTabGroups: terminalTabGroups ?? {},
     terminalTabGroupPreferences,
     terminalTabs,
   });
 }
 
+/**
+ * 在恢复结果确认安全后才开启保存；任何读取或写入异常都会永久关闭本次挂载的
+ * 自动写入，避免 pagehide/卸载阶段的补写把用户无法解析的 session 覆盖掉。
+ */
 export function useWorkspaceSessionPersistence({
   beforeRestore,
+  onPersistenceBlocked,
   onShellLayoutRestored,
   shellLayout,
 }: WorkspaceSessionPersistenceOptions = {}) {
@@ -107,10 +122,12 @@ export function useWorkspaceSessionPersistence({
   const workspaceSessionSaveInFlightRef = useRef<Promise<void> | null>(null);
   const volatileWorkspaceSessionDirtyRef = useRef(false);
   const canSaveEmptyWorkspaceSessionRef = useRef(false);
+  const workspaceSessionPersistenceBlockedRef = useRef(false);
   const latestShellLayoutRef = useRef<WorkspaceShellLayout | undefined>(
     shellLayout,
   );
   const beforeRestoreRef = useRef(beforeRestore);
+  const onPersistenceBlockedRef = useRef(onPersistenceBlocked);
   const onShellLayoutRestoredRef = useRef(onShellLayoutRestored);
 
   useEffect(() => {
@@ -118,11 +135,41 @@ export function useWorkspaceSessionPersistence({
   }, [beforeRestore]);
 
   useEffect(() => {
+    onPersistenceBlockedRef.current = onPersistenceBlocked;
+  }, [onPersistenceBlocked]);
+
+  useEffect(() => {
     onShellLayoutRestoredRef.current = onShellLayoutRestored;
   }, [onShellLayoutRestored]);
 
+  /**
+   * 持久化失败后保持 fail-closed：清掉排队快照和定时器，避免 pagehide、
+   * 组件卸载或后续 store 变化再次覆盖用户原文件；只向 UI 暴露固定中文消息。
+   */
+  const blockWorkspaceSessionPersistence = useCallback((message: string) => {
+    if (!workspaceSessionPersistenceBlockedRef.current) {
+      workspaceSessionPersistenceBlockedRef.current = true;
+      onPersistenceBlockedRef.current?.(message);
+    }
+    queuedWorkspaceSessionSaveRef.current = null;
+    if (workspaceSessionSaveTimerRef.current !== null) {
+      window.clearTimeout(workspaceSessionSaveTimerRef.current);
+      workspaceSessionSaveTimerRef.current = null;
+    }
+  }, []);
+
+  /** 读取安全或缺失快照后清除旧阻断状态，并让宿主收起告警。 */
+  const allowWorkspaceSessionPersistence = useCallback(() => {
+    if (!workspaceSessionPersistenceBlockedRef.current) {
+      onPersistenceBlockedRef.current?.(null);
+    }
+  }, []);
+
   const enqueueWorkspaceSessionSave = useCallback(
     (session: WorkspaceSessionSnapshot) => {
+      if (workspaceSessionPersistenceBlockedRef.current) {
+        return;
+      }
       if (hasWorkspaceSessionTerminalSurface(session)) {
         canSaveEmptyWorkspaceSessionRef.current = true;
       } else if (!canSaveEmptyWorkspaceSessionRef.current) {
@@ -138,24 +185,37 @@ export function useWorkspaceSessionPersistence({
         while (queuedWorkspaceSessionSaveRef.current) {
           const nextSession = queuedWorkspaceSessionSaveRef.current;
           queuedWorkspaceSessionSaveRef.current = null;
-          await saveWorkspaceSession(nextSession);
+          try {
+            await saveWorkspaceSession(nextSession);
+          } catch {
+            blockWorkspaceSessionPersistence(
+              "工作区会话保存失败，原文件未覆盖；本次运行已停止继续写入。",
+            );
+            break;
+          }
         }
       })().finally(() => {
         if (workspaceSessionSaveInFlightRef.current === saveInFlight) {
           workspaceSessionSaveInFlightRef.current = null;
         }
-        if (queuedWorkspaceSessionSaveRef.current) {
+        if (
+          queuedWorkspaceSessionSaveRef.current &&
+          !workspaceSessionPersistenceBlockedRef.current
+        ) {
           enqueueWorkspaceSessionSave(queuedWorkspaceSessionSaveRef.current);
         }
       });
 
       workspaceSessionSaveInFlightRef.current = saveInFlight;
     },
-    [],
+    [blockWorkspaceSessionPersistence],
   );
 
   const flushWorkspaceSession = useCallback(() => {
     flushPendingTerminalOutputHistoryBuffers();
+    if (workspaceSessionPersistenceBlockedRef.current) {
+      return;
+    }
     const latestState = useWorkspaceStore.getState();
     if (latestState) {
       latestWorkspaceSessionRef.current = buildWorkspaceSessionSnapshotFromState(
@@ -258,7 +318,7 @@ export function useWorkspaceSessionPersistence({
       }))
       .then(async ({ requestedFromStableKey }) => ({
         requestedFromStableKey,
-        session: await loadWorkspaceSession().catch(() => null),
+        session: await loadWorkspaceSession(),
       }))
       .then(({ requestedFromStableKey, session }) => {
         if (disposed) {
@@ -270,15 +330,20 @@ export function useWorkspaceSessionPersistence({
           latestShellLayoutRef.current,
         );
         const responseIsCurrent = requestedFromStableKey === currentStableKey;
-        if (session && responseIsCurrent) {
-          if (!hasWorkspaceSessionTerminalSurface(session)) {
+        if (session.kind === "loaded" && responseIsCurrent) {
+          if (!hasWorkspaceSessionTerminalSurface(session.session)) {
             canSaveEmptyWorkspaceSessionRef.current = true;
           }
-          useWorkspaceStore.getState().restoreWorkspaceSession(session);
-          if (session.shellLayout) {
-            latestShellLayoutRef.current = session.shellLayout;
-            onShellLayoutRestoredRef.current?.(session.shellLayout);
+          useWorkspaceStore.getState().restoreWorkspaceSession(session.session);
+          if (session.session.shellLayout) {
+            latestShellLayoutRef.current = session.session.shellLayout;
+            onShellLayoutRestoredRef.current?.(session.session.shellLayout);
           }
+        }
+        if (session.kind === "loaded" || session.kind === "missing") {
+          allowWorkspaceSessionPersistence();
+        } else {
+          blockWorkspaceSessionPersistence(workspaceSessionLoadBlockedMessage(session));
         }
         workspaceSessionRestoredRef.current = true;
         captureWorkspaceSession(useWorkspaceStore.getState());
@@ -292,7 +357,11 @@ export function useWorkspaceSessionPersistence({
         workspaceSessionSaveTimerRef.current = null;
       }
     };
-  }, [captureWorkspaceSession]);
+  }, [
+    allowWorkspaceSessionPersistence,
+    blockWorkspaceSessionPersistence,
+    captureWorkspaceSession,
+  ]);
 
   useEffect(() => {
     window.addEventListener("pagehide", flushWorkspaceSession);
@@ -315,6 +384,7 @@ function buildWorkspaceSessionSnapshotFromState(
     selectedMachineId: state.selectedMachineId,
     shellLayout,
     terminalPanes: state.terminalPanes,
+    terminalTabGroups: state.terminalTabGroups,
     terminalTabGroupPreferences: state.terminalTabGroupPreferences,
     terminalTabs: state.terminalTabs,
   });
@@ -332,6 +402,7 @@ function buildWorkspaceSessionStableKeyFromState(
     selectedMachineId: state.selectedMachineId,
     shellLayout,
     terminalPanes: state.terminalPanes,
+    terminalTabGroups: state.terminalTabGroups,
     terminalTabGroupPreferences: state.terminalTabGroupPreferences,
     terminalTabs: state.terminalTabs,
   });
@@ -339,4 +410,18 @@ function buildWorkspaceSessionStableKeyFromState(
 
 function hasWorkspaceSessionTerminalSurface(session: WorkspaceSessionSnapshot) {
   return session.terminalTabs.length > 0 || session.terminalPanes.length > 0;
+}
+
+/** 将解码失败映射到不泄露路径、版本细节或底层错误的固定中文提示。 */
+function workspaceSessionLoadBlockedMessage(
+  result: Exclude<WorkspaceSessionLoadResult, { kind: "loaded" | "missing" }>,
+): string {
+  switch (result.kind) {
+    case "unsupported":
+      return "工作区会话版本较新，原文件未覆盖；本次运行不会持久化标签变化。";
+    case "invalid":
+      return "工作区会话内容无法验证，原文件未覆盖；本次运行不会持久化标签变化。";
+    case "transport-failure":
+      return "工作区会话读取失败，原文件未覆盖；本次运行不会持久化标签变化。";
+  }
 }

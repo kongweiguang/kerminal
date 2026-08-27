@@ -371,7 +371,7 @@ export function registerPaneAndContentTests() {
     expect(workspace.firstElementChild).toHaveClass("h-9");
   });
 
-  it("does not reserve right titlebar control space when controls are on macOS left", () => {
+  it("reserves only the right tool rail when window controls are on macOS left", () => {
     const restoreTabListMetrics = mockTabListMetrics({
       clientWidth: 320,
       scrollWidth: 960,
@@ -382,21 +382,24 @@ export function registerPaneAndContentTests() {
         <TerminalWorkspace
           {...workspaceProps({
             activeTabId: "tab-many-1",
-            reserveRightTitleBarControls: false,
+            rightTitleBarInset: 64,
             tabs: manyTerminalTabs,
           })}
         />,
       );
 
-      const tabBar = screen.getByLabelText("终端标签栏").parentElement;
+      const tabBar = screen
+        .getByLabelText("终端标签栏")
+        .closest(".kerminal-material-nav");
       const overviewButton = screen.getByRole("button", {
         name: "查看所有标签",
       });
 
-      expect(tabBar).toHaveClass("pr-2");
-      expect(tabBar).not.toHaveClass("pr-40");
-      expect(overviewButton).toHaveClass("right-3");
-      expect(overviewButton).not.toHaveClass("right-28");
+      expect(tabBar).toHaveStyle({ paddingRight: "64px" });
+      expect(overviewButton.parentElement).toHaveAttribute(
+        "data-terminal-tab-actions",
+      );
+      expect(overviewButton.className).not.toContain("right-");
     } finally {
       restoreTabListMetrics();
     }
@@ -407,7 +410,9 @@ export function registerPaneAndContentTests() {
       <TerminalWorkspace {...workspaceProps({ leftTitleBarInset: 112 })} />,
     );
 
-    const tabBar = screen.getByLabelText("终端标签栏").parentElement;
+    const tabBar = screen
+      .getByLabelText("终端标签栏")
+      .closest(".kerminal-material-nav");
 
     expect(tabBar).toHaveStyle({ paddingLeft: "112px" });
   });
@@ -498,23 +503,23 @@ export function registerPaneAndContentTests() {
 
   it("allows closing the only tab from the tab close button", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
 
-    render(<TerminalWorkspace {...workspaceProps({ onCloseTab })} />);
+    render(<TerminalWorkspace {...workspaceProps({ onCloseTabs })} />);
 
     await user.click(
       screen.getByRole("button", { name: "关闭 本地 PowerShell tab" }),
     );
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
-    expect(onCloseTab).toHaveBeenCalledWith("tab-local");
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-local"]);
   });
 
   it("allows closing the only tab from the right-click menu", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
 
-    render(<TerminalWorkspace {...workspaceProps({ onCloseTab })} />);
+    render(<TerminalWorkspace {...workspaceProps({ onCloseTabs })} />);
 
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "本地 PowerShell" }),
@@ -525,12 +530,12 @@ export function registerPaneAndContentTests() {
     await user.click(closeMenuItem);
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
-    expect(onCloseTab).toHaveBeenCalledWith("tab-local");
+    expect(onCloseTabs).toHaveBeenCalledWith(["tab-local"]);
   });
 
   it("confirms before closing a dirty workspace file tab", async () => {
     const user = userEvent.setup();
-    const onCloseTab = vi.fn();
+    const onCloseTabs = vi.fn();
     const fileTab: TerminalTab = {
       access: "editable",
       id: "tab-file-dirty",
@@ -547,7 +552,7 @@ export function registerPaneAndContentTests() {
         {...workspaceProps({
           activeTabId: fileTab.id,
           focusedPaneId: "",
-          onCloseTab,
+          onCloseTabs,
           panes: [],
           renderCustomTab: () => <div>file surface</div>,
           tabs: [fileTab],
@@ -562,12 +567,12 @@ export function registerPaneAndContentTests() {
       screen.getByRole("dialog", { name: "关闭未保存文件" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(onCloseTab).not.toHaveBeenCalled();
+    expect(onCloseTabs).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "关闭 app.conf tab" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并关闭" }));
 
-    expect(onCloseTab).toHaveBeenCalledWith(fileTab.id);
+    expect(onCloseTabs).toHaveBeenCalledWith([fileTab.id]);
   });
 
   it("shows tab numbers when enabled in terminal appearance", () => {

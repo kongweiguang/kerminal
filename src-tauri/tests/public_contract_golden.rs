@@ -79,7 +79,7 @@ fn versions_events_storage_and_sensitive_field_rejection_remain_explicit() {
     let expected = inventory();
     assert_source_contains(
         "src/features/workspace/workspaceSession.ts",
-        "WORKSPACE_SESSION_VERSION = 2",
+        "WORKSPACE_SESSION_VERSION = 3",
     );
     assert_source_contains(
         "src-tauri/src/storage/config_file_store.rs",

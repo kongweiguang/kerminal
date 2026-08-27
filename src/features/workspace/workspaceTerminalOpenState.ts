@@ -12,6 +12,7 @@ import { collectPaneIds, findFirstPaneId } from "./workspaceLayout";
 import { addMachineToGroup, serialPortName } from "./workspaceMachineModel";
 import {
   isTerminalSessionTab,
+  type LocalMachineScope,
   type Machine,
   type MachineGroup,
   type TerminalPane,
@@ -39,6 +40,7 @@ export interface LocalTerminalOpenOptions extends TerminalOpenIds {
   cwd?: string;
   env?: Record<string, string>;
   groupId?: string;
+  localMachineScope?: LocalMachineScope;
   machineId: string;
   machineProfileId?: string;
   profile?: TerminalProfile;
@@ -72,10 +74,15 @@ export function focusExistingMachineTabState(
   };
 }
 
+/**
+ * 创建本地终端运行态；workspace 范围只建立 pane/tab，避免快速终端被误注册为
+ * 可长期管理的侧栏连接，同时保留同一份运行参数供恢复和右栏上下文使用。
+ */
 export function createLocalTerminalOpenState(
   state: TerminalOpenStateSlice,
   options: LocalTerminalOpenOptions,
 ): TerminalOpenStatePatch {
+  const localMachineScope = options.localMachineScope ?? "sidebar";
   const machineProfileId =
     "machineProfileId" in options ? options.machineProfileId : options.profile?.id;
   const pane: TerminalPane = {
@@ -83,6 +90,7 @@ export function createLocalTerminalOpenState(
     cwd: options.cwd ?? options.profile?.cwd,
     env: options.env ?? options.profile?.env,
     id: options.paneId,
+    localMachineScope,
     profileId: options.profile?.id,
     tmuxBinding: options.tmuxBinding,
     shell: options.shell ?? options.profile?.shell,
@@ -119,11 +127,10 @@ export function createLocalTerminalOpenState(
   return {
     activeTabId: options.tabId,
     focusedPaneId: options.paneId,
-    machineGroups: addMachineToGroup(
-      state.machineGroups,
-      machine,
-      options.groupId,
-    ),
+    machineGroups:
+      localMachineScope === "workspace"
+        ? state.machineGroups
+        : addMachineToGroup(state.machineGroups, machine, options.groupId),
     selectedMachineId: machine.id,
     terminalPanes: [...state.terminalPanes, pane],
     terminalTabs: [...state.terminalTabs, tab],

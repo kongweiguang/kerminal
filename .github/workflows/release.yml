@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - Agent Launcher 新增内置 PI Agent，并通过会话级 `.mcp.json` 接入 Kerminal MCP，支持新建和继续受管会话。
-            - 新增可持久化的自定义 Agent 管理与专用选择器；名称、命令和选择写入 `settings.toml`，保存失败会回滚到已确认状态。
-            - 完善 Agent 会话快照与历史恢复：多个自定义 Agent 按稳定 key 隔离，定义编辑或删除后仍可按创建时快照继续历史会话。
+            - 标签栏升级为 Edge/Chrome 式显式标签组，不同 SSH 主机、本地终端、容器、SFTP 和文件标签可以自由混合分组。
+            - 支持标签与整组拖拽排序、跨组移动、移出分组、折叠、重命名、八色配色和完整键盘菜单操作，同时保持终端会话与右栏目标不变。
+            - Workspace Session 升级到 v3，持久化分组顺序、颜色和折叠状态，并对旧版迁移、损坏文件及未来版本提供备份和防覆盖保护。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

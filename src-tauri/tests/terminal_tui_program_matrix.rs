@@ -7,7 +7,8 @@ use kerminal_lib::{
     services::terminal_manager::TerminalManager,
 };
 use std::{
-    path::PathBuf,
+    env,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::mpsc,
     time::{Duration, Instant},
@@ -187,7 +188,7 @@ fn collect_until_output(
         match event.kind {
             TerminalOutputKind::Data => {
                 received.push_str(&event.data);
-                reply_to_frontend_cpr_query(manager, session_id, &event.data);
+                reply_to_frontend_terminal_queries(manager, session_id, &event.data);
             }
             TerminalOutputKind::Error => {
                 return Err(format!("terminal emitted error event: {}", event.data));
@@ -221,28 +222,45 @@ fn collect_additional_output_for(
         };
         if event.kind == TerminalOutputKind::Data {
             received.push_str(&event.data);
-            reply_to_frontend_cpr_query(manager, session_id, &event.data);
+            reply_to_frontend_terminal_queries(manager, session_id, &event.data);
         }
     }
 
     received
 }
 
-fn reply_to_frontend_cpr_query(manager: &TerminalManager, session_id: &str, data: &str) {
-    if data.contains("\u{1b}[6n") {
-        let _ = manager.write(session_id, "\u{1b}[1;1R");
+/// 模拟 xterm 对 TUI 启动探测的同步回复；按请求出现顺序写回，避免回复残留到 shell。
+fn reply_to_frontend_terminal_queries(manager: &TerminalManager, session_id: &str, data: &str) {
+    let mut responses = String::new();
+    for (query, response) in [
+        ("\u{1b}[>q", "\u{1b}P>|Kerminal 0.3.29\u{1b}\\"),
+        ("\u{1b}[16t", "\u{1b}[6;16;8t"),
+        ("\u{1b}]11;?\u{7}", "\u{1b}]11;rgb:1111/1111/1111\u{1b}\\"),
+        ("\u{1b}[?996n", "\u{1b}[?997;2n"),
+        ("\u{1b}[0c", "\u{1b}[?62;22c"),
+        ("\u{1b}[6n", "\u{1b}[1;1R"),
+        ("\u{1b}[?2026$p", "\u{1b}[?2026;2$y"),
+        ("\u{1b}[?2027$p", "\u{1b}[?2027;2$y"),
+    ] {
+        if data.contains(query) {
+            responses.push_str(response);
+        }
+    }
+    if !responses.is_empty() {
+        let _ = manager.write(session_id, &responses);
     }
 }
 
+/// 构造 WSL 可用工具矩阵，并在本机安装了可选 TUI 时纳入 yazi/superfile。
 fn discover_tui_cases() -> Vec<TuiCase> {
     let Some(wsl) = find_executable("wsl.exe") else {
-        return ["vim", "less", "top", "tmux"]
+        return ["vim", "less", "top", "tmux", "yazi", "superfile"]
             .into_iter()
             .map(|name| skipped_case(name, "wsl.exe not found on PATH"))
             .collect();
     };
 
-    [
+    let mut cases = [
         (
             "vim",
             vim_script(),
@@ -289,7 +307,53 @@ fn discover_tui_cases() -> Vec<TuiCase> {
             }
         },
     )
-    .collect()
+    .collect::<Vec<_>>();
+    cases.push(discover_optional_tui_case(
+        &wsl,
+        "yazi",
+        "KERMINAL_TUI_YAZI",
+        "yazi",
+        "q",
+    ));
+    cases.push(discover_optional_tui_case(
+        &wsl,
+        "superfile",
+        "KERMINAL_TUI_SUPERFILE",
+        "spf",
+        "q",
+    ));
+    cases
+}
+
+/// 使用显式测试二进制或 WSL PATH 中的命令构造可选 TUI 用例，缺失时保留可见 skip。
+fn discover_optional_tui_case(
+    wsl: &Path,
+    name: &'static str,
+    override_env: &str,
+    fallback_command: &str,
+    interaction: &'static str,
+) -> TuiCase {
+    let command = env::var(override_env).unwrap_or_else(|_| fallback_command.to_owned());
+    if !wsl_has_command(&command) {
+        return skipped_case(
+            name,
+            format!("WSL command {command} not found; set {override_env} to override"),
+        );
+    }
+    let expected_exit = match name {
+        "yazi" => "matrix-yazi-exit:0",
+        "superfile" => "matrix-superfile-exit:0",
+        _ => "matrix-tui-exit:0",
+    };
+    TuiCase {
+        name,
+        status: TuiCaseStatus::Runnable {
+            request: terminal_request(wsl.to_path_buf(), optional_tui_script(name, &command)),
+            interaction,
+            expected_exit,
+            expected_output: &["\u{1b}[?1049h"],
+        },
+    }
 }
 
 fn skipped_case(name: &'static str, reason: impl Into<String>) -> TuiCase {
@@ -309,19 +373,39 @@ fn terminal_request(wsl: PathBuf, script: String) -> TerminalCreateRequest {
     }
 }
 
+/// 对命令名和绝对路径都做无副作用可执行性检查，供临时官方二进制参与矩阵。
 fn wsl_has_command(command: &str) -> bool {
+    let quoted = shell_quote(command);
     Command::new("wsl.exe")
         .args([
             "-e",
             "bash",
             "-lc",
-            &format!("command -v {command} >/dev/null 2>&1"),
+            &format!("test -x {quoted} || command -v {quoted} >/dev/null 2>&1"),
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+/// 生成单个 TUI 的退出探针；显式 LINES/COLUMNS 只作为 ioctl 之外的兼容兜底。
+fn optional_tui_script(name: &str, command: &str) -> String {
+    let marker = match name {
+        "yazi" => "matrix-yazi",
+        "superfile" => "matrix-superfile",
+        _ => "matrix-tui",
+    };
+    format!(
+        "export TERM=xterm-256color LINES=24 COLUMNS=80\nprintf '{marker}-ready\\n'\n{}\nrc=\"$?\"\nprintf '\\n{marker}-exit:%s\\n' \"$rc\"\n",
+        shell_quote(command)
+    )
+}
+
+/// 使用 POSIX 单引号封装测试命令，避免覆盖路径中的空格或引号改变脚本语义。
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn find_executable(program: &str) -> Option<PathBuf> {

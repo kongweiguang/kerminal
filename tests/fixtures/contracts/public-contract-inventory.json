@@ -25,7 +25,7 @@
     ]
   },
   "workspaceSession": {
-    "frontendVersion": 2,
+    "frontendVersion": 3,
     "rustStorage": "transparent-json-object"
   },
   "sqlite": {

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => ({
@@ -27,9 +29,46 @@ describe("workspaceSessionApi", () => {
     );
 
     await expect(loadWorkspaceSessionFile()).resolves.toMatchObject({
-      activeTabId: "",
-      focusedPaneId: "",
+      kind: "loaded",
+      session: {
+        activeTabId: "",
+        focusedPaneId: "",
+        terminalTabGroups: {},
+        terminalTabs: [],
+      },
+    });
+  });
+
+  it("distinguishes missing, unsupported, invalid, and transport failures", async () => {
+    const { loadWorkspaceSessionFile } = await import(
+      "../../../../src/features/workspace/workspaceSessionApi"
+    );
+    transport.loadWorkspaceSessionPayload.mockResolvedValueOnce(null);
+    await expect(loadWorkspaceSessionFile()).resolves.toEqual({
+      kind: "missing",
+    });
+
+    transport.loadWorkspaceSessionPayload.mockResolvedValueOnce({
+      version: 4,
+    });
+    await expect(loadWorkspaceSessionFile()).resolves.toMatchObject({
+      kind: "unsupported",
+      version: 4,
+    });
+
+    transport.loadWorkspaceSessionPayload.mockResolvedValueOnce({
+      version: 3,
       terminalTabs: [],
+    });
+    await expect(loadWorkspaceSessionFile()).resolves.toMatchObject({
+      kind: "invalid",
+    });
+
+    transport.loadWorkspaceSessionPayload.mockRejectedValueOnce(
+      new Error("transport details must not escape"),
+    );
+    await expect(loadWorkspaceSessionFile()).resolves.toMatchObject({
+      kind: "transport-failure",
     });
   });
 
@@ -47,7 +86,10 @@ describe("workspaceSessionApi", () => {
     });
 
     expect(transport.saveWorkspaceSessionPayload).toHaveBeenCalledWith(
-      expect.objectContaining({ version: 2 }),
+      expect.objectContaining({
+        terminalTabGroups: {},
+        version: 3,
+      }),
     );
   });
 });

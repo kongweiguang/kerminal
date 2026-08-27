@@ -1,8 +1,11 @@
 // @author kongweiguang
 
-import { targetStableId } from "../../lib/targetModel";
+import { localTarget, targetStableId } from "../../lib/targetModel";
 import { collectPaneIds } from "./workspaceLayout";
-import { findMachine } from "./workspaceMachineModel";
+import {
+  findMachine,
+  localRuntimeDescription,
+} from "./workspaceMachineModel";
 import type {
   Machine,
   MachineGroup,
@@ -133,11 +136,20 @@ export function resolveWorkspaceTabPaneSelection(
   };
 }
 
+/**
+ * 优先从无需侧栏注册的 pane 派生活动 Machine；其余协议仍严格依赖已有 Machine，
+ * 这样合法临时终端不会产生缺失诊断，也不会掩盖真实的远端引用失效。
+ */
 function resolveActiveMachine(
   focusedPane: TerminalPane | undefined,
   activeTab: TerminalTab | undefined,
   machineGroups: readonly MachineGroup[],
 ): Machine | undefined {
+  const workspaceLocalMachine = machineFromWorkspaceLocalPane(focusedPane);
+  if (workspaceLocalMachine) {
+    return workspaceLocalMachine;
+  }
+
   const containerMachine = machineFromContainerPane(
     focusedPane,
     machineGroups,
@@ -152,6 +164,41 @@ function resolveActiveMachine(
       : (focusedPane.remoteHostId ?? focusedPane.machineId)
     : activeTab?.machineId;
   return machineId ? findMachine(machineGroups, machineId) : undefined;
+}
+
+/** 从 workspace 本地 pane 的持久运行参数构造只读上下文 Machine。 */
+function machineFromWorkspaceLocalPane(
+  pane: TerminalPane | undefined,
+): Machine | undefined {
+  if (
+    pane?.mode !== "local" ||
+    pane.localMachineScope !== "workspace"
+  ) {
+    return undefined;
+  }
+
+  const cwd = pane.currentCwd ?? pane.cwd;
+  return {
+    args: pane.args,
+    cwd,
+    description: localRuntimeDescription({
+      args: pane.args,
+      cwd,
+      shell: pane.shell,
+    }),
+    env: pane.env,
+    id: pane.machineId,
+    kind: "local",
+    name: pane.title,
+    profileId: pane.profileId,
+    shell: pane.shell,
+    status: pane.status,
+    tags: ["local", "workspace"],
+    target:
+      pane.target?.kind === "local"
+        ? pane.target
+        : localTarget(pane.profileId),
+  };
 }
 
 function machineFromContainerPane(

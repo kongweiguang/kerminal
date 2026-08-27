@@ -7,10 +7,12 @@ import {
 import type {
   Machine,
   MachineStatus,
+  LocalMachineScope,
   TerminalLayoutNode,
   TerminalPane,
   TerminalSplitLayoutSizes,
   TerminalTab,
+  TerminalTabGroups,
   TerminalTabGroupPreferences,
 } from "./types";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
@@ -20,6 +22,11 @@ import {
   isTerminalSessionTab,
   isWorkspaceFileTab,
 } from "./types";
+import {
+  legacyPreferencesFromGroups,
+  migrateTerminalTabGroups,
+  normalizeTerminalTabGroupPreferences,
+} from "./workspaceSessionTabGroupMigration";
 import {
   dockerContainerTarget,
   localTarget,
@@ -33,7 +40,7 @@ import {
 } from "./workspaceFileTabModel";
 import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
-export const WORKSPACE_SESSION_VERSION = 2;
+export const WORKSPACE_SESSION_VERSION = 3;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
 
 export interface WorkspaceSessionSnapshot {
@@ -43,10 +50,22 @@ export interface WorkspaceSessionSnapshot {
   removedSidebarMachineIds?: string[];
   shellLayout?: WorkspaceShellLayout;
   sidebarMachines: Machine[];
+  terminalTabGroups?: TerminalTabGroups;
+  /** @deprecated v1/v2 迁移和旧测试读取；v3 运行态以 terminalTabGroups 为准。 */
   terminalTabGroupPreferences?: TerminalTabGroupPreferences;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
+
+export type WorkspaceSessionDecodeResult =
+  | { kind: "loaded"; session: WorkspaceSessionSnapshot }
+  | { kind: "unsupported"; message: string; version: number }
+  | { kind: "invalid"; message: string };
+
+export type WorkspaceSessionLoadResult =
+  | WorkspaceSessionDecodeResult
+  | { kind: "missing" }
+  | { kind: "transport-failure"; message: string };
 
 export interface WorkspaceShellLayout {
   bottomToolPanelHeight?: number;
@@ -65,7 +84,7 @@ export function normalizeWorkspaceSessionSnapshot(
   value: unknown,
 ): WorkspaceSessionSnapshot {
   const source = isRecord(value)
-    ? (value as Partial<WorkspaceSessionSnapshot>)
+    ? (value as Partial<WorkspaceSessionSnapshot> & Record<string, unknown>)
     : null;
   const rawPanes = Array.isArray(source?.terminalPanes)
     ? source.terminalPanes
@@ -87,12 +106,20 @@ export function normalizeWorkspaceSessionSnapshot(
   const removedSidebarMachineIds = uniqueStrings(
     normalizeStringArray(source?.removedSidebarMachineIds) ?? [],
   );
-  const terminalTabGroupPreferences = normalizeTerminalTabGroupPreferences(
+  const legacyPreferences = normalizeTerminalTabGroupPreferences(
     source?.terminalTabGroupPreferences,
   );
   const shellLayout = normalizeWorkspaceShellLayout(source?.shellLayout);
+  const migratedGroups = migrateTerminalTabGroups({
+    source,
+    terminalTabs,
+    terminalTabGroups: normalizeTerminalTabGroups(source?.terminalTabGroups),
+    legacyPreferences,
+    panes: terminalPanes,
+    sidebarMachines,
+  });
   const referencedPaneIds = new Set(
-    terminalTabs.flatMap((tab) =>
+    migratedGroups.terminalTabs.flatMap((tab) =>
       isTerminalSessionTab(tab) ? collectPaneIds(tab.layout) : [],
     ),
   );
@@ -104,7 +131,7 @@ export function normalizeWorkspaceSessionSnapshot(
     focusedPaneId: readString(source?.focusedPaneId),
     referencedPanes,
     selectedMachineId: readString(source?.selectedMachineId),
-    terminalTabs,
+    terminalTabs: migratedGroups.terminalTabs,
   });
 
   return {
@@ -114,9 +141,11 @@ export function normalizeWorkspaceSessionSnapshot(
     removedSidebarMachineIds,
     shellLayout,
     sidebarMachines,
-    terminalTabGroupPreferences,
+    terminalTabGroups: migratedGroups.terminalTabGroups,
+    terminalTabGroupPreferences:
+      legacyPreferences ?? legacyPreferencesFromGroups(migratedGroups.terminalTabGroups),
     terminalPanes: selection.activeTabId ? referencedPanes : [],
-    terminalTabs,
+    terminalTabs: migratedGroups.terminalTabs,
   };
 }
 
@@ -128,38 +157,41 @@ export function normalizeWorkspaceSessionSnapshot(
  */
 export function decodeWorkspaceSessionSnapshot(
   value: unknown,
-): WorkspaceSessionSnapshot | null {
+): WorkspaceSessionDecodeResult {
   if (!isRecord(value)) {
-    return null;
+    return invalidWorkspaceSessionResult();
   }
   const version = value.version;
-  if (
-    version !== undefined &&
-    (typeof version !== "number" ||
-      !Number.isInteger(version) ||
-      version < 1 ||
-      version > WORKSPACE_SESSION_VERSION)
-  ) {
-    return null;
+  if (version !== undefined) {
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+      return invalidWorkspaceSessionResult();
+    }
+    if (version > WORKSPACE_SESSION_VERSION) {
+      return {
+        kind: "unsupported",
+        message: "工作区会话版本较新，原文件未覆盖；本次运行不会持久化标签变化。",
+        version,
+      };
+    }
   }
   if (
     !Array.isArray(value.sidebarMachines) ||
     !Array.isArray(value.terminalPanes) ||
     !Array.isArray(value.terminalTabs)
   ) {
-    return null;
+    return invalidWorkspaceSessionResult();
   }
 
   const normalized = normalizeWorkspaceSessionSnapshot(value);
   if (value.terminalTabs.length > 0 && normalized.terminalTabs.length === 0) {
-    return null;
+    return invalidWorkspaceSessionResult();
   }
   if (
     value.terminalTabs.length === 0 &&
     value.sidebarMachines.length > 0 &&
     normalized.sidebarMachines.length === 0
   ) {
-    return null;
+    return invalidWorkspaceSessionResult();
   }
   if (version === undefined || version === 1) {
     runtimeCompatibilityDiagnostics.recordActivation(
@@ -167,7 +199,15 @@ export function decodeWorkspaceSessionSnapshot(
       version === 1 ? "schema-v1" : "unversioned-session",
     );
   }
-  return normalized;
+  return { kind: "loaded", session: normalized };
+}
+
+/** 将根结构或关键数组损坏统一报告为安全消息，避免把内部解析细节暴露给 UI。 */
+function invalidWorkspaceSessionResult(): WorkspaceSessionDecodeResult {
+  return {
+    kind: "invalid",
+    message: "工作区会话内容无法验证，原文件未覆盖；本次运行不会持久化标签变化。",
+  };
 }
 
 /** Shell 布局只接受有限尺寸，避免手改文件后把终端压缩成不可操作区域。 */
@@ -237,6 +277,7 @@ function normalizeShellLayoutSizeProperty<
   return { [key]: size } as Pick<WorkspaceShellLayout, Key>;
 }
 
+/** 从恢复快照提升 pane、split、tab 与显式组 ID 的单调计数下界。 */
 export function maxGeneratedTerminalCounters(session: WorkspaceSessionSnapshot) {
   const paneCount = Math.max(
     0,
@@ -252,8 +293,12 @@ export function maxGeneratedTerminalCounters(session: WorkspaceSessionSnapshot) 
     0,
     ...session.terminalTabs.map((tab) => numericSuffix(tab.id)),
   );
+  const tabGroupCount = Math.max(
+    0,
+    ...Object.keys(session.terminalTabGroups ?? {}).map(numericSuffix),
+  );
 
-  return { paneCount, splitCount, tabCount };
+  return { paneCount, splitCount, tabCount, tabGroupCount };
 }
 
 export function appendTerminalOutputHistory(
@@ -266,6 +311,10 @@ export function appendTerminalOutputHistory(
   return trimTerminalOutputHistory(`${currentHistory ?? ""}${data}`);
 }
 
+/**
+ * 归一化持久化 pane；旧快照没有 scope 时按 sidebar 处理，以保持既有本地连接
+ * 的恢复语义，新 workspace scope 则作为显式字段保留下来。
+ */
 function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -292,6 +341,10 @@ function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
     env: normalizeStringRecord(value.env),
     id,
     latencyMs: readOptionalNumber(value.latencyMs),
+    localMachineScope:
+      mode === "local"
+        ? normalizeLocalMachineScope(value.localMachineScope)
+        : undefined,
     lines: [],
     machineId,
     mode,
@@ -306,6 +359,11 @@ function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
     tmuxBinding: normalizeTmuxPaneBinding(value.tmuxBinding),
     title,
   };
+}
+
+/** 将缺失或非法 scope 收敛到旧版 sidebar 语义。 */
+function normalizeLocalMachineScope(value: unknown): LocalMachineScope {
+  return value === "workspace" ? "workspace" : "sidebar";
 }
 
 function normalizeTmuxPaneBinding(value: unknown): TmuxPaneBinding | undefined {
@@ -441,6 +499,7 @@ function normalizeTerminalTab(
     return {
       id,
       kind: "sftpTransfer",
+      tabGroupId: readOptionalString(value.tabGroupId),
       leftHostId: readOptionalString(value.leftHostId),
       lockedLeftHostId: readOptionalString(value.lockedLeftHostId),
       machineId: machineId || "sftp-transfer",
@@ -462,6 +521,7 @@ function normalizeTerminalTab(
       access,
       id,
       kind: "workspaceFile",
+      tabGroupId: readOptionalString(value.tabGroupId),
       machineId: workspaceFileMachineId(target),
       path,
       ...(rootPath
@@ -480,38 +540,29 @@ function normalizeTerminalTab(
   }
 
   return value.kind === "terminal"
-    ? { id, kind: "terminal", layout, machineId, title }
-    : { id, layout, machineId, title };
+    ? { id, kind: "terminal", layout, machineId, tabGroupId: readOptionalString(value.tabGroupId), title }
+    : { id, layout, machineId, tabGroupId: readOptionalString(value.tabGroupId), title };
 }
 
-function normalizeTerminalTabGroupPreferences(
-  value: unknown,
-): TerminalTabGroupPreferences | undefined {
+/** 只接纳标题有效的显式组，并清除非法颜色，避免坏组阻断其余 Session 恢复。 */
+function normalizeTerminalTabGroups(value: unknown): TerminalTabGroups {
   if (!isRecord(value)) {
-    return undefined;
+    return {};
   }
-
-  const preferences: TerminalTabGroupPreferences = {};
-  for (const [groupId, rawPreference] of Object.entries(value)) {
-    if (!groupId || !isRecord(rawPreference)) {
-      continue;
-    }
-
-    const title = readOptionalString(rawPreference.title)?.trim();
-    const color = isTerminalTabGroupColor(rawPreference.color)
-      ? rawPreference.color
-      : undefined;
-    if (!title && !color) {
-      continue;
-    }
-
-    preferences[groupId] = {
-      ...(color ? { color } : {}),
-      ...(title ? { title } : {}),
+  const groups: TerminalTabGroups = {};
+  for (const [groupId, rawDefinition] of Object.entries(value)) {
+    if (!groupId || !isRecord(rawDefinition)) continue;
+    const title = readOptionalString(rawDefinition.title)?.trim();
+    if (!title) continue;
+    groups[groupId] = {
+      collapsed: rawDefinition.collapsed === true,
+      ...(isTerminalTabGroupColor(rawDefinition.color)
+        ? { color: rawDefinition.color }
+        : {}),
+      title,
     };
   }
-
-  return Object.keys(preferences).length > 0 ? preferences : undefined;
+  return groups;
 }
 
 function normalizeLayoutNode(
