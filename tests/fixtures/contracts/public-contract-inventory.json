@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "tauri": {
-    "commandCount": 186,
+    "commandCount": 188,
     "signatureFingerprint": "fnv1a64:bb3971ef48e70c99",
-    "frontendInvokeCount": 136,
-    "frontendInvokeFingerprint": "fnv1a64:bb95b9455ac1a4ca"
+    "frontendInvokeCount": 138,
+    "frontendInvokeFingerprint": "fnv1a64:34a6661cc7fc3a78"
   },
   "events": [
     "kerminal://native-menu-action",
