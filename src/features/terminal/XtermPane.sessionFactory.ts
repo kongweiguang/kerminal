@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   createDockerContainerTerminalSession,
   createSerialTerminalSession,
@@ -21,6 +23,8 @@ interface CreateXtermPaneTerminalSessionOptions {
   cwd?: string;
   env?: Record<string, string>;
   onOutput: (event: TerminalOutputEvent) => void;
+  isPromptOwnerActive?: () => boolean;
+  promptOwnerId?: string;
   promptForSecret: (prompt: SshAuthPromptRequest) => Promise<string | null>;
   remoteCommand?: string;
   remoteHostId?: string;
@@ -29,14 +33,19 @@ interface CreateXtermPaneTerminalSessionOptions {
   target?: RemoteTargetRef;
 }
 
-/// 根据 pane target 创建对应终端 session；调用方只负责生命周期和错误展示。
+/**
+ * 根据 pane target 创建对应终端 session；SSH 专属恢复仍在此边界内，调用方只负责生命周期和错误展示。
+ * promptOwnerId 与 generation 检查让 pane 关闭时未完成的 host-key 确认不能重新打开会话。
+ */
 export function createXtermPaneTerminalSession({
   args,
   cols,
   currentCwd,
   cwd,
   env,
+  isPromptOwnerActive,
   onOutput,
+  promptOwnerId,
   promptForSecret,
   remoteCommand,
   remoteHostId,
@@ -83,6 +92,7 @@ export function createXtermPaneTerminalSession({
       },
       onOutput,
       promptForSecret,
+      { isPromptOwnerActive, promptOwnerId },
     );
   }
   return createTerminalSession(

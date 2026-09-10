@@ -27,6 +27,7 @@ import {
   LazyRemoteHostGroupCreateDialog,
   LazySettingsDialog,
   LazySshAuthPromptHost,
+  LazySshHostKeyPromptHost,
 } from "./KerminalShell.static";
 import {
   MachineSidebarStoreBridge,
@@ -207,6 +208,7 @@ export function KerminalShellLayout({
       <KerminalShellContextWorkspaceStoreBridge {...contextWorkspaceProps} />
       <Suspense fallback={null}>
         <LazySshAuthPromptHost />
+        <LazySshHostKeyPromptHost />
         <LazyExternalLaunchHost />
       </Suspense>
     </div>

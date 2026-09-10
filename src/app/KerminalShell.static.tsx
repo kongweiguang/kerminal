@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { lazy } from "react";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
 
@@ -32,6 +34,12 @@ export const LazyRemoteHostGroupCreateDialog = lazy(() =>
 export const LazySshAuthPromptHost = lazy(() =>
   import("../features/ssh-auth/SshAuthPromptHost").then((module) => ({
     default: module.SshAuthPromptHost,
+  })),
+);
+
+export const LazySshHostKeyPromptHost = lazy(() =>
+  import("../features/ssh-host-key/SshHostKeyPromptHost").then((module) => ({
+    default: module.SshHostKeyPromptHost,
   })),
 );
 

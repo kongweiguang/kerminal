@@ -30,6 +30,7 @@ import type { createXtermPaneGhostSuggestions } from "./XtermPane.ghostSuggestio
 import { errorMessage } from "./XtermPane.helpers";
 import { createInitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
 import type { createTerminalInlineSshAuthPrompt } from "./XtermPane.inlineSshAuthPrompt";
+import { cancelSshHostKeyPromptsForOwner } from "../ssh-host-key/state/index";
 import {
   terminalSessionFailureLabel,
   terminalSessionStartupNotice,
@@ -268,8 +269,12 @@ export function createXtermPaneSessionRuntime({
       ),
   });
 
+  /**
+   * 开启新的 session generation 前撤销本 pane 旧的主机身份确认，避免重连和关闭竞态把晚到结果接回新会话。
+   */
   const startSession = async (reason: "initial" | "reconnect") => {
     const currentRun = ++sessionRun;
+    cancelSshHostKeyPromptsForOwner(paneId);
     artifactRuntime.invalidate("restart");
     const closed = await closeActiveSession();
     if (!closed || disposed || sessionRun !== currentRun) {
@@ -350,7 +355,10 @@ export function createXtermPaneSessionRuntime({
         currentCwd: currentCwdRef.current,
         cwd,
         env,
+        isPromptOwnerActive: () =>
+          !disposed && sessionRun === currentRun,
         onOutput: handleOutput,
+        promptOwnerId: paneId,
         promptForSecret: terminalInlineSshAuthPrompt.promptForSecret,
         remoteCommand,
         remoteHostId,
@@ -440,8 +448,12 @@ export function createXtermPaneSessionRuntime({
     }
   };
 
+  /**
+   * 主动断开也必须撤销当前 pane 的 host-key 确认；否则用户取消连接后仍可能完成信任写入。
+   */
   const disconnectSession = async () => {
     const currentRun = ++sessionRun;
+    cancelSshHostKeyPromptsForOwner(paneId);
     reconnectRuntime.clearReconnectTimer();
     sessionStatusPoll.clear();
     terminalSuggestionProbeScheduler.cancelOwner(paneId);
@@ -497,9 +509,11 @@ export function createXtermPaneSessionRuntime({
       sshReconnect: reconnectRuntime.diagnosticsSnapshot(),
       sshTarget: isSshTerminalTarget(),
     }),
+    /** 销毁 pane 时同步撤销 host-key 队列项，确保等待中的恢复 Promise 只能以取消结束。 */
     dispose() {
       disposed = true;
       sessionRun += 1;
+      cancelSshHostKeyPromptsForOwner(paneId);
       reconnectRuntime.clearReconnectTimer();
       sessionStatusPoll.clear();
       terminalSuggestionProbeScheduler.cancelOwner(paneId);

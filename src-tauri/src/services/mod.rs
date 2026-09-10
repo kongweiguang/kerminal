@@ -37,6 +37,7 @@ pub mod snippet_service;
 pub mod ssh_command_plan;
 pub mod ssh_command_service;
 pub mod ssh_credential_resolver;
+pub mod ssh_host_key_service;
 mod ssh_identity_file;
 pub mod ssh_route_plan;
 pub mod ssh_runtime;

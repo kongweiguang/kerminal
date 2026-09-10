@@ -152,6 +152,8 @@ pub fn register_kerminal_commands(
         crate::commands::ssh_auth::ssh_auth_clear_session_secrets,
         crate::commands::ssh_auth::ssh_auth_broker_snapshot,
         crate::commands::ssh_command::ssh_command_execute,
+        crate::commands::ssh_host_key::ssh_host_key_inspect,
+        crate::commands::ssh_host_key::ssh_host_key_trust,
         crate::commands::telnet::telnet_create_session,
         crate::commands::terminal::terminal_create_session,
         crate::commands::terminal::terminal_write,

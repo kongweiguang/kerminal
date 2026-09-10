@@ -31,6 +31,7 @@ const EXTERNAL_SSH_MAX_JUMP_HOSTS: usize = 8;
 const MAX_KNOWN_HOSTS_BYTES: u64 = 4 * 1024 * 1024;
 static KNOWN_HOSTS_WORKERS: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(KNOWN_HOSTS_WORKER_CAPACITY)));
+static KNOWN_HOSTS_MUTATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// 外部目标当前 known_hosts 状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -86,6 +87,70 @@ pub async fn inspect_external_host_key(
         key,
         paths.root.join("known_hosts"),
     )
+    .await
+}
+
+/// 在不执行认证的前提下探测服务端公钥；调用方必须在得到公钥后独立完成信任分类。
+pub(crate) async fn probe_server_key(host: &str, port: u16) -> AppResult<PublicKey> {
+    let captured = Arc::new(Mutex::new(None));
+    let handler = HostKeyProbeHandler {
+        captured: Arc::clone(&captured),
+    };
+    let config = Arc::new(client::Config {
+        inactivity_timeout: Some(HOST_KEY_PROBE_TIMEOUT),
+        ..Default::default()
+    });
+    let connect = client::connect(config, (host, port), handler);
+    // check_server_key 会在捕获第一把 key 后拒绝握手；这里故意忽略握手错误，
+    // 只要捕获到 key 就可以进入后续的 known_hosts 分类，避免探测承担认证副作用。
+    let _ = tokio::time::timeout(HOST_KEY_PROBE_TIMEOUT, connect)
+        .await
+        .map_err(|_| AppError::SshCommand("SSH 主机指纹探测超时".to_owned()))?;
+    let captured_key = captured
+        .lock()
+        .map_err(|_| AppError::StateLockPoisoned("external host key probe"))?
+        .clone();
+    captured_key.ok_or_else(|| AppError::SshCommand("SSH 服务端未提供可核验的主机密钥".to_owned()))
+}
+
+/// 在受限 blocking worker 中读取并分类 known_hosts，防止文件 I/O 阻塞 Tauri executor。
+pub(crate) async fn classify_server_key_bounded(
+    host: String,
+    port: u16,
+    key: PublicKey,
+    known_hosts_path: std::path::PathBuf,
+) -> AppResult<ExternalHostKeyStatus> {
+    run_known_hosts_worker(move || {
+        validate_known_hosts_file(&known_hosts_path)?;
+        Ok(classify_key_status(&host, port, &key, &known_hosts_path))
+    })
+    .await
+}
+
+/// 在一次受限 known_hosts 操作中复核当前 key，并且只为 unknown 状态追加记录。
+pub(crate) async fn trust_server_key_bounded(
+    host: String,
+    port: u16,
+    key: PublicKey,
+    known_hosts_path: std::path::PathBuf,
+) -> AppResult<ExternalHostKeyStatus> {
+    run_known_hosts_worker(move || {
+        let _mutation_guard = KNOWN_HOSTS_MUTATION_LOCK
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("known_hosts mutation"))?;
+        validate_known_hosts_file(&known_hosts_path)?;
+        match classify_key_status(&host, port, &key, &known_hosts_path) {
+            ExternalHostKeyStatus::Known => Ok(ExternalHostKeyStatus::Known),
+            ExternalHostKeyStatus::Changed => Err(AppError::SshCommand(
+                "SSH 主机密钥已变化，必须先人工核验并清理冲突 known_hosts".to_owned(),
+            )),
+            ExternalHostKeyStatus::Unknown => {
+                keys::known_hosts::learn_known_hosts_path(&host, port, &key, &known_hosts_path)
+                    .map_err(|_| AppError::SshCommand("写入 known_hosts 失败".to_owned()))?;
+                Ok(ExternalHostKeyStatus::Known)
+            }
+        }
+    })
     .await
 }
 
@@ -150,6 +215,9 @@ async fn trust_known_hosts_bounded(
     known_hosts_path: std::path::PathBuf,
 ) -> AppResult<ExternalHostKeyInspection> {
     run_known_hosts_worker(move || {
+        let _mutation_guard = KNOWN_HOSTS_MUTATION_LOCK
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("known_hosts mutation"))?;
         validate_known_hosts_file(&known_hosts_path)?;
         let inspection = inspection_for_key(&launch_id, &host, port, &key, &known_hosts_path);
         match inspection.status {
@@ -220,15 +288,7 @@ pub fn inspection_for_key(
     key: &PublicKey,
     known_hosts_path: &Path,
 ) -> ExternalHostKeyInspection {
-    let status = if known_hosts_revokes_key(key, known_hosts_path) {
-        ExternalHostKeyStatus::Changed
-    } else {
-        match keys::known_hosts::check_known_hosts_path(host, port, key, known_hosts_path) {
-            Ok(true) => ExternalHostKeyStatus::Known,
-            Ok(false) => ExternalHostKeyStatus::Unknown,
-            Err(_) => ExternalHostKeyStatus::Changed,
-        }
-    };
+    let status = classify_key_status(host, port, key, known_hosts_path);
     ExternalHostKeyInspection {
         algorithm: key.algorithm().to_string(),
         fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
@@ -236,6 +296,26 @@ pub fn inspection_for_key(
         launch_id: launch_id.to_owned(),
         port,
         status,
+    }
+}
+
+/// 以 host+port 为边界区分首次连接、匹配记录和同目标旧 key，避免把 changed 降级为 unknown。
+fn classify_key_status(
+    host: &str,
+    port: u16,
+    key: &PublicKey,
+    known_hosts_path: &Path,
+) -> ExternalHostKeyStatus {
+    if known_hosts_revokes_key(key, known_hosts_path) {
+        return ExternalHostKeyStatus::Changed;
+    }
+    match keys::known_hosts::known_host_keys_path(host, port, known_hosts_path) {
+        Ok(records) if records.iter().any(|(_, recorded)| recorded == key) => {
+            ExternalHostKeyStatus::Known
+        }
+        Ok(records) if !records.is_empty() => ExternalHostKeyStatus::Changed,
+        Ok(_) => ExternalHostKeyStatus::Unknown,
+        Err(_) => ExternalHostKeyStatus::Changed,
     }
 }
 
@@ -317,26 +397,6 @@ pub fn inspection_for_preprovisioned_route(
         port,
         status: ExternalHostKeyStatus::Known,
     })
-}
-
-async fn probe_server_key(host: &str, port: u16) -> AppResult<PublicKey> {
-    let captured = Arc::new(Mutex::new(None));
-    let handler = HostKeyProbeHandler {
-        captured: Arc::clone(&captured),
-    };
-    let config = Arc::new(client::Config {
-        inactivity_timeout: Some(HOST_KEY_PROBE_TIMEOUT),
-        ..Default::default()
-    });
-    let connect = client::connect(config, (host, port), handler);
-    let _ = tokio::time::timeout(HOST_KEY_PROBE_TIMEOUT, connect)
-        .await
-        .map_err(|_| AppError::SshCommand("SSH 主机指纹探测超时".to_owned()))?;
-    let captured_key = captured
-        .lock()
-        .map_err(|_| AppError::StateLockPoisoned("external host key probe"))?
-        .clone();
-    captured_key.ok_or_else(|| AppError::SshCommand("SSH 服务端未提供可核验的主机密钥".to_owned()))
 }
 
 struct HostKeyProbeHandler {

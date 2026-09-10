@@ -26,6 +26,7 @@ pub mod snippet;
 pub mod ssh;
 pub mod ssh_auth;
 pub mod ssh_command;
+pub mod ssh_host_key;
 pub mod telnet;
 pub mod terminal;
 pub mod terminal_session_binding;
