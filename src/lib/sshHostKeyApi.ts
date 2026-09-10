@@ -2,7 +2,7 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type SshHostKeyStatus = "known" | "unknown" | "changed";
+type SshHostKeyStatus = "known" | "unknown" | "changed";
 
 export interface SshHostKeyInspectRequest {
   hostId: string;

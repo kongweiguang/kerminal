@@ -22,7 +22,7 @@ export function createSshHostKeyPromptViewModel(
 }
 
 /** IPv6 主机必须加括号，否则 host 与 port 在确认文案中不可区分。 */
-export function formatSshHostKeyTarget(host: string, port: number) {
+function formatSshHostKeyTarget(host: string, port: number) {
   return host.includes(":") ? `[${host}]:${port}` : `${host}:${port}`;
 }
 
