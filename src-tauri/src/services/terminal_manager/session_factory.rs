@@ -54,12 +54,32 @@ impl CreatedTerminalSession {
         self,
         sessions: &mut HashMap<String, TerminalSession>,
     ) -> TerminalSessionSummary {
+        self.register_with_ownership(sessions, false)
+    }
+
+    /// 以 MCP-owned 标记原子登记 headless 会话，避免 orphan reaper 在创建和标记
+    /// 之间的竞态窗口内误收割刚创建的 PTY。
+    pub(super) fn register_headless(
+        self,
+        sessions: &mut HashMap<String, TerminalSession>,
+    ) -> TerminalSessionSummary {
+        self.register_with_ownership(sessions, true)
+    }
+
+    /// 统一设置 session ownership 后再放入 registry，保证 reaper 观察到的状态
+    /// 与创建路径一致，不让 UI-owned 与 MCP-owned 会话共享模糊的临界态。
+    fn register_with_ownership(
+        self,
+        sessions: &mut HashMap<String, TerminalSession>,
+        headless: bool,
+    ) -> TerminalSessionSummary {
         let Self {
             cleanup_guard,
-            session,
+            mut session,
             session_id,
             summary,
         } = self;
+        session.headless = headless;
         sessions.insert(session_id, session);
         if let Some(cleanup_guard) = cleanup_guard {
             cleanup_guard.disarm();
@@ -152,6 +172,7 @@ pub(super) fn create_managed_shell_session(
         latest_agent_signal,
         pump_stats,
         agent_session_id: None,
+        headless: false,
         cleanup_paths: Vec::new(),
         transport,
     };
@@ -289,6 +310,7 @@ pub(super) fn create_pty_session(
         latest_agent_signal,
         pump_stats,
         agent_session_id,
+        headless: false,
         cleanup_paths,
         transport,
     };

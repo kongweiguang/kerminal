@@ -13,14 +13,14 @@
     ·
     <a href="#源码开发">源码开发</a>
   </p>
-  <p><sub>当前稳定版 v0.3.32 · Tauri 2 · Windows / Linux / macOS</sub></p>
+  <p><sub>当前稳定版 v0.3.33 · Tauri 2 · Windows / Linux / macOS</sub></p>
 </div>
 
 ![Kerminal 中的 SSH 终端与 Codex Agent 并行工作](docs/assets/kerminal-hero.png)
 
 Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围绕“当前目标”组织本机与远程终端、SFTP、Docker/Podman、Compose、tmux、SSH 隧道、服务器监控和 Agent 会话，让开发、排障和交付不必在多个窗口之间反复切换。
 
-内置 Agent Launcher 支持 Codex、Claude、PI Agent 和可持久化的自定义 CLI。每个 Agent 会话都有独立工作目录和明确的 `tab` / `global` 权限范围，并可通过 Kerminal MCP 使用正在运行的终端与远程能力。
+内置 Agent Launcher 支持 Codex、Claude、PI Agent 和可持久化的自定义 CLI。每个 Agent 会话都有独立工作目录，可通过 Kerminal MCP 操作整个应用的用户终端与远程工具；打开助手时的当前终端是首选目标，不是访问限制。
 
 > README 截图使用固定的脱敏演示数据生成，不包含真实主机、凭据或用户会话。
 
@@ -33,13 +33,13 @@ Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围�
 | 文件与传输 | SFTP 文件浏览、双面板传输、队列与进度、取消/重试、断点续传、冲突策略、远程预览与文本编辑。 |
 | 容器 | 在 SSH 主机上管理 Docker、Podman 与 Compose，查看容器、镜像、服务、日志和状态，进入终端并操作容器内文件。 |
 | 远程工具 | SSH 本地/远程/SOCKS 隧道、tmux 会话、CPU/内存/磁盘/网络/GPU/NPU/进程信息和命令历史。 |
-| Agent | Codex、Claude、PI Agent、自定义 CLI；会话恢复、重命名、归档、发送预览、排队提示，以及 Tab/Global scope。 |
+| Agent | Codex、Claude、PI Agent、自定义 CLI；会话恢复、重命名、归档、发送预览、排队提示；默认操作当前终端，也可跨 Tab 使用其它终端与工具。 |
 | MCP | 本机 loopback Streamable HTTP；提供终端、SSH/SFTP、容器与容器文件、tmux、端口转发、服务器信息、历史和诊断等运行态工具。 |
 | 配置与安全 | `~/.kerminal` 文件化配置、加密凭据库、配置校验、Workspace Sync、主题/壁纸/透明度、快捷键与自动更新。 |
 
 ## 下载与安装
 
-前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.32 已公开提供以下产物：
+前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.33 已公开提供以下产物：
 
 | 平台 | 发布产物 |
 | --- | --- |
@@ -89,11 +89,17 @@ sudo xattr -rd com.apple.quarantine /Applications/Kerminal.app
 | PI Agent | 已安装 PI CLI 和 `pi-mcp-adapter`，且 Kerminal 探测通过。 |
 | 自定义 Agent | 在选择器中保存可执行命令；命令会以明文写入 `settings.toml`，不要放密码、API Key 或 token。 |
 
-首次进入会创建独立会话；如果当前 scope 已有历史会话，可以继续上次或新建会话。
+首次进入会创建独立会话；已有历史会话时，可以继续上次或新建会话。
 
 ![Kerminal Agent 会话恢复与会话列表](docs/assets/kerminal-agent-session.png)
 
-Agent 默认使用当前 Tab scope：自动包含该 Tab 的全部用户终端 Pane，以及之后新建的 Pane。显式选择全局模式后，scope 才会覆盖所有工作区 Tab；右栏 Agent 自己的 TUI 始终排除在用户终端 scope 之外。
+Agent 默认可操作整个 Kerminal，优先使用启动时所在的终端；任务需要时直接选择其它 Tab 或 Pane，无需切换权限范围。旧 Tab 范围会话也按全局访问兼容。右栏 Agent 自己的 TUI 不作为用户命令执行目标。
+
+“进入”和继续会话默认使用内置 Codex、Claude 的完整权限启动模式；PI 和自定义 Agent 沿用各自的命令，不要求用户再选择权限范围。
+
+普通命令优先通过已有终端执行，输入和输出显示在对应终端中。`ssh.command` 是独立的后台非交互通道，不会显示在左侧终端；需要结构化后台结果时才使用这条路径。
+
+第三方 MCP 客户端不必先打开终端 Tab：需要交互终端时可调用 `terminal.create` 创建后台终端，再用返回的 `sessionId` 读取、输入和关闭。SSH 命令、SFTP、容器等运行态工具同样不以终端 Tab 为前提。
 
 ### 4. 使用右侧工具
 
@@ -119,7 +125,7 @@ Kerminal MCP 只监听本机回环地址，提供全局入口与 Agent session �
 
 1. `kerminal.app_guide` / `kerminal.capabilities` 了解应用入口和工具族。
 2. `kerminal.agent.current_session` / `kerminal.agent.target_context` 刷新当前会话与 scope。
-3. `terminal.list` 获取允许操作的用户终端，再使用显式 ID 调用 snapshot、write 或 reconnect。
+3. `terminal.list` 获取用户终端；没有合适终端时用 `terminal.create` 创建后台终端，再使用返回的 ID 调用 snapshot、write 或 close。
 4. 按需使用 SFTP、容器文件、tmux、端口转发、服务器信息、历史或诊断工具。
 
 工具确认、审批、权限和审计由 Codex、Claude 等 MCP host 负责。设置、Profile、主机、片段和工作流配置不通过 MCP CRUD 管理；Agent 应直接编辑工作区文件并运行 validator。

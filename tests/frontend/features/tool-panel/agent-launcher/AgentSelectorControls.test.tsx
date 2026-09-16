@@ -194,7 +194,7 @@ describe("AgentSelector", () => {
 });
 
 describe("AgentLaunchSplitButton", () => {
-  it("主按钮进入当前范围，次菜单提供跳过权限与全局入口", async () => {
+  it("主按钮以全局完整权限进入且不显示 scope 菜单", () => {
     const onLaunch = vi.fn();
     render(
       <AgentLaunchSplitButton
@@ -205,34 +205,13 @@ describe("AgentLaunchSplitButton", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "使用 Codex 进入" }));
-    expect(onLaunch).toHaveBeenLastCalledWith("default", "current");
-
-    const menuButton = screen.getByRole("button", {
-      name: "打开 Agent 启动选项",
-    });
-    fireEvent.click(menuButton);
-    expect(screen.getByRole("menu")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "跳过权限打开 Codex" }),
-    );
-    expect(onLaunch).toHaveBeenLastCalledWith("skipPermissions", "current");
-
-    fireEvent.keyDown(menuButton, { key: "ArrowDown" });
-    const globalMenuItem = screen.getByRole("menuitem", {
-      name: "允许 Codex 操作整个 Kerminal",
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("menuitem", { name: "跳过权限打开 Codex" }),
-      ).toHaveFocus(),
-    );
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
-    expect(globalMenuItem).toHaveFocus();
-    fireEvent.click(globalMenuItem);
-    expect(onLaunch).toHaveBeenLastCalledWith("default", "unbound");
+    expect(onLaunch).toHaveBeenLastCalledWith("skipPermissions", "unbound");
+    expect(
+      screen.queryByRole("button", { name: "打开 Agent 启动选项" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("Custom 不展示无效的跳过权限项，Escape 关闭后恢复箭头焦点", async () => {
+  it("PI/Custom 也只显示全局进入按钮", () => {
     render(
       <AgentLaunchSplitButton
         actionState={null}
@@ -240,23 +219,12 @@ describe("AgentLaunchSplitButton", () => {
         option={customOption}
       />,
     );
-    const menuButton = screen.getByRole("button", {
-      name: "打开 Agent 启动选项",
-    });
-    fireEvent.click(menuButton);
     expect(
-      screen.queryByRole("menuitem", { name: /跳过权限打开/ }),
+      screen.getByRole("button", { name: "使用 PI Agent 进入" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "打开 Agent 启动选项" }),
     ).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("menuitem", {
-          name: "允许 PI Agent 操作整个 Kerminal",
-        }),
-      ).toHaveFocus(),
-    );
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(menuButton).toHaveFocus();
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("设置确认保存期间禁用进入与启动选项，阻止未确认选择被启动", () => {
@@ -272,9 +240,6 @@ describe("AgentLaunchSplitButton", () => {
 
     expect(
       screen.getByRole("button", { name: "使用 PI Agent 进入" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "打开 Agent 启动选项" }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "使用 PI Agent 进入" }));
     expect(onLaunch).not.toHaveBeenCalled();

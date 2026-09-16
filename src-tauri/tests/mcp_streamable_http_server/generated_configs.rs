@@ -240,6 +240,27 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .expect("structured terminal tool help content");
     assert_terminal_tool_help_payload(terminal_tool_help_payload);
 
+    let mut terminal_create_help_arguments = serde_json::Map::new();
+    terminal_create_help_arguments.insert(
+        "toolId".to_owned(),
+        Value::String("terminal.create".to_owned()),
+    );
+    terminal_create_help_arguments.insert("includeSchemas".to_owned(), Value::Bool(true));
+    let terminal_create_tool_help = client
+        .peer()
+        .call_tool(
+            CallToolRequestParams::new("kerminal.tool_help")
+                .with_arguments(terminal_create_help_arguments),
+        )
+        .await
+        .expect("call terminal.create tool help through mcp endpoint");
+    assert_eq!(terminal_create_tool_help.is_error, Some(false));
+    let terminal_create_tool_help_payload = terminal_create_tool_help
+        .structured_content
+        .as_ref()
+        .expect("structured terminal.create tool help content");
+    assert_terminal_create_tool_help_payload(terminal_create_tool_help_payload);
+
     let mut container_tool_help_arguments = serde_json::Map::new();
     container_tool_help_arguments
         .insert("family".to_owned(), Value::String("container".to_owned()));

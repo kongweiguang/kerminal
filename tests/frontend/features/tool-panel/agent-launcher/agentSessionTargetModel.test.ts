@@ -30,13 +30,10 @@ function terminalTab() {
 }
 
 describe("agentSessionTargetModel scope", () => {
-  it("scopes a terminal tab to every pane in its layout", () => {
+  it("uses global permission while keeping the terminal tab as target context", () => {
     const tab = terminalTab();
 
-    expect(buildAgentSessionScope(tab)).toEqual({
-      kind: "tab",
-      tabId: "tab-main",
-    });
+    expect(buildAgentSessionScope(tab)).toEqual({ kind: "global" });
     expect(formatCurrentAgentTargetLabel(undefined, tab)).toBe(
       "当前 Tab · 3 个终端 · 开发 Tab",
     );

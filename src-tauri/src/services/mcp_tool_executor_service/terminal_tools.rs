@@ -4,9 +4,10 @@
 
 use super::*;
 use crate::models::agent_session::AgentSessionScope;
+use crate::models::terminal::TerminalSessionStatus;
 use crate::services::terminal_reconnect_service::TerminalReconnectService;
 use crate::services::terminal_session_binding_service::{
-    TerminalSessionBindingSnapshot, TerminalSessionBindingStatus,
+    is_agent_terminal_pane, TerminalSessionBindingSnapshot, TerminalSessionBindingStatus,
 };
 
 const DEFAULT_TERMINAL_SNAPSHOT_BYTES: usize = 24 * 1024;
@@ -22,31 +23,38 @@ pub(super) fn execute_terminal_list(
         Err(error) => return failure(error.to_string()),
     };
     match (terminals.list_sessions(), agent_session_id) {
-        (Ok(sessions), None) => ToolExecutionResult {
-            status: McpToolExecutionStatus::Succeeded,
-            result_summary: Some(summarize_terminal_sessions_for_agent(&sessions)),
-            error: None,
-            structured_result: Some(json!({
-                "sessionCount": sessions.len(),
-                "sessions": sessions.clone(),
-                "scope": null,
-                "terminals": sessions.clone(),
-            })),
-            entities: sessions
-                .iter()
-                .map(|session| {
-                    json!({
-                        "type": "terminalSession",
-                        "id": session.id,
-                        "shell": session.shell,
-                        "cols": session.cols,
-                        "rows": session.rows,
-                        "pid": session.pid,
+        (Ok(sessions), None) => {
+            let terminal_entries = match scoped_terminal_entries(
+                &AgentSessionScope::Global,
+                &sessions,
+                terminal_session_bindings,
+            ) {
+                Ok(entries) => entries,
+                Err(error) => return failure(error.to_string()),
+            };
+            let session_count = terminal_entries.len();
+            ToolExecutionResult {
+                status: McpToolExecutionStatus::Succeeded,
+                result_summary: Some(summarize_terminal_entries_for_agent(&terminal_entries)),
+                error: None,
+                structured_result: Some(json!({
+                    "sessionCount": session_count,
+                    "sessions": terminal_entries.clone(),
+                    "scope": AgentSessionScope::Global,
+                    "terminals": terminal_entries.clone(),
+                })),
+                entities: terminal_entries
+                    .iter()
+                    .filter_map(|terminal| {
+                        terminal
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .map(|id| json!({ "type": "terminalSession", "id": id }))
                     })
-                })
-                .collect(),
-            ..ToolExecutionResult::default()
-        },
+                    .collect(),
+                ..ToolExecutionResult::default()
+            }
+        }
         (Ok(sessions), Some(agent_session_id)) => {
             let agent_session_id = match AgentSessionId::new(agent_session_id) {
                 Ok(value) => value,
@@ -164,33 +172,24 @@ pub(super) async fn execute_terminal_reconnect(
     }
 }
 
-pub(super) fn summarize_terminal_sessions_for_agent(sessions: &[TerminalSessionSummary]) -> String {
-    if sessions.is_empty() {
-        return "当前没有运行中的本地终端会话。".to_owned();
+/// 根据根 terminal.list 实际返回条目统计可操作与断线可恢复终端，确保摘要与集合一致。
+fn summarize_terminal_entries_for_agent(entries: &[Value]) -> String {
+    if entries.is_empty() {
+        return "当前没有可用的用户终端。".to_owned();
     }
 
-    let samples = sessions
+    let recoverable = entries
         .iter()
-        .take(5)
-        .map(|session| {
-            format!(
-                "{}（{}，{}x{}，pid={}）",
-                truncate_string(&session.id),
-                truncate_string(&session.shell),
-                session.cols,
-                session.rows,
-                session
-                    .pid
-                    .map(|pid| pid.to_string())
-                    .unwrap_or_else(|| "-".to_owned())
-            )
+        .filter(|entry| {
+            entry.get("connectionState").and_then(Value::as_str) == Some("disconnected")
         })
-        .collect::<Vec<_>>()
-        .join("；");
+        .count();
+    let operable = entries.len().saturating_sub(recoverable);
     format!(
-        "当前共有 {} 个本地终端会话。示例：{}。",
-        sessions.len(),
-        samples
+        "当前 global scope 共有 {} 个用户终端，其中 {} 个可操作、{} 个断线可恢复。",
+        entries.len(),
+        operable,
+        recoverable
     )
 }
 
@@ -209,26 +208,56 @@ fn scoped_terminal_entries(
         .iter()
         .map(|binding| (binding.session_id.as_str(), binding))
         .collect::<std::collections::HashMap<_, _>>();
-    let mut entries = sessions
+    let mut entries = Vec::new();
+    for session in sessions
         .iter()
-        .filter(|session| session.agent_session_id.is_none())
-        .filter_map(|session| {
-            let binding = binding_by_session.get(session.id.as_str()).copied()?;
-            let mut value = serde_json::to_value(session).ok()?;
-            let object = value.as_object_mut()?;
-            object.insert("paneId".to_owned(), json!(binding.pane_id));
-            object.insert(
-                "connectionState".to_owned(),
-                json!(match binding.status {
-                    TerminalSessionBindingStatus::Registered => "connecting",
-                    TerminalSessionBindingStatus::Ready => "connected",
-                    TerminalSessionBindingStatus::Disconnected => "disconnected",
-                }),
-            );
-            insert_terminal_binding_metadata(object, binding);
-            Some(value)
-        })
-        .collect::<Vec<_>>();
+        .filter(|session| is_live_user_terminal(session))
+    {
+        let Some(binding) = binding_by_session.get(session.id.as_str()).copied() else {
+            // `bindings_for_scope` 会主动隐藏 Agent pane；把缺 binding 当作用户
+            // 终端前必须反查完整索引，避免异常 Agent TUI 摘要混入 global 列表。
+            if let Some(binding) = bindings.binding_for_session(&session.id)? {
+                if is_agent_terminal_pane(&binding.pane_id) {
+                    continue;
+                }
+                // 没有 tab 元数据时无法证明 Tab 成员关系；当前有效 Agent scope
+                // 已统一为 global，但保留此分支兼容仍构造显式 Tab 的旧调用方。
+                if !scope_binding_matches(scope, &binding) {
+                    continue;
+                }
+            } else {
+                // pane trace 只是尽力而为的 telemetry；renderer 在启动或重连竞态
+                // 中漏注册时，live 用户终端仍必须能经 global scope 继续操作。
+                if matches!(scope, AgentSessionScope::Global) {
+                    if let Some(value) = terminal_entry_without_binding(session) {
+                        entries.push(value);
+                    }
+                }
+            }
+            continue;
+        };
+        if is_agent_terminal_pane(&binding.pane_id) {
+            continue;
+        }
+        let Some(mut value) = serde_json::to_value(session).ok() else {
+            continue;
+        };
+        let Some(object) = value.as_object_mut() else {
+            continue;
+        };
+        object.insert("sessionId".to_owned(), json!(session.id));
+        object.insert("paneId".to_owned(), json!(binding.pane_id));
+        object.insert(
+            "connectionState".to_owned(),
+            json!(match binding.status {
+                TerminalSessionBindingStatus::Registered => "connecting",
+                TerminalSessionBindingStatus::Ready => "connected",
+                TerminalSessionBindingStatus::Disconnected => "disconnected",
+            }),
+        );
+        insert_terminal_binding_metadata(object, binding);
+        entries.push(value);
+    }
 
     let live_session_ids = sessions
         .iter()
@@ -266,6 +295,26 @@ fn scoped_terminal_entries(
     Ok(entries)
 }
 
+/// 将没有 pane telemetry 的 live 用户终端投影为仍可被显式 sessionId 操作的条目。
+///
+/// binding 是前端渲染器的旁路观测，不应成为全局终端能力的硬依赖；保留
+/// `id` 与新增 `sessionId` 两个字段，可同时兼容旧 Agent 和新 Agent。
+fn terminal_entry_without_binding(session: &TerminalSessionSummary) -> Option<Value> {
+    if !is_live_user_terminal(session) {
+        return None;
+    }
+    let mut value = serde_json::to_value(session).ok()?;
+    let object = value.as_object_mut()?;
+    object.insert("sessionId".to_owned(), json!(session.id));
+    object.insert("connectionState".to_owned(), json!("connected"));
+    Some(value)
+}
+
+/// 只有仍在运行的非 Agent session 才能成为无需 pane binding 的用户终端候选。
+fn is_live_user_terminal(session: &TerminalSessionSummary) -> bool {
+    session.agent_session_id.is_none() && matches!(session.status, TerminalSessionStatus::Running)
+}
+
 /// 把 pane 绑定元数据补进 live TerminalManager 摘要，使 global scope 能区分
 /// 不同 Tab/主机；只在元数据存在时覆盖，避免用 null 抹掉运行态已有字段。
 fn insert_terminal_binding_metadata(
@@ -290,7 +339,7 @@ fn insert_terminal_binding_metadata(
     }
 }
 
-/// 校验显式 sessionId 是否属于 Agent 当前 scope，阻止 tab Agent 跨 tab 操作。
+/// 校验显式 sessionId 是否属于 Agent 当前 scope；global scope 允许缺失旁路 binding。
 fn ensure_terminal_session_in_scope(
     agent_sessions: &AgentSessionService,
     terminals: &TerminalManager,
@@ -307,11 +356,19 @@ fn ensure_terminal_session_in_scope(
         ));
     }
     let scope = record.session.effective_scope();
-    let binding = bindings.binding_for_session(session_id)?.ok_or_else(|| {
-        AppError::InvalidInput(format!(
+    let Some(binding) = bindings.binding_for_session(session_id)? else {
+        if matches!(scope, AgentSessionScope::Global) {
+            return Ok(());
+        }
+        return Err(AppError::InvalidInput(format!(
             "终端 session {session_id} 尚未注册 pane binding，无法确认 Agent scope"
-        ))
-    })?;
+        )));
+    };
+    if is_agent_terminal_pane(&binding.pane_id) {
+        return Err(AppError::InvalidInput(
+            "Agent 不能操作右栏 Agent 自身的终端 session".to_owned(),
+        ));
+    }
     if !scope_binding_matches(&scope, &binding) {
         return Err(AppError::InvalidInput(format!(
             "终端 session {session_id} 不属于 Agent scope {scope:?}"
@@ -854,6 +911,8 @@ fn persist_agent_terminal_snapshot(
     })
 }
 
+/// 解析 terminal.write 的目标：显式 sessionId 直接使用，缺失时只回退到
+/// 当前 Agent 的首选 target binding；generation 可选，显式提供时仍校验并发变更。
 fn resolve_terminal_write_session_id(
     agent_sessions: &AgentSessionService,
     terminals: &TerminalManager,
@@ -876,12 +935,7 @@ fn resolve_terminal_write_session_id(
     let agent_session_id = agent_session_id.ok_or_else(|| {
         AppError::InvalidInput("sessionId 或 agentSessionId 必须提供。".to_owned())
     })?;
-    let expected_generation =
-        optional_u64_arg(arguments, "bindingGeneration")?.ok_or_else(|| {
-            AppError::InvalidInput(
-                "通过 agentSessionId 写入终端时必须提供 bindingGeneration。".to_owned(),
-            )
-        })?;
+    let expected_generation = optional_u64_arg(arguments, "bindingGeneration")?;
     let agent_session_id = AgentSessionId::new(agent_session_id.clone())?;
     let live_ids = live_terminal_session_ids(terminals)?;
     hydrate_agent_target_binding(
@@ -890,13 +944,25 @@ fn resolve_terminal_write_session_id(
         &agent_session_id,
         live_ids.iter().map(String::as_str),
     )?;
-    let target_session_id = terminal_session_bindings
-        .resolve_agent_target_for_write(
-            agent_session_id.as_str(),
-            expected_generation,
-            live_ids.iter().map(String::as_str),
-        )?
-        .target_terminal_session_id;
+    let target_session_id = match expected_generation {
+        Some(expected_generation) => {
+            terminal_session_bindings
+                .resolve_agent_target_for_write(
+                    agent_session_id.as_str(),
+                    expected_generation,
+                    live_ids.iter().map(String::as_str),
+                )?
+                .target_terminal_session_id
+        }
+        None => {
+            terminal_session_bindings
+                .resolve_agent_target(
+                    agent_session_id.as_str(),
+                    live_ids.iter().map(String::as_str),
+                )?
+                .target_terminal_session_id
+        }
+    };
     ensure_terminal_session_in_scope(
         agent_sessions,
         terminals,
@@ -1039,80 +1105,5 @@ pub(super) fn commands_from_terminal_write_data(data: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod scope_tests {
-    use super::*;
-    use crate::services::terminal_session_binding_service::TerminalSessionBindingMetadata;
-
-    /// 写入权限的底层 membership 判定必须拒绝其他 Tab，同时允许 global。
-    #[test]
-    fn scope_membership_rejects_cross_tab_and_allows_global() {
-        let binding = TerminalSessionBindingSnapshot {
-            pane_id: "pane-b".to_owned(),
-            session_id: "session-b".to_owned(),
-            generation: 1,
-            metadata: Some(TerminalSessionBindingMetadata {
-                tab_id: Some("tab-b".to_owned()),
-                target_ref: None,
-                target_kind: Some("local".to_owned()),
-                remote_host_id: None,
-                profile_id: None,
-                cwd: None,
-                shell: Some("pwsh".to_owned()),
-            }),
-            status: TerminalSessionBindingStatus::Ready,
-            registered_at_ms: 1,
-            updated_at_ms: 1,
-            ready_at_ms: Some(1),
-            disconnected_at_ms: None,
-            last_snapshot_status: None,
-        };
-
-        assert!(!scope_binding_matches(
-            &AgentSessionScope::Tab {
-                tab_id: "tab-a".to_owned(),
-            },
-            &binding,
-        ));
-        assert!(scope_binding_matches(
-            &AgentSessionScope::Tab {
-                tab_id: "tab-b".to_owned(),
-            },
-            &binding,
-        ));
-        assert!(scope_binding_matches(&AgentSessionScope::Global, &binding));
-    }
-
-    /// global terminal.list 必须携带足够的 pane 元数据，Agent 才能安全区分跨 Tab 目标。
-    #[test]
-    fn live_terminal_entry_includes_binding_metadata() {
-        let binding = TerminalSessionBindingSnapshot {
-            pane_id: "pane-a".to_owned(),
-            session_id: "session-a".to_owned(),
-            generation: 1,
-            metadata: Some(TerminalSessionBindingMetadata {
-                tab_id: Some("tab-a".to_owned()),
-                target_ref: Some("ssh:host-a".to_owned()),
-                target_kind: Some("ssh".to_owned()),
-                remote_host_id: Some("host-a".to_owned()),
-                profile_id: None,
-                cwd: Some("/srv/app".to_owned()),
-                shell: Some("bash".to_owned()),
-            }),
-            status: TerminalSessionBindingStatus::Ready,
-            registered_at_ms: 1,
-            updated_at_ms: 1,
-            ready_at_ms: Some(1),
-            disconnected_at_ms: None,
-            last_snapshot_status: None,
-        };
-        let mut object = serde_json::Map::new();
-
-        insert_terminal_binding_metadata(&mut object, &binding);
-
-        assert_eq!(object.get("tabId"), Some(&json!("tab-a")));
-        assert_eq!(object.get("targetRef"), Some(&json!("ssh:host-a")));
-        assert_eq!(object.get("remoteHostId"), Some(&json!("host-a")));
-        assert_eq!(object.get("cwd"), Some(&json!("/srv/app")));
-        assert_eq!(object.get("shell"), Some(&json!("bash")));
-    }
-}
+#[path = "terminal_tools_tests.rs"]
+mod scope_tests;

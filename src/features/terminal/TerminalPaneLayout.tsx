@@ -57,6 +57,7 @@ interface TerminalPaneLayoutProps {
   resolvedTheme: ResolvedTheme;
   runtimeMount?: "inline" | "slot";
   runtimeSlotsActive?: boolean;
+  tabId?: string;
   terminalAppearance: TerminalAppearance;
   onRuntimeSlotChange?: TerminalRuntimeSlotChangeHandler;
 }
@@ -81,6 +82,7 @@ function normalizeRootLayout(
   };
 }
 
+/** 递归节点沿用父 Tab id，确保 inline/slot 两种渲染路径共用同一 binding 归属。 */
 function TerminalPaneLayoutNode({
   backgroundImageVisible = false,
   draggingPaneId,
@@ -103,6 +105,7 @@ function TerminalPaneLayoutNode({
   resolvedTheme,
   runtimeMount,
   runtimeSlotsActive,
+  tabId,
   terminalAppearance,
   onRuntimeSlotChange,
 }: TerminalPaneLayoutProps) {
@@ -130,6 +133,7 @@ function TerminalPaneLayoutNode({
         resolvedTheme={resolvedTheme}
         runtimeMount={runtimeMount}
         runtimeSlotsActive={runtimeSlotsActive}
+        tabId={tabId}
         terminalAppearance={terminalAppearance}
         onRuntimeSlotChange={onRuntimeSlotChange}
       />
@@ -162,6 +166,7 @@ function TerminalPaneLayoutNode({
         resolvedTheme={resolvedTheme}
         runtimeMount={runtimeMount}
         runtimeSlotActive={runtimeSlotsActive}
+        tabId={tabId}
         terminalAppearance={terminalAppearance}
         onRuntimeSlotChange={onRuntimeSlotChange}
       />
@@ -192,6 +197,7 @@ export function TerminalPaneLayout({
   resolvedTheme,
   runtimeMount,
   runtimeSlotsActive = true,
+  tabId,
   terminalAppearance,
   onRuntimeSlotChange,
 }: TerminalPaneLayoutProps) {
@@ -254,6 +260,7 @@ export function TerminalPaneLayout({
                 resolvedTheme={resolvedTheme}
                 runtimeMount={runtimeMount}
                 runtimeSlotsActive={runtimeSlotsActive}
+                tabId={tabId}
                 terminalAppearance={terminalAppearance}
                 onRuntimeSlotChange={onRuntimeSlotChange}
               />

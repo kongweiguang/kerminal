@@ -103,6 +103,7 @@ export interface InstallXtermPaneRuntimeParams
   shellAssistEnabled?: boolean;
   shellIntegrationCommandBlockProtocolRef: MutableRefObject<boolean>;
   startupMessage: XtermPaneProps["startupMessage"];
+  tabIdRef: MutableRefObject<XtermPaneProps["tabId"]>;
   syncCommandBlockViews: () => void;
   target: XtermPaneProps["target"];
   terminalAppearance: XtermPaneProps["terminalAppearance"];

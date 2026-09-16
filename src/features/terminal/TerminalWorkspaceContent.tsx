@@ -512,6 +512,7 @@ export function TerminalWorkspaceContent({
                   resolvedTheme={resolvedTheme}
                   runtimeMount="slot"
                   runtimeSlotsActive={active}
+                  tabId={tab.id}
                   terminalAppearance={terminalAppearance}
                   onRuntimeSlotChange={registerRuntimeSlot}
                 />

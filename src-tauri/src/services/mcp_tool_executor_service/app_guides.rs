@@ -8,8 +8,8 @@ use super::diagnostics_common::{
 use super::*;
 use crate::services::external_agent_workspace::CONFIG_REFERENCE_BODY;
 
-/// 返回当前 MCP 能力和 Agent scope 的运行规则，供外部 Agent 在选择 sessionId
-/// 前理解 tab/global membership、断线恢复和文件优先边界。
+/// 返回当前 MCP 能力和 Agent scope 的运行规则，供外部 Agent 优先使用当前
+/// targetBinding 对应的可见 PTY，并在需要时选择 global scope 中的其它终端。
 pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExecutionResult {
     let exposed_tools = exposed_tool_definitions(tools);
     let exposed_tool_count = exposed_tools.len();
@@ -43,6 +43,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 "kerminal.agent.current_session",
                 "kerminal.agent.target_context",
                 "terminal.list",
+                "terminal.snapshot",
                 "kerminal.config.validate"
             ],
             "sessionWorkspace": {
@@ -60,8 +61,17 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                     "terminal.list",
                     "terminal.snapshot"
                 ],
-                "scopeRule": "The session scope is tab or global. A tab scope dynamically includes every current and future user terminal pane in that tab; global includes user terminals across all Kerminal tabs. The right-panel Agent TUI is excluded.",
-                "terminalWriteRule": "Call kerminal.agent.target_context and terminal.list first, then pass an explicit scope member sessionId to terminal.snapshot or terminal.write. The server validates membership on every call; a disconnected member can be recovered with terminal.reconnect using its paneId."
+                "scopeRule": "Every external Agent session uses global scope across all Kerminal tabs. targetBinding identifies the current preferred terminal only; it is not an access restriction. Other user terminals remain available, while the right-panel Agent TUI is excluded.",
+                "terminalWriteRule": "Prefer the current live targetBinding: call terminal.snapshot, then terminal.write so the command and output stay visible in the user's left PTY. Use terminal.list and an explicit sessionId only when the preferred target is unavailable or the task names another terminal; a disconnected member can be recovered with terminal.reconnect using its paneId. Kerminal does not add a per-command confirmation or require reopening an already available terminal.",
+                "terminalExecutionPolicy": {
+                    "scope": "global",
+                    "preferredTarget": "targetBinding",
+                    "visiblePtyFirst": "Ordinary commands and interactive work go through terminal.snapshot and terminal.write on the preferred live PTY.",
+                    "otherTerminals": "Choose another user terminal from terminal.list only when the task needs it; targetBinding is a preference, not a scope boundary.",
+                    "headlessFallback": "If no live visible PTY exists, call terminal.create with target=local or target=ssh and a saved hostId when needed, then use terminal.snapshot and terminal.write on the returned sessionId; close the headless session when finished.",
+                    "backgroundFallback": "Use ssh.command or ssh.command_on_resolved_host only when the user explicitly requests a structured background result or a PTY is unsuitable; their stdout/stderr do not appear in the left terminal.",
+                    "reconnect": "If a selected pane is actually disconnected, call terminal.reconnect and continue after acknowledgement; do not ask the user to reopen an already available terminal or create a new binding."
+                }
             },
             "managedSshRuntime": {
                 "inspectTool": "kerminal.runtime_snapshot",
@@ -73,9 +83,9 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 "secretBoundary": "managedSsh diagnostics are redacted and must not expose passwords, private keys, key passphrases, raw env, or vault refs."
             },
             "runtimeToolFamilies": [
-                capability_family("agentSession", "Use the current Kerminal Agent session and its tab/global terminal scope safely.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
-                capability_family("terminal", "List, inspect, write, resize, reconnect, and manage existing terminals in the current Agent scope; creation and UI focus stay in the app/UI host.", &exposed_tools, &["terminal."]),
-                capability_family("ssh", "Run non-interactive commands on saved SSH hosts through the managed SSH exec facade; SFTP-only hosts are rejected before transport.", &exposed_tools, &["ssh."]),
+                capability_family("agentSession", "Use the current Kerminal Agent session and its global terminal scope; targetBinding marks the preferred terminal without limiting access to other user terminals.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
+                capability_family("terminal", "Create headless local/SSH PTYs when no visible terminal exists, then list, inspect, write, resize, reconnect, and close user terminals in the global Agent scope; targetBinding is the preferred visible target, while UI focus stays in the app/UI host.", &exposed_tools, &["terminal."]),
+                capability_family("ssh", "Use terminal.snapshot plus terminal.write on the preferred visible PTY for ordinary commands; ssh.* remains a background non-interactive fallback through the managed SSH exec facade whose output is not shown in the left terminal. SFTP-only hosts are rejected before transport.", &exposed_tools, &["ssh."]),
                 capability_family("sftp", "Browse, preview, transfer, and manage remote files for saved SSH or SFTP-only hosts through the managed SSH SFTP subsystem/runtime.", &exposed_tools, &["sftp."]),
                 capability_family("tmux", "Probe, list, create, rename, kill, inspect, capture, and attach-plan tmux sessions through managed exec on SSH targets.", &exposed_tools, &["tmux."]),
                 capability_family("container", "List, inspect, tail logs, read stats, manage lifecycle, and browse, edit, transfer, or manage files for SSH-host Docker/Podman containers through managed SSH exec/SFTP capabilities.", &exposed_tools, &["container."]),
@@ -102,7 +112,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
             },
             "deliberatelyAbsentToolFamilies": absent_tool_families(),
             "hostPolicy": {
-                "approvalOwner": "The MCP host owns confirmation, approval, permissions, hooks, and audit.",
+                "approvalOwner": "The MCP host owns any confirmation, approval, permissions, hooks, and audit it chooses; Kerminal does not add a second per-command prompt.",
                 "kerminalRole": "Kerminal exposes tools, validates arguments, restricts HTTP MCP to loopback, and redacts sensitive output where applicable."
             },
             "toolCounts": {
@@ -129,7 +139,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
             .collect(),
         next_hints: vec![
             "When you know the task type, call kerminal.operation_guide with an intent such as terminal, config, sftp, tmux, or credentials.".to_owned(),
-            "For session work, call kerminal.agent.target_context and terminal.list, then use an explicit scope-member sessionId for terminal.snapshot/terminal.write; use terminal.reconnect for disconnected panes.".to_owned(),
+            "For session work, use targetBinding as the preferred global terminal; refresh with kerminal.agent.target_context or terminal.list only when the target is missing, stale, or another terminal is requested, then use terminal.snapshot/terminal.write for visible PTY execution.".to_owned(),
             "For SSH-bound tools, inspect kerminal.runtime_snapshot.managedSsh to confirm managed session/channel reuse before assuming a separate SSH connection is needed.".to_owned(),
             "For config edits, read kerminal-config.md, edit files directly, then call kerminal.config.validate.".to_owned(),
             "Use kerminal.tool_help for exact schemas, examples, and safety annotations before calling a specific runtime tool.".to_owned(),
@@ -138,7 +148,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
     }
 }
 
-/// 返回 Kerminal 的产品区域与 MCP 路由，明确终端 scope 可操作范围但不承诺 UI 编排。
+/// 返回 Kerminal 的产品区域与 MCP 路由，明确 global scope、headless PTY 与 UI 编排边界。
 pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecutionResult {
     let exposed_tools = exposed_tool_definitions(tools);
     let tool_family = |candidate_tool_ids: &[&'static str]| {
@@ -152,10 +162,12 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
         "kerminal.runtime_snapshot",
         "kerminal.agent.current_session",
         "kerminal.agent.target_context",
+        "terminal.create",
         "terminal.list",
         "terminal.snapshot",
     ]);
     let terminal_tools = tool_family(&[
+        "terminal.create",
         "terminal.list",
         "terminal.snapshot",
         "terminal.write",
@@ -168,6 +180,9 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
         "terminal.close",
     ]);
     let remote_tools = tool_family(&[
+        "terminal.create",
+        "terminal.snapshot",
+        "terminal.write",
         "ssh.command",
         "ssh.command_on_resolved_host",
         "server_info.snapshot",
@@ -253,7 +268,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 "Call kerminal.tool_help with a toolId, family, or query when you need exact schemas, examples, and safety annotations.",
                 "Call kerminal.config_guide before file-backed configuration edits when kerminal-config.md is not already available.",
                 "Call kerminal.runtime_snapshot for the current live terminals, Agent sessions, and port forwards.",
-                "Call kerminal.operation_guide with a task intent before invoking write or destructive tools."
+                "Call kerminal.operation_guide when the task sequence is unclear; it is not required for every runtime call."
             ],
             "applicationSurfaces": [
                 {
@@ -261,7 +276,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "userSees": "Saved Local/SSH/SFTP/RDP/Telnet/Serial targets, groups, tags, connection entry points, and host context actions. Double-clicking an SFTP-only host opens the central transfer workbench without creating a terminal.",
                     "aiCanDo": [
                         "Read or update host/profile/group files directly when the user asks for configuration changes.",
-                        "Run non-interactive SSH commands through saved credentials.",
+                        "Use the currently open targetBinding PTY for ordinary commands; use non-interactive SSH through saved credentials only when no visible PTY is available or a background structured result is explicitly requested.",
                         "Open runtime views indirectly by using the corresponding MCP tool family rather than UI choreography."
                     ],
                     "runtimeTools": remote_tools.clone(),
@@ -277,8 +292,8 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "surface": "terminalWorkspace",
                     "userSees": "Tabs, panes, split terminal workspace, command blocks, search, terminal logs, and the live terminal scope for each Agent session.",
                     "aiCanDo": [
-                        "List and inspect every existing terminal in the current tab or global scope.",
-                        "Write to an explicitly selected scope member by sessionId; tab scope automatically includes panes opened later.",
+                        "List and inspect every existing user terminal in the global scope across Kerminal tabs.",
+                        "Prefer the current targetBinding terminal for visible execution; every Agent session can also operate other user terminals in the global scope, selected by sessionId when needed, or create a headless PTY when no terminal is open.",
                         "Reconnect a disconnected pane through terminal.reconnect, then refresh the scope membership.",
                         "Resize terminals and manage terminal logging when requested."
                     ],
@@ -289,10 +304,11 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                         "context/terminal-snapshot.json"
                     ],
                     "boundaries": [
-                        "MCP does not create terminals or focus UI tabs.",
-                        "Before terminal.write, call kerminal.agent.target_context and terminal.list, inspect the selected member, and pass its explicit sessionId.",
+                        "terminal.create can create a headless local or saved-host SSH PTY without opening a UI pane or Tab; UI focus remains outside MCP.",
+                        "For ordinary commands, inspect the current targetBinding with terminal.snapshot and write through terminal.write so output remains visible in the left PTY; list terminals only when selecting another target or recovering stale context.",
                         "A disconnected member is recoverable through terminal.reconnect with paneId; continue after the connection acknowledgement.",
-                        "terminal.reconnect only restores an existing pane connection; it does not orchestrate arbitrary UI."
+                        "terminal.reconnect only restores an existing pane connection; it does not orchestrate arbitrary UI.",
+                        "ssh.command and ssh.command_on_resolved_host are explicit background fallbacks and do not display output in a terminal; use terminal.create for PTY semantics when no visible PTY exists."
                     ]
                 },
                 {
@@ -319,16 +335,16 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                         "Do not expect settings.*, snippet.*, workflow.*, or workspace.* MCP CRUD tools.",
                         "Edit configuration files directly and validate.",
                         "Inspect kerminal.runtime_snapshot.managedSsh before treating SFTP, tmux, container, server-info, or port-forward failures as independent SSH login failures.",
-                        "MCP host owns confirmation, approval, permissions, hooks, and audit."
+                        "MCP host owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt."
                     ]
                 },
                 {
                     "surface": "agentLauncher",
-                    "userSees": "Codex, Claude, or custom CLI sessions launched from Kerminal with session-scoped workspace files and a tab/global terminal scope.",
+                    "userSees": "Codex, Claude, or custom CLI sessions launched from Kerminal with session-scoped workspace files and a global terminal scope.",
                     "aiCanDo": [
                         "Read current Agent session metadata.",
-                        "Refresh the session scope and its live terminal members.",
-                        "Operate any returned scope member with explicit sessionId values.",
+                        "Use the current targetBinding as the preferred terminal, or operate any other user terminal in the global scope when the task needs it.",
+                        "Refresh terminal membership only when targetBinding is unavailable, stale, or another terminal is requested.",
                         "Recover disconnected pane connections through terminal.reconnect."
                     ],
                     "runtimeTools": discovery_tools.clone(),
@@ -378,10 +394,10 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 }
             ],
             "taskRoutes": [
-                app_task_route("understand-current-state", "Call kerminal.runtime_snapshot, then kerminal.agent.target_context and terminal.list to refresh the current tab/global terminal scope.", &discovery_tools),
+                app_task_route("understand-current-state", "Call kerminal.runtime_snapshot when a broad live overview is needed; otherwise use the current targetBinding and refresh kerminal.agent.target_context or terminal.list only when target context is missing, stale, or another terminal is requested.", &discovery_tools),
                 app_task_route("discover-mcp-capabilities", "Call kerminal.capabilities to read the current tool map, recommended first calls, file-first configuration boundary, and deliberately absent tool families.", &discovery_tools),
-                app_task_route("operate-terminal", "In an Agent session, call kerminal.agent.target_context and terminal.list, then use terminal.snapshot/write with an explicit scope-member sessionId; call terminal.reconnect with paneId when a member is disconnected.", &terminal_tools),
-                app_task_route("run-ssh-command", "Identify a protocol=ssh host id from target context or hosts/*.toml, inspect managedSsh runtime reuse, then use ssh.command_on_resolved_host or ssh.command. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
+                app_task_route("operate-terminal", "Prefer the current targetBinding and use terminal.snapshot followed by terminal.write so commands remain visible in the left PTY; use terminal.list/sessionId only for another global terminal or stale target, terminal.create for a headless local/saved-host SSH PTY when none exists, and terminal.reconnect only for an actually disconnected pane.", &terminal_tools),
+                app_task_route("run-ssh-command", "Use the current targetBinding visible PTY for ordinary commands; if no PTY exists, create a local or saved-host SSH headless PTY with terminal.create and use terminal.snapshot/write. Use ssh.command_on_resolved_host or ssh.command only when a structured background result is explicitly requested or a PTY is unsuitable. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
                 app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host, inspect managedSsh runtime reuse, then use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
                 app_task_route("manage-containers", "Inspect managedSsh runtime reuse, then use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
                 app_task_route("manage-tmux", "Inspect managedSsh runtime reuse, then probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
@@ -394,16 +410,17 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
             ],
             "mcpBoundaries": {
                 "toolsOnly": true,
-                "hostPolicyOwner": "The MCP host owns confirmation, approval, permissions, hooks, and audit.",
+                "hostPolicyOwner": "The MCP host owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt.",
                 "configCrudAbsent": ["settings.*", "profile.*", "remote_host.*", "snippet.*", "workflow.*", "workspace.*"],
-                "uiChoreographyAbsent": ["terminal.create", "terminal.resolve_current", "workspace.focus_tab"],
+                "uiChoreographyAbsent": ["terminal.resolve_current", "workspace.focus_tab"],
                 "historyWriteAbsent": ["history.record", "history.delete", "history.clear"]
             },
             "nextActions": [
                 "Use this app guide for product orientation, then call kerminal.operation_guide with the closest intent.",
-                "Use kerminal.tool_help for exact schemas, examples, and safety annotations before invoking any non-read-only tool.",
+                "Use kerminal.tool_help when exact schemas or examples are needed; it is optional when the current tool schema is already known.",
                 "For config edits, call kerminal.config_guide or read kerminal-config.md before editing.",
-                "For terminal work, scope is tab or global; terminal.list returns only scope members and terminal.write/snapshot require an explicit sessionId.",
+                "For terminal work, every Agent session has global scope and targetBinding is the preferred target; use terminal.snapshot/write for visible PTY execution, terminal.list only when another target or refresh is needed, and terminal.create when no PTY exists.",
+                "When no visible PTY exists, use terminal.create for a headless local or saved-host SSH PTY, then snapshot/write/close; use ssh.command or ssh.command_on_resolved_host only for explicitly background structured output, which is not visible in the left terminal.",
                 "For file-backed config, prefer direct file edits plus kerminal.config.validate instead of looking for MCP CRUD."
             ]
         })),
@@ -420,7 +437,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
             })
             .collect(),
         next_hints: vec![
-            "Call kerminal.operation_guide with a specific intent before write or destructive actions."
+            "Call kerminal.operation_guide for a specific intent when a multi-step sequence is unclear; direct runtime calls can proceed with the current schema."
                 .to_owned(),
             "Call kerminal.runtime_snapshot to see current live app state.".to_owned(),
             "Use direct file edits plus kerminal.config.validate for file-backed configuration."

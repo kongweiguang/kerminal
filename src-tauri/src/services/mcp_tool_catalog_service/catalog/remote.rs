@@ -16,7 +16,7 @@ pub(super) fn remote_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SshCommand,
             "执行远程命令",
-            "在已保存 SSH 主机上执行非交互远程命令；调用前确认由 MCP host 负责。",
+            "后台执行非交互 SSH 命令并返回结构化 stdout/stderr；结果不会显示在左侧终端。普通命令或交互式任务优先对当前 targetBinding 对应的可见 PTY 调用 terminal.snapshot 后 terminal.write；仅在没有可用 PTY 或用户明确要求后台结构化结果时使用此工具。MCP host 仍可按自身策略处理调用，不需要 Kerminal 额外创建确认步骤。",
             ToolCategory::Ssh,
             ToolEffect::Remote,
             object_schema(vec![
@@ -40,7 +40,7 @@ pub(super) fn remote_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SshCommandOnResolvedHost,
             "解析目标后执行远程命令",
-            "解析已保存 SSH 主机并执行非交互命令。",
+            "解析已保存 SSH 主机并后台执行非交互命令；结果不会显示在左侧终端。普通命令或交互式任务优先使用当前 targetBinding 对应的可见 PTY（terminal.snapshot 后 terminal.write）；仅在没有可用 PTY 或用户明确要求后台结构化结果时使用。",
             ToolCategory::Ssh,
             ToolEffect::Remote,
             object_schema(vec![

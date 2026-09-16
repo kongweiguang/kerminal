@@ -10,6 +10,7 @@ import {
   runSnippetCommand,
   updateTerminalPaneSessionCwd,
   unregisterTerminalPaneSession,
+  updateTerminalPaneSessionTabId,
   writeBroadcastCommand,
   writePaneCommand,
   writeSnippetCommand,
@@ -245,7 +246,7 @@ describe("terminalSessionRegistry", () => {
     expect(closeTerminalSessionBindingMock).not.toHaveBeenCalled();
   });
 
-  it("closes a preserved disconnected binding when the pane is later disposed", () => {
+  it("closes a preserved disconnected binding when the pane is later disposed", async () => {
     registerTerminalPaneSession("pane-a", "session-disconnected");
     unregisterTerminalPaneSession("pane-a", "session-disconnected", {
       preserveBinding: true,
@@ -254,13 +255,15 @@ describe("terminalSessionRegistry", () => {
 
     unregisterTerminalPaneSession("pane-a", "session-disconnected");
 
-    expect(closeTerminalSessionBindingMock).toHaveBeenCalledWith({
-      paneId: "pane-a",
-      sessionId: "session-disconnected",
-    });
+    await vi.waitFor(() =>
+      expect(closeTerminalSessionBindingMock).toHaveBeenCalledWith({
+        paneId: "pane-a",
+        sessionId: "session-disconnected",
+      }),
+    );
   });
 
-  it("reports metadata register and ready after registering a pane session", () => {
+  it("reports metadata register and ready after registering a pane session", async () => {
     registerTerminalPaneSession("pane-a", "session-a", {
       cwd: "/srv/app",
       profileId: "profile-a",
@@ -283,19 +286,21 @@ describe("terminalSessionRegistry", () => {
       paneId: "pane-a",
       sessionId: "session-a",
     });
-    expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
-      metadata: {
-        cwd: "/srv/app",
-        profileId: "profile-a",
-        remoteHostId: "host-a",
-        shell: "bash",
-        tabId: "tab-a",
-        targetRef: "ssh:host:host-a:tab:tab-a:pane:pane-a",
-        targetKind: "ssh",
-      },
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
+    await vi.waitFor(() =>
+      expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
+        metadata: {
+          cwd: "/srv/app",
+          profileId: "profile-a",
+          remoteHostId: "host-a",
+          shell: "bash",
+          tabId: "tab-a",
+          targetRef: "ssh:host:host-a:tab:tab-a:pane:pane-a",
+          targetKind: "ssh",
+        },
+        paneId: "pane-a",
+        sessionId: "session-a",
+      }),
+    );
   });
 
   it("normalizes stable target refs for terminal binding metadata", () => {
@@ -392,7 +397,7 @@ describe("terminalSessionRegistry", () => {
     );
   });
 
-  it("does not let rejected closed reporting block unregistering", () => {
+  it("does not let rejected closed reporting block unregistering", async () => {
     closeTerminalSessionBindingMock.mockRejectedValueOnce(
       new Error("sidecar offline"),
     );
@@ -401,10 +406,12 @@ describe("terminalSessionRegistry", () => {
     unregisterTerminalPaneSession("pane-a", "session-a");
 
     expect(getTerminalPaneSession("pane-a")).toBeUndefined();
-    expect(closeTerminalSessionBindingMock).toHaveBeenCalledWith({
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
+    await vi.waitFor(() =>
+      expect(closeTerminalSessionBindingMock).toHaveBeenCalledWith({
+        paneId: "pane-a",
+        sessionId: "session-a",
+      }),
+    );
   });
 
   it("updates a registered pane session cwd for later command history", async () => {
@@ -431,7 +438,30 @@ describe("terminalSessionRegistry", () => {
     );
   });
 
-  it("re-registers current binding metadata when cwd changes", () => {
+  it("updates binding tab metadata without recreating the pane session", async () => {
+    registerTerminalPaneSession("pane-moved", "session-moved", {
+      target: "ssh",
+    });
+    registerTerminalSessionBindingMock.mockClear();
+    markTerminalSessionBindingReadyMock.mockClear();
+
+    updateTerminalPaneSessionTabId("pane-moved", "tab-b");
+
+    expect(getTerminalPaneSession("pane-moved")).toBe("session-moved");
+    expect(getTerminalPaneSessionRecord("pane-moved")?.tabId).toBe("tab-b");
+    await vi.waitFor(() =>
+      expect(registerTerminalSessionBindingMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            tabId: "tab-b",
+            targetRef: "ssh:tab:tab-b:pane:pane-moved",
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("re-registers current binding metadata when cwd changes", async () => {
     registerTerminalPaneSession("pane-a", "session-a", {
       cwd: "/srv/app",
       remoteHostId: "host-a",
@@ -443,28 +473,32 @@ describe("terminalSessionRegistry", () => {
 
     updateTerminalPaneSessionCwd("pane-a", "/srv/app/releases");
 
-    expect(registerTerminalSessionBindingMock).toHaveBeenCalledWith({
-      metadata: expect.objectContaining({
-        cwd: "/srv/app/releases",
-        remoteHostId: "host-a",
-        shell: "bash",
-        targetRef: "ssh:host:host-a:pane:pane-a",
-        targetKind: "ssh",
+    await vi.waitFor(() =>
+      expect(registerTerminalSessionBindingMock).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          cwd: "/srv/app/releases",
+          remoteHostId: "host-a",
+          shell: "bash",
+          targetRef: "ssh:host:host-a:pane:pane-a",
+          targetKind: "ssh",
+        }),
+        paneId: "pane-a",
+        sessionId: "session-a",
       }),
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
-    expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
-      metadata: expect.objectContaining({
-        cwd: "/srv/app/releases",
-        remoteHostId: "host-a",
-        shell: "bash",
-        targetRef: "ssh:host:host-a:pane:pane-a",
-        targetKind: "ssh",
+    );
+    await vi.waitFor(() =>
+      expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          cwd: "/srv/app/releases",
+          remoteHostId: "host-a",
+          shell: "bash",
+          targetRef: "ssh:host:host-a:pane:pane-a",
+          targetKind: "ssh",
+        }),
+        paneId: "pane-a",
+        sessionId: "session-a",
       }),
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
+    );
   });
 
   it("does not let rejected metadata reporting block cwd updates", async () => {
@@ -491,7 +525,7 @@ describe("terminalSessionRegistry", () => {
     );
   });
 
-  it("reports disconnected and reconnected lifecycle for current bindings", () => {
+  it("reports disconnected and reconnected lifecycle for current bindings", async () => {
     registerTerminalPaneSession("pane-a", "session-a", {
       cwd: "/srv/app",
       remoteHostId: "host-a",
@@ -503,36 +537,42 @@ describe("terminalSessionRegistry", () => {
     markTerminalPaneSessionDisconnected("pane-a", "session-a");
     markTerminalPaneSessionReconnected("pane-a", "session-a");
 
-    expect(markTerminalSessionBindingDisconnectedMock).toHaveBeenCalledWith({
-      metadata: expect.objectContaining({
-        cwd: "/srv/app",
-        remoteHostId: "host-a",
-        targetRef: "ssh:host:host-a:pane:pane-a",
-        targetKind: "ssh",
+    await vi.waitFor(() =>
+      expect(markTerminalSessionBindingDisconnectedMock).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          cwd: "/srv/app",
+          remoteHostId: "host-a",
+          targetRef: "ssh:host:host-a:pane:pane-a",
+          targetKind: "ssh",
+        }),
+        paneId: "pane-a",
+        sessionId: "session-a",
       }),
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
-    expect(registerTerminalSessionBindingMock).toHaveBeenCalledWith({
-      metadata: expect.objectContaining({
-        cwd: "/srv/app",
-        remoteHostId: "host-a",
-        targetRef: "ssh:host:host-a:pane:pane-a",
-        targetKind: "ssh",
+    );
+    await vi.waitFor(() =>
+      expect(registerTerminalSessionBindingMock).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          cwd: "/srv/app",
+          remoteHostId: "host-a",
+          targetRef: "ssh:host:host-a:pane:pane-a",
+          targetKind: "ssh",
+        }),
+        paneId: "pane-a",
+        sessionId: "session-a",
       }),
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
-    expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
-      metadata: expect.objectContaining({
-        cwd: "/srv/app",
-        remoteHostId: "host-a",
-        targetRef: "ssh:host:host-a:pane:pane-a",
-        targetKind: "ssh",
+    );
+    await vi.waitFor(() =>
+      expect(markTerminalSessionBindingReadyMock).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          cwd: "/srv/app",
+          remoteHostId: "host-a",
+          targetRef: "ssh:host:host-a:pane:pane-a",
+          targetKind: "ssh",
+        }),
+        paneId: "pane-a",
+        sessionId: "session-a",
       }),
-      paneId: "pane-a",
-      sessionId: "session-a",
-    });
+    );
   });
 
   it("ignores stale disconnected and reconnected reports", () => {

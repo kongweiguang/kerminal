@@ -33,6 +33,7 @@ interface TerminalPaneCardProps {
   resolvedTheme: ResolvedTheme;
   runtimeMount?: "inline" | "slot";
   runtimeSlotActive?: boolean;
+  tabId?: string;
   terminalAppearance: TerminalAppearance;
   onClosePane: (paneId: string) => void;
   onBeginPaneDrag?: (
@@ -77,6 +78,7 @@ export function TerminalPaneCard({
   resolvedTheme,
   runtimeMount = "inline",
   runtimeSlotActive = true,
+  tabId,
   terminalAppearance,
 }: TerminalPaneCardProps) {
   const model = buildTerminalPaneCardModel(pane);
@@ -245,6 +247,7 @@ export function TerminalPaneCard({
           }
           resolvedTheme={resolvedTheme}
           shell={pane.shell}
+          tabId={tabId}
           target={pane.target}
           terminalAppearance={terminalAppearance}
           title={pane.title}

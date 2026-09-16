@@ -255,7 +255,8 @@ export function AgentLauncherView({
           {restoreChoice ? (
             <AgentRestoreChoicePanel
               actionState={actionState}
-          choice={restoreChoice}
+              choice={restoreChoice}
+              currentAgentTargetLabel={currentAgentTargetLabel}
               onCancel={onCancelRestore}
               onContinue={onContinueRestore}
               onNewSession={onNewSession}
@@ -326,19 +327,24 @@ function agentSendRequestLabel(request: AgentSendRequest): string {
 function AgentRestoreChoicePanel({
   actionState,
   choice,
+  currentAgentTargetLabel,
   onCancel,
   onContinue,
   onNewSession,
 }: {
   actionState: AgentLauncherActionState;
   choice: AgentRestoreChoice;
+  currentAgentTargetLabel: string;
   onCancel: () => void;
   onContinue: (choice: AgentRestoreChoice) => void;
   onNewSession: (choice: AgentRestoreChoice) => void;
 }) {
   const busy = actionState === restoreChoiceActionKey(choice);
   const disabled = actionState !== null;
-  const targetLabel = formatRestoreTargetLabel(choice.session);
+  const targetLabel = formatRestoreTargetLabel(
+    choice.session,
+    currentAgentTargetLabel,
+  );
   return (
     <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
       <div className="flex min-w-0 items-center gap-2 px-1">
@@ -394,7 +400,26 @@ function AgentRestoreChoicePanel({
 }
 
 /** 新 scope-only 记录没有 legacy target 时，仍显示真实 tab/global 范围而非误报未绑定。 */
-function formatRestoreTargetLabel(session: AgentSessionSelection): string {
+function formatRestoreTargetLabel(
+  session: AgentSessionSelection,
+  currentAgentTargetLabel?: string,
+): string {
+  if (session.scope.kind === "global") {
+    const targetStatus = session.target?.liveStatus;
+    if (
+      targetStatus !== "stale" &&
+      targetStatus !== "closed" &&
+      currentAgentTargetLabel?.startsWith("整个 Kerminal · 首选 ")
+    ) {
+      return currentAgentTargetLabel;
+    }
+    const preferred = session.target
+      ? formatTargetChipLabel(session.target)
+      : "无首选终端";
+    return preferred === "整个 Kerminal"
+      ? preferred
+      : `整个 Kerminal · 首选 ${preferred}`;
+  }
   if (session.target) {
     return formatTargetChipLabel(session.target);
   }

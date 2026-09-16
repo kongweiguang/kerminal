@@ -58,6 +58,7 @@ const EXPECTED_TOOL_IDS: &[&str] = &[
     "ssh.command",
     "ssh.command_on_resolved_host",
     "terminal.close",
+    "terminal.create",
     "terminal.list",
     "terminal.reconnect",
     "terminal.log.start",
@@ -155,7 +156,6 @@ pub fn assert_tools_list_surface(tools: &ListToolsResult) {
         "profile.list",
         "snippet.create",
         "workflow.run",
-        "terminal.create",
         "workspace.focus_tab",
         "history.clear",
         "kerminal.host.migrate_legacy_secrets",
@@ -383,6 +383,46 @@ pub fn assert_terminal_tool_help_payload(payload: &Value) {
         }));
 }
 
+/// 校验单独查询 `terminal.create` 时暴露的 headless PTY schema 与本地样例。
+pub fn assert_terminal_create_tool_help_payload(payload: &Value) {
+    assert_eq!(
+        payload.pointer("/data/matchMode").and_then(Value::as_str),
+        Some("toolId")
+    );
+    assert_tool_reference_examples_match_schema(payload);
+    assert!(payload
+        .pointer("/data/availableToolIds")
+        .and_then(Value::as_array)
+        .is_some_and(|tool_ids| {
+            tool_ids
+                .iter()
+                .any(|tool_id| tool_id.as_str() == Some("terminal.create"))
+        }));
+    assert!(payload
+        .pointer("/data/toolReference")
+        .and_then(Value::as_array)
+        .is_some_and(|tool_references| {
+            tool_references.iter().any(|tool_reference| {
+                tool_reference.pointer("/id").and_then(Value::as_str) == Some("terminal.create")
+                    && tool_reference
+                        .pointer("/inputSchema/properties/target/enum")
+                        .and_then(Value::as_array)
+                        .is_some_and(|values| {
+                            values.iter().any(|value| value == "local")
+                                && values.iter().any(|value| value == "ssh")
+                        })
+                    && tool_reference
+                        .pointer("/inputSchema/properties/shell/description")
+                        .and_then(Value::as_str)
+                        .is_some_and(|description| description.contains("target=local"))
+                    && tool_reference
+                        .pointer("/exampleArguments/target")
+                        .and_then(Value::as_str)
+                        == Some("local")
+            })
+        }));
+}
+
 pub fn assert_container_tool_help_payload(payload: &Value) {
     assert_eq!(
         payload.pointer("/data/matchMode").and_then(Value::as_str),
@@ -558,6 +598,26 @@ pub fn assert_runtime_snapshot_payload(payload: &Value) {
         .pointer("/data/fileFirstConfiguration/hostDiscovery")
         .and_then(Value::as_str)
         .is_some_and(|rule| rule.contains("hosts/*.toml") && rule.contains("remote_host.*")));
+    assert_eq!(
+        payload
+            .pointer("/data/terminalExecutionPolicy/scope")
+            .and_then(Value::as_str),
+        Some("global")
+    );
+    assert_eq!(
+        payload
+            .pointer("/data/terminalExecutionPolicy/preferredTarget")
+            .and_then(Value::as_str),
+        Some("targetBinding")
+    );
+    assert!(payload
+        .pointer("/data/terminalExecutionPolicy/backgroundFallback")
+        .and_then(Value::as_str)
+        .is_some_and(|rule| rule.contains("do not appear in the left terminal")));
+    assert!(payload
+        .pointer("/data/terminalExecutionPolicy/headlessFallback")
+        .and_then(Value::as_str)
+        .is_some_and(|rule| rule.contains("terminal.create")));
 }
 
 pub fn assert_tool_reference_examples_match_schema(payload: &Value) {

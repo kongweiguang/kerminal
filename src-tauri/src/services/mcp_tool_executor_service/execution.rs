@@ -14,6 +14,16 @@ pub(super) async fn execute_tool(
         ToolId::KerminalToolHelp => execute_kerminal_tool_help(tools, arguments),
         ToolId::KerminalOperationGuide => execute_kerminal_operation_guide(tools, arguments),
         ToolId::KerminalRuntimeSnapshot => execute_kerminal_runtime_snapshot(context, tools),
+        ToolId::TerminalCreate => {
+            execute_terminal_create(
+                context.terminals,
+                context.ssh_terminals,
+                context.remote_hosts,
+                context.paths,
+                arguments,
+            )
+            .await
+        }
         ToolId::TerminalList => execute_terminal_list(
             context.agent_sessions,
             context.terminals,

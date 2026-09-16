@@ -223,6 +223,26 @@ export function updateAgentSession(
   });
 }
 
+/**
+ * 通过专用 rebind command 更新 preferred target；后端会同时校验 live pane、
+ * 刷新 runtime binding 并写入 target-binding/snapshot，避免普通 update 只改磁盘。
+ */
+export function rebindAgentSessionTarget(
+  agentSessionId: string,
+  target: AgentSessionTargetRequest,
+): Promise<AgentSessionRecord> {
+  if (!isTauri()) {
+    return Promise.resolve(
+      previewReboundAgentSessionRecord(agentSessionId, target),
+    );
+  }
+
+  return invoke<AgentSessionRecord>("agent_session_rebind_target", {
+    agentSessionId,
+    target,
+  });
+}
+
 /** Rust 的既有 AgentSessionLaunch 存储字段使用 snake_case；仅在 IPC 边界转换，保留前端模型的 camelCase。 */
 function agentSessionUpdatePayload(request: AgentSessionUpdateRequest) {
   if (!request.launch) {
@@ -534,6 +554,7 @@ function previewArchivedAgentSessionRecord(
   };
 }
 
+/** 非 Tauri 预览同步 update IPC 的标题/启动快照，保持原有恢复语义。 */
 function previewUpdatedAgentSessionRecord(
   agentSessionId: string,
   request: AgentSessionUpdateRequest,
@@ -553,6 +574,32 @@ function previewUpdatedAgentSessionRecord(
       sessionRoot,
       status: "active",
       title: request.title ?? "Custom",
+      workspaceRoot,
+    },
+  };
+}
+
+/** 非 Tauri 预览模拟 rebind 返回的持久 target，便于浏览器组件保持同一契约。 */
+function previewReboundAgentSessionRecord(
+  agentSessionId: string,
+  target: AgentSessionTargetRequest,
+): AgentSessionRecord {
+  const workspaceRoot = "~/.kerminal";
+  const sessionRoot = `${workspaceRoot}/agents/sessions/${agentSessionId}`;
+  return {
+    session: {
+      agentId: "custom",
+      agentSessionId,
+      launch: {
+        args: [],
+        commandLabel: "custom",
+        cwd: sessionRoot,
+        shell: "",
+      },
+      sessionRoot,
+      status: "active",
+      target,
+      title: "Custom",
       workspaceRoot,
     },
   };

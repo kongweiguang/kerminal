@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 标签栏升级为 Edge/Chrome 式显式标签组，不同 SSH 主机、本地终端、容器、SFTP 和文件标签可以自由混合分组。
-            - 支持标签与整组拖拽排序、跨组移动、移出分组、折叠、重命名、八色配色和完整键盘菜单操作，同时保持终端会话与右栏目标不变。
-            - Workspace Session 升级到 v3，持久化分组顺序、颜色和折叠状态，并对旧版迁移、损坏文件及未来版本提供备份和防覆盖保护。
+            - 内置 Codex、Claude Agent 默认获得完整 Kerminal 运行态能力；启动时所在终端仅作为首选目标，任务可直接跨 Tab 操作其它用户终端和远程工具。
+            - 普通命令优先写入可见终端，输入与输出保留在左侧工作区；会话恢复、显式继续与终端断连后的重新发现保持兼容。
+            - Kerminal MCP 新增 terminal.create，可在没有终端 Tab 时创建本地或已保存 SSH 后台 PTY，并继续使用 snapshot、write、resize 与 close 管理其生命周期。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

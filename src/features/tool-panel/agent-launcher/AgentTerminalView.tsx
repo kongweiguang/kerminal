@@ -64,6 +64,7 @@ const agentTerminalIcons = {
   custom: Wrench,
 } satisfies Record<ExternalAgentId, typeof Terminal>;
 
+/** 右栏只渲染 Agent 自身 TUI；用户终端 scope 由左侧 pane binding 另行提供。 */
 export function AgentTerminalView({
   desktopNotifications,
   focused,
@@ -202,6 +203,7 @@ export function AgentTerminalView({
             shell={session.shell}
             shellAssistEnabled={false}
             startupMessage={`加载 ${title}...\r\n`}
+            tabId={agentTerminalTabId(session)}
             terminalAppearance={terminalAppearance}
             title={session.title}
             transientStartupMessage
@@ -224,6 +226,17 @@ export function AgentTerminalView({
       ) : null}
     </section>
   );
+}
+
+/** Agent 自身的 TUI 不属于用户终端 scope；仅保留真实 Tab 元数据给 legacy tab session。 */
+function agentTerminalTabId(session: AgentTerminalSession): string | undefined {
+  if (session.scope?.kind === "global") {
+    return undefined;
+  }
+  if (session.scope?.kind === "tab") {
+    return session.scope.tabId;
+  }
+  return session.tabId.startsWith("__kerminal_agent_") ? undefined : session.tabId;
 }
 
 function agentSignalStatusView(signal: TerminalAgentSignal): {

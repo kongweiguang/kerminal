@@ -97,7 +97,6 @@ pub(super) fn absent_tool_families() -> Vec<&'static str> {
         "snippet.*",
         "workflow.*",
         "workspace.*",
-        "terminal.create",
         "terminal.resolve_current",
         "history.record",
         "history.delete",

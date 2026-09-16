@@ -16,15 +16,15 @@ import {
 } from "../../workspace/contracts/index";
 import { collectPaneIds } from "../../workspace/workspaceLayout";
 
-/** 将启动入口的当前上下文转换成稳定作用域；pane/session 仅用于兼容展示，不参与权限边界。 */
+/**
+ * 新启动统一使用 global 权限；activeTab/focusedPane 只用于计算首选 target，
+ * 保留 targetMode 参数是为了兼容旧调用方，避免旧 UI 传入 current 时重新收窄权限。
+ */
 export function buildAgentSessionScope(
-  activeTab?: TerminalTab,
-  targetMode: "current" | "unbound" = "current",
+  _activeTab?: TerminalTab,
+  _targetMode: "current" | "unbound" = "unbound",
 ): AgentSessionScope {
-  if (targetMode === "unbound" || !isTerminalSessionTab(activeTab)) {
-    return { kind: "global" };
-  }
-  return { kind: "tab", tabId: activeTab.id };
+  return { kind: "global" };
 }
 
 export function buildAgentSessionTarget(

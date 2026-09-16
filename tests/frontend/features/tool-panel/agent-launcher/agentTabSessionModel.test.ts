@@ -346,4 +346,35 @@ describe("agentTabSessionModel", () => {
       UNBOUND_AGENT_SESSION_SCOPE_ID,
     );
   });
+
+  it("keeps a canonical global record restorable after switching tabs", () => {
+    const globalRecord: AgentSessionRecord = {
+      session: {
+        agentId: "codex",
+        agentSessionId: "ags-global-preferred",
+        launch: {
+          args: [],
+          cwd: "C:/Users/me/.kerminal/agents/sessions/ags-global-preferred",
+          shell: "codex",
+        },
+        scope: { kind: "global" },
+        status: "active",
+        target: {
+          liveStatus: "ready",
+          paneId: "pane-a",
+          tabId: "tab-a",
+          targetRef: "local:tab-a:pane:pane-a",
+          targetTerminalSessionId: "term-a",
+        },
+        title: "Global Codex",
+      },
+    };
+
+    expect(agentSessionRecordTabId(globalRecord)).toBe(
+      UNBOUND_AGENT_SESSION_SCOPE_ID,
+    );
+    expect(
+      agentSessionRecordIds(restorableSessionsForTab([globalRecord], "tab-b")),
+    ).toEqual(["ags-global-preferred"]);
+  });
 });

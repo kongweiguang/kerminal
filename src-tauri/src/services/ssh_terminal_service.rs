@@ -113,21 +113,72 @@ impl SshTerminalService {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
+        self.create_session_with_ownership(remote_hosts, paths, terminals, request, output, false)
+    }
+
+    /// 创建不依赖 UI pane 的 MCP-owned SSH headless 会话；创建路径仍复用
+    /// 相同认证、managed runtime、临时身份和 output buffer 逻辑。
+    pub fn create_headless_session<F>(
+        &self,
+        remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        terminals: &TerminalManager,
+        request: SshTerminalCreateRequest,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
+        self.create_session_with_ownership(remote_hosts, paths, terminals, request, output, true)
+    }
+
+    /// 在同一解析链路上切换 UI-owned 与 MCP-owned 登记方式，避免 headless
+    /// 连接复制一套容易漂移的凭据、managed shell 和 secret-input 逻辑。
+    fn create_session_with_ownership<F>(
+        &self,
+        remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        terminals: &TerminalManager,
+        request: SshTerminalCreateRequest,
+        output: F,
+        headless: bool,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
         if let Some(managed_launch) = self.try_open_managed_shell(remote_hosts, paths, &request)? {
-            return terminals.create_managed_shell_session(
-                managed_launch.request,
-                managed_launch.shell,
-                output,
-            );
+            return if headless {
+                terminals.create_headless_managed_shell_session(
+                    managed_launch.request,
+                    managed_launch.shell,
+                    output,
+                )
+            } else {
+                terminals.create_managed_shell_session(
+                    managed_launch.request,
+                    managed_launch.shell,
+                    output,
+                )
+            };
         }
 
         let launch = self.resolve_terminal_launch(remote_hosts, paths, request)?;
         if let Some(secret_input_plan) = launch.secret_input_plan {
-            terminals.create_session_with_secret_input_plan(
-                launch.request,
-                Some(secret_input_plan),
-                output,
-            )
+            if headless {
+                terminals.create_headless_session_with_secret_input_plan(
+                    launch.request,
+                    Some(secret_input_plan),
+                    output,
+                )
+            } else {
+                terminals.create_session_with_secret_input_plan(
+                    launch.request,
+                    Some(secret_input_plan),
+                    output,
+                )
+            }
+        } else if headless {
+            terminals.create_headless_session(launch.request, output)
         } else {
             terminals.create_session(launch.request, output)
         }

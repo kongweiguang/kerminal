@@ -203,7 +203,7 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
 }
 
 #[test]
-/// 验证 session TOML 的 tab scope 会进入生成的 target context。
+/// 验证旧 session TOML 的 tab metadata 会以 global 能力写入 target context。
 fn prepare_agent_session_workspace_seeds_scope_from_session_toml() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -275,13 +275,7 @@ fn prepare_agent_session_workspace_seeds_scope_from_session_toml() {
         target_context
             .pointer("/scope/kind")
             .and_then(Value::as_str),
-        Some("tab")
-    );
-    assert_eq!(
-        target_context
-            .pointer("/scope/tabId")
-            .and_then(Value::as_str),
-        Some("tab-1")
+        Some("global")
     );
 }
 

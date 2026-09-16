@@ -58,6 +58,10 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("Required Field Matrix"));
     assert!(config_reference.contains("Common Change Recipes"));
     assert!(config_reference.contains("Runtime MCP Boundaries"));
+    assert!(config_reference.contains("Terminal Execution"));
+    assert!(config_reference.contains("global terminal scope across all Kerminal tabs"));
+    assert!(config_reference.contains("targetBinding"));
+    assert!(config_reference.contains("do not display it in the left terminal"));
     assert!(config_reference.contains("kerminal.app_guide"));
     assert!(config_reference.contains("kerminal.config_guide"));
     assert!(config_reference.contains("kerminal.tool_help"));
@@ -106,6 +110,10 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(agents.contains("MCP host policy owns confirmation"));
     assert!(agents.contains("Prefer direct file edits"));
     assert!(agents.contains("terminal.write"));
+    assert!(agents.contains("targetBinding"));
+    assert!(agents.contains("visible PTY"));
+    assert!(agents.contains("background structured result"));
+    assert!(agents.contains("do not appear in the left terminal"));
     assert!(agents.contains("sessionId"));
     assert!(agents.contains("tab"));
     assert!(agents.contains("global"));
@@ -250,6 +258,10 @@ fn prepare_claude_merges_mcp_json() {
     assert!(claude.contains("Kerminal runtime workspace"));
     assert!(claude.contains("MCP host policy owns confirmation"));
     assert!(claude.contains("terminal.write"));
+    assert!(claude.contains("targetBinding"));
+    assert!(claude.contains("visible PTY"));
+    assert!(claude.contains("background structured result"));
+    assert!(claude.contains("do not appear in the left terminal"));
     assert!(claude.contains("sessionId"));
     assert!(claude.contains("terminal.reconnect"));
     assert!(!claude.contains("bindingGeneration"));
@@ -562,6 +574,10 @@ fn shared_agents_instructions_include_config_boundaries_and_validator() {
     assert!(agents.contains("Kerminal runtime workspace"));
     assert!(agents.contains("MCP host policy owns confirmation"));
     assert!(agents.contains("terminal.write"));
+    assert!(agents.contains("targetBinding"));
+    assert!(agents.contains("visible PTY"));
+    assert!(agents.contains("background structured result"));
+    assert!(agents.contains("do not appear in the left terminal"));
     assert!(agents.contains("sessionId"));
     assert!(agents.contains("tab"));
     assert!(agents.contains("global"));

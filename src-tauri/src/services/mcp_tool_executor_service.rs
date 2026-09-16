@@ -99,6 +99,7 @@ mod diagnostics_common;
 mod diagnostics_tools;
 mod execution;
 mod execution_result;
+mod headless_terminal_tools;
 mod history_tools;
 mod host_vault_tools;
 mod operation_guide;
@@ -149,9 +150,9 @@ pub mod rules {
 
 use self::{
     app_guides::*, arguments::*, config_tools::*, container_tools::*, diagnostics_tools::*,
-    execution::*, execution_result::*, history_tools::*, host_vault_tools::*, operation_guide::*,
-    port_forward_tools::*, runtime_snapshot::*, sftp_tools::*, ssh_tools::*, terminal_tools::*,
-    tmux_tools::*,
+    execution::*, execution_result::*, headless_terminal_tools::*, history_tools::*,
+    host_vault_tools::*, operation_guide::*, port_forward_tools::*, runtime_snapshot::*,
+    sftp_tools::*, ssh_tools::*, terminal_tools::*, tmux_tools::*,
 };
 
 const MCP_CALL_LOG_FIELD_MAX_CHARS: usize = 4096;
@@ -230,6 +231,8 @@ pub struct McpToolExecutorService;
 pub struct McpToolExecutionContext<'a> {
     /// 终端会话管理服务。
     pub terminals: &'a TerminalManager,
+    /// SSH 交互终端服务；headless MCP create 复用同一认证/runtime 链路。
+    pub ssh_terminals: &'a crate::services::ssh_terminal_service::SshTerminalService,
     /// 外部 Agent session 文件服务。
     pub agent_sessions: &'a AgentSessionService,
     /// Agent session 到目标终端的运行态绑定解析服务。

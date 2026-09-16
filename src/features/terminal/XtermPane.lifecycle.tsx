@@ -68,7 +68,10 @@ import {
 } from "./useXtermPaneAppearanceRuntime";
 import { useXtermPaneSearch } from "./XtermPane.search";
 import { requestAgentSend } from "../agent-workflow/state/index";
-import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
+import {
+  updateTerminalPaneRuntimeContext,
+  updateTerminalPaneSessionTabId,
+} from "./terminalSessionRegistry";
 import {
   XtermPaneView,
   type XtermPaneContextMenuState,
@@ -148,6 +151,7 @@ export function XtermPane({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const terminalAppearanceRef = useRef(terminalAppearance);
+  const tabIdRef = useRef(tabId);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const activityRuntimeRef = useRef<XtermPaneActivityRuntime | null>(null);
   const terminalRendererControllerRef =
@@ -349,6 +353,14 @@ export function XtermPane({
   useEffect(() => {
     ghostSuggestionRef.current = ghostSuggestion;
   }, [ghostSuggestion]);
+  /**
+   * pane 可以在不同 Tab 间移动而不重建 xterm；单独同步 tab 元数据，避免为了
+   * 更新 Agent scope 让 PTY 断开重连，同时覆盖初次注册尚未完成的竞态。
+   */
+  useEffect(() => {
+    tabIdRef.current = tabId;
+    updateTerminalPaneSessionTabId(paneId, tabId);
+  }, [paneId, tabId]);
   useEffect(
     () =>
       installXtermPaneRuntime({
@@ -396,6 +408,7 @@ export function XtermPane({
         shellIntegrationCommandBlockProtocolRef,
         shell,
         startupMessage,
+        tabIdRef,
         setSuggestionMenu,
         suggestionMenuIntentRef,
         syncCommandBlockViews,

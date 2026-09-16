@@ -1,3 +1,4 @@
+// @author kongweiguang
 import type {
   AgentWorkflowPreviewKind,
   AgentWorkflowSendPreview,
@@ -35,22 +36,32 @@ export function buildAgentSendPreviewInput({
   session,
   source,
 }: AgentSendPreviewBuildInput): AgentSendPreviewBuildResult | null {
-  const paneId = session.target?.paneId ?? focusedPane?.id;
+  const globalScope =
+    session.scope?.kind === "global" || session.target?.liveStatus === "unbound";
+  const paneId = globalScope
+    ? focusedPane?.id
+    : session.target?.paneId ?? focusedPane?.id;
   if (
     !paneId ||
-    (session.target?.tabId && session.target.tabId !== activeTab?.id)
+    (!globalScope &&
+      session.target?.tabId &&
+      session.target.tabId !== activeTab?.id)
   ) {
     return null;
   }
-  if (focusedPane?.id !== paneId) {
+  if (!focusedPane || focusedPane.id !== paneId) {
     return null;
   }
+
+  // Global scope keeps the persisted target as a preference, but a send action
+  // always describes the pane the user selected at that moment.
+  const previewSession = globalScope ? { ...session, target: undefined } : session;
 
   if (source === "context") {
     const text = buildAgentTerminalContextPrompt({
       activeTab,
       focusedPane,
-      session,
+      session: previewSession,
     });
     return text ? { kind: "diagnostic", text } : null;
   }
@@ -65,13 +76,13 @@ export function buildAgentSendPreviewInput({
           activeTab,
           focusedPane,
           runtimeContext,
-          session,
+          session: previewSession,
         })
       : buildAgentTerminalCommandBlockPrompt({
           activeTab,
           focusedPane,
           runtimeContext,
-          session,
+          session: previewSession,
         });
   return text ? { kind: source, text } : null;
 }

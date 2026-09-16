@@ -155,17 +155,35 @@ export function tabRemovedCleanupPlan(
   };
 }
 
+/**
+ * 返回当前 Tab 可恢复的 active 记录；canonical global 会话跨 Tab 可见，
+ * 旧 Tab 会话仍只在其原 Tab 恢复，避免历史 scope 被误扩大或丢失。
+ */
 export function restorableSessionsForTab(
   records: readonly AgentSessionRecord[],
   tabId: string | undefined,
 ): AgentSessionRecord[] {
   const normalizedTabId = agentSessionScopeId(tabId);
+  const globalScopeId = agentSessionScopeId({ kind: "global" });
   return records.filter((record) => {
     if (agentSessionRecordStatus(record) !== "active") {
       return false;
     }
-    return agentSessionRecordTabId(record) === normalizedTabId;
+    const recordScopeId = agentSessionRecordTabId(record);
+    return (
+      recordScopeId === normalizedTabId ||
+      (recordScopeId === globalScopeId && isCanonicalGlobalRecord(record))
+    );
   });
+}
+
+/** 明确落盘为 global/unbound 的记录可跨 Tab 恢复；无 scope 的旧空记录只在 global fallback 显示。 */
+function isCanonicalGlobalRecord(record: AgentSessionRecord): boolean {
+  const scope = record.session.scope;
+  return (
+    (typeof scope === "object" && scope?.kind === "global") ||
+    agentSessionRecordTarget(record)?.liveStatus === "unbound"
+  );
 }
 
 /** 为恢复列表返回 scope key；没有新字段的历史记录按 legacy target 兼容推断。 */

@@ -94,6 +94,20 @@ impl Default for TerminalManager {
     }
 }
 
+impl Drop for TerminalManager {
+    /// 应用退出时关闭所有仍登记的 PTY；这也覆盖没有 UI pane 的 MCP-owned
+    /// headless 会话，避免远程 shell 或本地子进程脱离应用生命周期。
+    fn drop(&mut self) {
+        let sessions = match self.sessions.get_mut() {
+            Ok(sessions) => std::mem::take(sessions),
+            Err(_) => return,
+        };
+        for (_, session) in sessions {
+            session.close_detached();
+        }
+    }
+}
+
 impl TerminalManager {
     /// 创建空的终端会话管理器。
     pub fn new() -> Self {
@@ -121,6 +135,39 @@ impl TerminalManager {
         self.create_session_with_secret_input_plan(request, None, output)
     }
 
+    /// 创建并原子登记 MCP-owned 本地 headless PTY；它不附着前端 pane，
+    /// 但沿用相同 output buffer 和 transport，使后续 MCP 操作无需 UI Tab。
+    pub fn create_headless_session<F>(
+        &self,
+        request: TerminalCreateRequest,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
+        self.create_headless_session_with_secret_input_plan(request, None, output)
+    }
+
+    /// 创建并原子登记带敏感输入计划的 MCP-owned 本地 headless PTY。
+    pub fn create_headless_session_with_secret_input_plan<F>(
+        &self,
+        request: TerminalCreateRequest,
+        secret_input_plan: Option<TerminalSecretInputPlan>,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
+        let created = create_pty_session(
+            request,
+            secret_input_plan,
+            &self.shell_integration_cache,
+            Box::new(output),
+        )?;
+        let mut sessions = self.lock_sessions()?;
+        Ok(created.register_headless(&mut sessions))
+    }
+
     pub fn create_managed_shell_session<F>(
         &self,
         request: TerminalManagedShellCreateRequest,
@@ -142,6 +189,37 @@ impl TerminalManager {
         tauri_plugin_log::log::info!(
             target: "terminal.managed",
             "event=open.ok session_id={} target_ref={} shell={} rows={} cols={}",
+            summary.id,
+            terminal_target_ref_log_label(summary.target_ref.as_deref()),
+            summary.shell,
+            summary.rows,
+            summary.cols
+        );
+        Ok(summary)
+    }
+
+    /// 创建并原子登记 MCP-owned managed SSH headless shell。
+    pub fn create_headless_managed_shell_session<F>(
+        &self,
+        request: TerminalManagedShellCreateRequest,
+        shell: TerminalManagedShellRuntime,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
+        let created = create_managed_shell_session(
+            request,
+            shell,
+            &self.target_token_signer,
+            Box::new(output),
+        )?;
+        let mut sessions = self.lock_sessions()?;
+        let summary = created.register_headless(&mut sessions);
+        drop(sessions);
+        tauri_plugin_log::log::info!(
+            target: "terminal.managed",
+            "event=open.headless session_id={} target_ref={} shell={} rows={} cols={}",
             summary.id,
             terminal_target_ref_log_label(summary.target_ref.as_deref()),
             summary.shell,
@@ -219,12 +297,24 @@ impl TerminalManager {
         Ok(())
     }
 
-    /// 收割当前进程内仍挂在本地 PTY 管理器中的 orphan 会话。
+    /// 收割 UI-owned orphan 会话；MCP-owned headless 会话必须保留到显式 close
+    /// 或应用退出，避免前端重挂载误杀第三方 MCP 正在使用的 PTY。
     pub fn reap_orphan_sessions(&self) -> AppResult<TerminalSessionReapDiagnostics> {
         let started_at = Instant::now();
         let sessions = {
             let mut sessions = self.lock_sessions()?;
-            sessions.drain().collect::<Vec<_>>()
+            let current = std::mem::take(&mut *sessions);
+            let mut retained = HashMap::new();
+            let mut orphans = Vec::new();
+            for (session_id, session) in current {
+                if session.headless {
+                    retained.insert(session_id, session);
+                } else {
+                    orphans.push((session_id, session));
+                }
+            }
+            *sessions = retained;
+            orphans
         };
         let mut session_ids = Vec::with_capacity(sessions.len());
 
@@ -371,6 +461,9 @@ struct TerminalSession {
     latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
     pump_stats: SharedPtyOutputPumpStats,
     agent_session_id: Option<String>,
+    /// MCP-owned sessions survive UI startup/remount orphan cleanup and are
+    /// still closed by explicit terminal.close or manager drop.
+    headless: bool,
     cleanup_paths: Vec<PathBuf>,
     transport: SharedTerminalTransportHandle,
 }

@@ -8,7 +8,8 @@ use super::*;
 ///
 /// 这里按公开字符串先处理可选的运行态工具，避免指南代码在 catalog 增加
 /// `terminal.reconnect` 等工具时复制一套业务分支；具体 schema 仍由 catalog
-/// 返回，样例只表达 scope、sessionId 和 paneId 的最小调用边界。
+/// 返回，样例表达 global scope 下 targetBinding 首选、显式 sessionId 选其它
+/// 终端以及 paneId 重连的最小调用边界。
 pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
     match tool_id {
         ToolId::KerminalCapabilities | ToolId::KerminalRuntimeSnapshot | ToolId::TerminalList => {
@@ -16,7 +17,7 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
         }
         ToolId::KerminalOperationGuide => Some(json!({
             "intent": "session-terminal",
-            "goal": "Inspect and operate the current Agent tab/global terminal scope safely."
+            "goal": "Operate the current targetBinding visibly; use another global terminal only when the task needs it, create a headless PTY when no PTY is available, and use background SSH only when structured output is explicitly requested."
         })),
         ToolId::KerminalToolHelp => Some(json!({
             "toolId": "terminal.write",
@@ -31,6 +32,12 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
         })),
         ToolId::TerminalResolveAgentTarget => Some(json!({
             "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>"
+        })),
+        ToolId::TerminalCreate => Some(json!({
+            "target": "local",
+            "cwd": "C:/work",
+            "cols": 120,
+            "rows": 30
         })),
         ToolId::TerminalSnapshot => Some(json!({
             "sessionId": "<scope-member-terminal-session-id>",

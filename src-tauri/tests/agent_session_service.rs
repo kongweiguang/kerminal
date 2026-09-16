@@ -120,6 +120,12 @@ fn create_get_update_and_archive_session_files() {
     let id = AgentSessionId::new("ags_test_001").expect("session id");
     let loaded = service.get_session(&id).expect("get session");
     assert_eq!(
+        loaded.session.effective_scope(),
+        AgentSessionScope::Global,
+        "persisted target/tab metadata must not narrow terminal tool access"
+    );
+    assert_eq!(loaded.session.scope, Some(AgentSessionScope::Global));
+    assert_eq!(
         loaded
             .target_binding
             .expect("target binding")
@@ -633,7 +639,7 @@ fn service_with_ids(root: &Path, ids: &[&str]) -> AgentSessionService {
 }
 
 #[test]
-fn legacy_target_binding_context_without_scope_migrates_from_binding() {
+fn legacy_target_binding_context_without_scope_defaults_to_global_terminal_access() {
     let tab_context: AgentTargetBindingContext = serde_json::from_value(serde_json::json!({
         "schemaVersion": AGENT_SESSION_SCHEMA_VERSION,
         "agentSessionId": "ags_legacy_tab",
@@ -648,9 +654,8 @@ fn legacy_target_binding_context_without_scope_migrates_from_binding() {
     .expect("legacy tab context");
     assert_eq!(
         tab_context.effective_scope(),
-        AgentSessionScope::Tab {
-            tab_id: "tab-legacy".to_owned()
-        }
+        AgentSessionScope::Global,
+        "legacy target tab remains a preferred target, not an authorization boundary"
     );
     tab_context.validate().expect("legacy tab context valid");
 

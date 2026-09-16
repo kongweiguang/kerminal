@@ -66,6 +66,13 @@ Use `kerminal.config_guide` when an external Agent needs these generated configu
 
 Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Agent needs exact input schema, example arguments, safety annotations, and deliberately absent-tool guidance for one tool or tool family.
 
+## Terminal Execution
+
+- Every external Agent session uses global terminal scope across all Kerminal tabs. `targetBinding` identifies the current preferred terminal only; it is not an access restriction, so other user terminals remain available.
+- For ordinary commands and interactive work, inspect the current `targetBinding` with `terminal.snapshot`, then write through `terminal.write`. This keeps the command and output visible in the user's left PTY.
+- Use `terminal.list` and an explicit `sessionId` only when the preferred target is missing/stale or the task names another user terminal. Do not ask the user to reopen an already available terminal or create a new binding; reconnect only an actually disconnected pane with `terminal.reconnect`.
+- If no live PTY exists, use `terminal.create` with `target = "local"` or `target = "ssh"` plus a saved `hostId` when needed, then use `terminal.snapshot`/`terminal.write`/`terminal.close` on its returned `sessionId`. `shell` applies only to local targets; SSH uses the saved host's login shell, and `agentSessionId` is optional correlation metadata rather than a scope restriction. Use `ssh.command` or `ssh.command_on_resolved_host` only when a suitable PTY cannot be created or the user explicitly requests a background structured result. These non-interactive tools return stdout/stderr to the Agent but do not display it in the left terminal.
+
 Container runtime tools include lifecycle/status tools and container file tools. Use `container.files.list` and `container.files.preview` before editing; use `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, and `container.files.delete` only for explicitly requested container file work. `container.files.delete` is destructive and depends on MCP host approval/audit.
 
 Do not look for MCP CRUD tools for `settings.*`, `profile.*`, `remote_host.*`, `snippet.*`, `workflow.*`, or `workspace.*`; those configuration changes are direct file edits plus `kerminal.config.validate`.

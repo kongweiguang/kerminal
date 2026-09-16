@@ -816,6 +816,6 @@ impl TerminalSessionBindingService {
 }
 
 /// 右栏 Agent 自身的 PTY 不是用户终端，必须从 global/tab scope 中排除。
-fn is_agent_terminal_pane(pane_id: &str) -> bool {
+pub(crate) fn is_agent_terminal_pane(pane_id: &str) -> bool {
     pane_id.starts_with("agent-terminal-")
 }

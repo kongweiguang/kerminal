@@ -20,14 +20,14 @@
   "entries": [
     {
       "file": "src-tauri/src/models/agent_session.rs",
-      "lines": 878,
+      "lines": 873,
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
     },
     {
       "file": "src-tauri/src/services/mcp_tool_executor_service/terminal_tools.rs",
-      "lines": 1119,
+      "lines": 1110,
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"

@@ -16,6 +16,7 @@ import {
   BUILTIN_PI_AGENT_KEY,
 } from "../../settings/contracts/index";
 import {
+  agentSupportsPermissionSkip,
   agentSessionRecordPermissionMode,
   type AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
@@ -42,14 +43,59 @@ export interface AgentSessionMatcher {
   permissionMode: AgentLaunchPermissionMode;
 }
 
+/**
+ * 启动入口先使用已加载的恢复快照，未命中时再由调用方提供一次磁盘刷新；
+ * 将异步读取与 scope/launcher 匹配分开，避免主组件堆叠恢复分支。
+ */
+export async function resolvePersistedAgentSessionForLaunch(
+  tabId: string,
+  matcher: AgentSessionMatcher,
+  records: readonly AgentSessionRecord[],
+  refresh: () => Promise<readonly AgentSessionRecord[]>,
+): Promise<AgentSessionSelection | null> {
+  const current = findPersistedAgentSession(tabId, matcher, records);
+  if (current) {
+    return current;
+  }
+  try {
+    return findPersistedAgentSession(tabId, matcher, await refresh());
+  } catch {
+    return null;
+  }
+}
+
 /** 为当前标签选择可恢复的同类 Agent，并从持久记录恢复受限权限模式。 */
 export function findPersistedAgentSession(
   tabId: string,
   matcher: AgentSessionMatcher,
   records: readonly AgentSessionRecord[],
 ): AgentSessionSelection | null {
-  for (const record of restorableSessionsForTab(records, tabId)) {
-    if (!recordMatchesLauncher(record, matcher)) {
+  const candidates = restorableSessionsForTab(records, tabId);
+  const exact = findMatchingPersistedSelection(candidates, matcher, false, tabId);
+  if (exact) {
+    return exact;
+  }
+
+  // Full-permission entry can safely resume an older standard-permission record;
+  // buildPreparedAgentTerminalSession will materialize the current full command.
+  if (
+    matcher.permissionMode === "skipPermissions" &&
+    agentSupportsPermissionSkip(matcher.agentId)
+  ) {
+    return findMatchingPersistedSelection(candidates, matcher, true, tabId);
+  }
+  return null;
+}
+
+/** 在 scope 和 launcher 已过滤的历史记录中构造 selection；回退只放宽权限模式。 */
+function findMatchingPersistedSelection(
+  records: readonly AgentSessionRecord[],
+  matcher: AgentSessionMatcher,
+  ignorePermissionMode: boolean,
+  tabId: string,
+): AgentSessionSelection | null {
+  for (const record of records) {
+    if (!recordMatchesLauncher(record, matcher, ignorePermissionMode)) {
       continue;
     }
     const selection = persistedAgentSessionSelection(record, tabId);
@@ -94,11 +140,15 @@ export function persistedAgentSessionSelection(
 function recordMatchesLauncher(
   record: AgentSessionRecord,
   matcher: AgentSessionMatcher,
+  ignorePermissionMode = false,
 ): boolean {
   if (agentSessionRecordAgentId(record) !== matcher.agentId) {
     return false;
   }
-  if (agentSessionRecordPermissionMode(record) !== matcher.permissionMode) {
+  if (
+    !ignorePermissionMode &&
+    agentSessionRecordPermissionMode(record) !== matcher.permissionMode
+  ) {
     return false;
   }
   const recordLauncherKey = agentSessionRecordLauncherKey(record);

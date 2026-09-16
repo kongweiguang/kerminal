@@ -110,6 +110,7 @@ pub fn mcp_context<'a>(
         settings: state.settings(),
         sftp: state.sftp(),
         ssh_commands,
+        ssh_terminals: state.ssh_terminals(),
         ssh_runtime: state.ssh_runtime(),
         storage: state.storage(),
         terminal_session_bindings: state.terminal_session_bindings(),

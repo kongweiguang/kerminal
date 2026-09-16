@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentLaunchSplitButton } from "../../../../../src/features/tool-panel/agent-launcher/AgentLaunchControls";
 import {
@@ -105,7 +105,7 @@ describe("PI Agent selector presentation", () => {
     ).toBe(false);
   });
 
-  it("不渲染不支持的跳过权限项，仅保留清晰的全局入口", async () => {
+  it("不渲染权限菜单，PI 直接使用清晰的全局入口", () => {
     const onLaunch = vi.fn();
     render(
       <AgentLaunchSplitButton
@@ -115,18 +115,10 @@ describe("PI Agent selector presentation", () => {
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "打开 Agent 启动选项" }),
-    );
-    expect(
-      screen.queryByRole("menuitem", { name: /跳过权限打开 PI Agent/ }),
-    ).not.toBeInTheDocument();
-    const globalEntry = screen.getByRole("menuitem", {
-      name: "允许 PI Agent 操作整个 Kerminal",
-    });
-    expect(globalEntry).toBeVisible();
-    await waitFor(() => expect(globalEntry).toHaveFocus());
-    fireEvent.click(globalEntry);
+    const primary = screen.getByRole("button", { name: "使用 PI Agent 进入" });
+    expect(primary).toBeVisible();
+    fireEvent.click(primary);
     expect(onLaunch).toHaveBeenCalledWith("default", "unbound");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });

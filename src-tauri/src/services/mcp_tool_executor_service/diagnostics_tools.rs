@@ -130,9 +130,10 @@ pub(super) fn execute_kerminal_tool_help(
             },
             "safetyBoundaries": {
                 "readOnly": "kerminal.tool_help is read-only and never invokes the referenced tool.",
-                "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit before write or destructive tools.",
+                "hostPolicy": "The MCP host owns any confirmation, approval, permissions, hooks, and audit it chooses; Kerminal does not add a second per-command prompt.",
                 "fileFirstConfiguration": "settings/profile/host/snippet/workflow CRUD tools are deliberately absent; use direct file edits plus validation.",
-                "agentScope": "terminal.list returns current members of the tab/global Agent scope. terminal.snapshot/write take an explicit sessionId and the server rejects members outside the scope; terminal.reconnect accepts a paneId for a disconnected member.",
+                "agentScope": "Every external Agent session uses global scope across Kerminal tabs. targetBinding is the preferred terminal, not an access restriction; terminal.list returns other user terminals when needed, terminal.snapshot/write keep ordinary commands in the visible PTY, explicit sessionId values select another member when needed, and terminal.reconnect accepts a paneId only for a disconnected member.",
+                "terminalExecution": "Use targetBinding with terminal.snapshot then terminal.write for visible commands. If no visible PTY exists, use terminal.create for a headless local or saved-host SSH PTY, then snapshot/write/close. Use ssh.command or ssh.command_on_resolved_host only when background structured output is explicitly requested or PTY creation is unsuitable; those results do not appear in the left terminal.",
                 "managedSsh": "SSH-bound tool families reuse a managed runtime where possible; diagnostics prove session/channel ownership without exposing credential material.",
                 "externalLaunch": "External launch passwords and passphrases are session-only; MCP diagnostics expose policy, counts, launch ids, and redacted rejection metadata only.",
                 "secrets": "Do not extract or print stored secrets. Authorized credential writes use kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret."
@@ -140,7 +141,7 @@ pub(super) fn execute_kerminal_tool_help(
             "nextActions": [
                 "Call the selected read-only discovery or runtime tool only after checking required arguments.",
                 "For SSH-bound operations, call kerminal.runtime_snapshot and inspect managedSsh before and after the operation when debugging session reuse.",
-                "For terminal work, refresh kerminal.agent.target_context and terminal.list, inspect a returned scope member, then use explicit sessionId values for terminal.snapshot/write; recover disconnected panes with terminal.reconnect.",
+                "For terminal work, prefer targetBinding and inspect it with terminal.snapshot before terminal.write; refresh kerminal.agent.target_context or terminal.list only when target context is missing/stale or another global terminal is requested. If no PTY exists, use terminal.create, then snapshot/write/close. Recover only disconnected panes with terminal.reconnect.",
                 "For destructive tools, require clear user intent and host-side approval/audit."
             ]
         })),
@@ -258,7 +259,7 @@ fn tool_ids_matching_prefixes<'a>(
         .collect()
 }
 
-/// 按自然语言查询补齐相关工具，特别处理 tab/global scope 和 disconnected pane 诊断。
+/// 按自然语言查询补齐相关工具，特别处理 global scope、targetBinding 和 disconnected pane 诊断。
 fn tool_ids_for_help_query<'a>(
     tools: &[&'a ToolDefinition],
     requested_query: &str,
@@ -314,6 +315,9 @@ fn tool_ids_for_help_query<'a>(
     if normalized_query.contains("terminal scope")
         || normalized_query.contains("tab scope")
         || normalized_query.contains("global scope")
+        || normalized_query.contains("targetbinding")
+        || normalized_query.contains("visible pty")
+        || normalized_query.contains("left terminal")
         || normalized_query.contains("reconnect")
         || normalized_query.contains("disconnected pane")
     {
@@ -322,6 +326,7 @@ fn tool_ids_for_help_query<'a>(
             &[
                 "kerminal.agent.current_session",
                 "kerminal.agent.target_context",
+                "terminal.create",
                 "terminal.list",
                 "terminal.snapshot",
                 "terminal.write",

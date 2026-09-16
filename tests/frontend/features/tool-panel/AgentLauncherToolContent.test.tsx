@@ -230,7 +230,7 @@ describe("AgentLauncherToolContent", () => {
     vi.clearAllMocks();
   });
 
-  it("starts as a compact selector and split enter button", async () => {
+  it("starts as a compact selector with one full-permission enter button", async () => {
     const user = userEvent.setup();
     const { container } = renderAgentLauncher();
 
@@ -248,7 +248,7 @@ describe("AgentLauncherToolContent", () => {
       "可用",
     );
     expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · 当前 Tab · 1 个终端 · tab-main",
+      "新建对话当前目标 · 整个 Kerminal · 首选 tab-main",
     );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
@@ -302,8 +302,8 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "tab", tabId: "tab-main" },
-        title: "Codex · 当前 Tab · 1 个终端 · tab-main",
+        scope: { kind: "global" },
+        title: "Codex · 整个 Kerminal",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -320,7 +320,7 @@ describe("AgentLauncherToolContent", () => {
       "C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
     expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
-      "codex --dangerously-bypass-hook-trust · C:/Users/me/.kerminal/agents/sessions/ags-codex",
+      "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust · C:/Users/me/.kerminal/agents/sessions/ags-codex",
     );
     expect(terminalMocks.renderXtermPane).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -329,7 +329,7 @@ describe("AgentLauncherToolContent", () => {
           "-NoProfile",
           "-NoExit",
           "-Command",
-          "codex --dangerously-bypass-hook-trust",
+          "codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
         ],
         cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
         focused: true,
@@ -403,24 +403,13 @@ describe("AgentLauncherToolContent", () => {
     expect(screen.queryByText("队列")).not.toBeInTheDocument();
   });
 
-  it("opens Codex with skipped permissions from the launcher context menu", async () => {
+  it("opens Codex with full permissions from the primary enter button", async () => {
     const user = userEvent.setup();
 
     renderAgentLauncher();
 
-    await screen.findByRole("button", { name: "使用 Codex 进入" });
-    await user.click(screen.getByRole("button", { name: "打开 Agent 启动选项" }));
-
-    const menu = await screen.findByRole("menu");
-    expect(menu).toHaveClass("kerminal-agent-launch-menu");
-    expect(menu).toHaveTextContent("跳过权限打开");
-    expect(menu).toHaveTextContent("操作整个 Kerminal");
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
-
     await user.click(
-      screen.getByRole("menuitem", {
-        name: "跳过权限打开 Codex",
-      }),
+      await screen.findByRole("button", { name: "使用 Codex 进入" }),
     );
 
     await waitFor(() => {
@@ -452,6 +441,9 @@ describe("AgentLauncherToolContent", () => {
         shell: "pwsh.exe",
       },
     });
+    expect(
+      screen.queryByRole("button", { name: "打开 Agent 启动选项" }),
+    ).not.toBeInTheDocument();
   });
 
   it("continues a persisted yolo conversation with its saved permission mode", async () => {
@@ -477,6 +469,7 @@ describe("AgentLauncherToolContent", () => {
               shell: "pwsh.exe",
             },
             status: "active",
+            scope: { kind: "global" },
             target: { tabId: "tab-main" },
             title: "Codex",
           },
@@ -503,7 +496,7 @@ describe("AgentLauncherToolContent", () => {
     );
   });
 
-  it("does not restore a persisted yolo session from the default entry action", async () => {
+  it("restores a persisted full-permission session from the default entry action", async () => {
     const user = userEvent.setup();
     apiMocks.listAgentSessions.mockResolvedValue({
       diagnostics: [],
@@ -523,6 +516,7 @@ describe("AgentLauncherToolContent", () => {
               shell: "pwsh.exe",
             },
             status: "active",
+            scope: { kind: "global" },
             target: { tabId: "tab-main" },
             title: "Codex yolo",
           },
@@ -536,21 +530,17 @@ describe("AgentLauncherToolContent", () => {
     );
 
     await waitFor(() => {
-      expect(apiMocks.createAgentSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agentId: "codex",
-          launcherKey: "builtin:codex",
-        }),
-      );
+      expect(screen.getByRole("button", { name: "继续上次" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "继续上次" }));
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).not.toHaveBeenCalled();
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
-        agentSessionId: "ags-codex",
-        resumeProviderSession: false,
+        agentSessionId: "ags-yolo-codex",
+        resumeProviderSession: true,
       });
     });
-    expect(apiMocks.prepareExternalAgentWorkspace).not.toHaveBeenCalledWith(
-      expect.objectContaining({ agentSessionId: "ags-yolo-codex" }),
-    );
   });
 
   it("creates a workflow follow-up session in the source global scope", async () => {
@@ -592,7 +582,7 @@ describe("AgentLauncherToolContent", () => {
     });
   });
 
-  it("opens Claude with skipped permissions from the launcher context menu", async () => {
+  it("opens Claude with full permissions from the primary enter button", async () => {
     const user = userEvent.setup();
 
     renderAgentLauncher();
@@ -600,12 +590,8 @@ describe("AgentLauncherToolContent", () => {
     const selector = await screen.findByRole("combobox", { name: "选择 Agent" });
     await user.click(selector);
     await user.click(screen.getByRole("option", { name: /^Claude，/u }));
-    await user.click(screen.getByRole("button", { name: "打开 Agent 启动选项" }));
-
     await user.click(
-      await screen.findByRole("menuitem", {
-        name: "跳过权限打开 Claude",
-      }),
+      await screen.findByRole("button", { name: "使用 Claude 进入" }),
     );
 
     await waitFor(() => {
@@ -652,10 +638,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · 当前 Tab · 1 个终端",
-    );
-    expect(screen.getByTestId("agent-current-target")).not.toHaveTextContent(
-      /pane-prod|term-prod|tab-main/,
+      "新建对话当前目标 · 整个 Kerminal · 首选 prod web",
     );
     await launchAgent(user, "Codex");
 
@@ -663,8 +646,18 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "tab", tabId: "tab-main" },
-        title: "Codex · 当前 Tab · 1 个终端",
+        scope: { kind: "global" },
+        target: {
+          cwd: "/srv/app",
+          liveStatus: "ready",
+          paneId: "pane-prod",
+          shell: "bash",
+          tabId: "tab-main",
+          targetKind: "ssh",
+          targetRef: "ssh:prod-web",
+          targetTerminalSessionId: "term-prod",
+        },
+        title: "Codex · 整个 Kerminal",
       });
     });
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
@@ -673,7 +666,7 @@ describe("AgentLauncherToolContent", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens Codex without binding the focused host from the launcher context menu", async () => {
+  it("keeps the primary Codex entry global while retaining the focused pane target", async () => {
     const user = userEvent.setup();
     registerTerminalPaneSession("pane-prod", "term-prod", {
       cwd: "/srv/app",
@@ -699,12 +692,8 @@ describe("AgentLauncherToolContent", () => {
       />,
     );
 
-    await screen.findByRole("button", { name: "使用 Codex 进入" });
-    await user.click(screen.getByRole("button", { name: "打开 Agent 启动选项" }));
     await user.click(
-      await screen.findByRole("menuitem", {
-        name: "允许 Codex 操作整个 Kerminal",
-      }),
+      await screen.findByRole("button", { name: "使用 Codex 进入" }),
     );
 
     await waitFor(() => {
@@ -712,6 +701,16 @@ describe("AgentLauncherToolContent", () => {
         agentId: "codex",
         launcherKey: "builtin:codex",
         scope: { kind: "global" },
+        target: {
+          cwd: "/srv/app",
+          liveStatus: "ready",
+          paneId: "pane-prod",
+          shell: "bash",
+          tabId: "tab-main",
+          targetKind: "ssh",
+          targetRef: "ssh:prod-web",
+          targetTerminalSessionId: "term-prod",
+        },
         title: "Codex · 整个 Kerminal",
       });
     });
@@ -735,6 +734,7 @@ describe("AgentLauncherToolContent", () => {
             },
             sessionRoot:
               "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
+            scope: { kind: "global" },
             status: "active",
             target: {
               tabId: "tab-main",

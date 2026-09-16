@@ -1,4 +1,8 @@
-import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
+// @author kongweiguang
+import type {
+  AgentSessionScope,
+  AgentSessionTargetRequest,
+} from "../../../lib/agentLauncherApi";
 import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 
 const AGENT_TERMINAL_CONTEXT_OUTPUT_MAX_CHARS = 6_000;
@@ -10,6 +14,7 @@ export interface AgentTerminalContextSession {
   agentSessionId?: string;
   commandLabel: string;
   cwd: string;
+  scope?: AgentSessionScope;
   target?: AgentSessionTargetRequest;
   title: string;
 }
@@ -223,6 +228,7 @@ function buildAgentTerminalRuntimePrompt({
   return lines.join("\n");
 }
 
+/** 全局 Agent 忽略旧 target 的 Tab/pane 限制，但仍以当前 focused pane 生成上下文。 */
 function resolveBoundTarget({
   activeTab,
   focusedPane,
@@ -232,15 +238,18 @@ function resolveBoundTarget({
   "activeTab" | "focusedPane" | "session"
 >) {
   const target = session.target;
-  const tabMatches = !target?.tabId || activeTab?.id === target.tabId;
+  const globalScope =
+    session.scope?.kind === "global" || target?.liveStatus === "unbound";
+  const tabMatches =
+    globalScope || !target?.tabId || activeTab?.id === target.tabId;
   const pane =
     tabMatches &&
     focusedPane &&
-    (!target?.paneId || focusedPane.id === target.paneId)
+    (globalScope || !target?.paneId || focusedPane.id === target.paneId)
       ? focusedPane
       : undefined;
 
-  return { pane, target };
+  return { pane, target: globalScope && pane ? undefined : target };
 }
 
 function buildAgentTerminalContextHeaderLines({

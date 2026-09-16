@@ -147,9 +147,7 @@ it("renders the active Agent Launcher tool", async () => {
   expect(
     screen.getByRole("button", { name: "使用 Codex 进入" }),
   ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "打开 Agent 启动选项" }),
-  ).toBeInTheDocument();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(screen.queryByText("历史会话")).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   expect(

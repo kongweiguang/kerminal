@@ -53,6 +53,8 @@ const paneSessions = new Map<string, PaneSessionRecord>();
 const paneConnectionGenerations = new Map<string, number>();
 const paneReconnectHandlers = new Map<string, () => Promise<void>>();
 const remoteSocksInjectionTasks = new Map<string, Promise<void>>();
+const bindingOperationQueues = new Map<string, Promise<void>>();
+const BINDING_REGISTER_RETRY_DELAYS_MS = [50, 150] as const;
 let reconnectListenerStarted = false;
 
 /** 建立全局 request/ack listener，让 MCP 重连请求复用真实 pane runtime。 */
@@ -136,6 +138,10 @@ export interface PaneCommandWriteResult {
 export type SnippetWriteResult = PaneCommandWriteResult;
 export type WorkflowWriteResult = PaneCommandWriteResult;
 
+/**
+ * 登记真实 pane binding；register 和 ready 必须按顺序完成，否则 MCP 可能只看到
+ * 一个永远未 ready 的成员。函数保持同步返回，避免影响 pane 创建，状态上报在队列中异步收口。
+ */
 export function registerTerminalPaneSession(
   paneId: string,
   sessionId: string,
@@ -229,6 +235,30 @@ export function updateTerminalPaneSessionCwd(paneId: string, cwd: string) {
   });
 }
 
+/**
+ * 同步 pane 跨 Tab 移动后的归属元数据；只更新 binding metadata，不重建 PTY，
+ * 让 Tab scope 立即包含移动后的 pane，同时保留当前 session 和连接 generation。
+ */
+export function updateTerminalPaneSessionTabId(
+  paneId: string,
+  tabId?: string,
+) {
+  const currentSession = paneSessions.get(paneId);
+  if (!currentSession) {
+    return;
+  }
+  const normalizedTabId = tabId?.trim() || undefined;
+  if (currentSession.tabId === normalizedTabId) {
+    return;
+  }
+  const nextSession = {
+    ...currentSession,
+    tabId: normalizedTabId,
+  };
+  paneSessions.set(paneId, nextSession);
+  reportTerminalSessionMetadataUpdated(paneId, nextSession);
+}
+
 export function updateTerminalPaneRuntimeContext(
   paneId: string,
   context: TerminalPaneRuntimeContext,
@@ -243,6 +273,10 @@ export function updateTerminalPaneRuntimeContext(
   });
 }
 
+/**
+ * 标记断开但保留 pane binding；操作进入同一 pane 队列，保证它不会跑到 register
+ * 之前，也不会被后续 close/reconnect 的晚到 IPC 逆序覆盖。
+ */
 export function markTerminalPaneSessionDisconnected(
   paneId: string,
   sessionId?: string,
@@ -251,11 +285,20 @@ export function markTerminalPaneSessionDisconnected(
   if (!currentSession || (sessionId && currentSession.sessionId !== sessionId)) {
     return;
   }
-  void markTerminalSessionBindingDisconnected(
-    buildTraceRequest(paneId, currentSession),
-  ).catch(() => undefined);
+  const request = buildTraceRequest(paneId, currentSession);
+  enqueueBindingOperation(paneId, async () => {
+    try {
+      await markTerminalSessionBindingDisconnected(request);
+    } catch {
+      reportBindingWarning("disconnected", request);
+    }
+  });
 }
 
+/**
+ * 重新登记当前 binding 的 metadata；复用 register→ready 队列让重连完成事实
+ * 在 MCP 可见前先恢复完整 scope 元数据。
+ */
 export function markTerminalPaneSessionReconnected(
   paneId: string,
   sessionId?: string,
@@ -267,19 +310,23 @@ export function markTerminalPaneSessionReconnected(
   reportTerminalSessionRegistered(paneId, currentSession);
 }
 
+/** 登记 metadata 后再确认 ready，避免异步 IPC 的调用顺序在 WebView 中反转。 */
 function reportTerminalSessionRegistered(
   paneId: string,
   session: PaneSessionRecord,
 ) {
   const request = buildTraceRequest(paneId, session);
-  void registerTerminalSessionBinding(request).catch(
-    () => undefined,
-  );
-  void markTerminalSessionBindingReady(request).catch(
-    () => undefined,
-  );
+  enqueueBindingOperation(paneId, async () => {
+    await registerBindingWithRetry(request);
+    try {
+      await markTerminalSessionBindingReady(request);
+    } catch {
+      reportBindingWarning("ready", request);
+    }
+  });
 }
 
+/** 元数据更新沿用同一队列，避免 cwd/tab 更新与重连状态交叉覆盖。 */
 function reportTerminalSessionMetadataUpdated(
   paneId: string,
   session: PaneSessionRecord,
@@ -287,8 +334,84 @@ function reportTerminalSessionMetadataUpdated(
   reportTerminalSessionRegistered(paneId, session);
 }
 
+/** 关闭也必须排在尚未完成的 register/ready 之后，确保后端不会留下可见幽灵成员。 */
 function reportTerminalSessionClosed(paneId: string, sessionId: string) {
-  void closeTerminalSessionBinding({ paneId, sessionId }).catch(() => undefined);
+  enqueueBindingOperation(paneId, async () => {
+    try {
+      await closeTerminalSessionBinding({ paneId, sessionId });
+    } catch {
+      reportBindingWarning("closed", { paneId, sessionId });
+    }
+  });
+}
+
+/**
+ * Tauri 启动或 session 刚切换时 IPC 可能短暂不可用；短退避只覆盖这段窗口，
+ * 失败后交给后续 metadata/reconnect 事件再次登记，不把无限重试留在全局队列。
+ */
+async function registerBindingWithRetry(
+  request: PaneSessionBindingTraceRequest,
+): Promise<void> {
+  for (let attempt = 0; attempt <= BINDING_REGISTER_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      await registerTerminalSessionBinding(request);
+      return;
+    } catch {
+      if (attempt < BINDING_REGISTER_RETRY_DELAYS_MS.length) {
+        await delayBindingRetry(BINDING_REGISTER_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      reportBindingWarning("register", request, attempt + 1);
+      throw new Error("terminal session binding register failed");
+    }
+  }
+}
+
+/** 使用可控 timer 释放 binding 队列，不依赖固定 sleep 或阻塞渲染线程。 */
+function delayBindingRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, delayMs);
+  });
+}
+
+/** 仅记录稳定操作上下文，不输出 targetToken 或后端错误正文。 */
+function reportBindingWarning(
+  operation: "register" | "ready" | "disconnected" | "closed",
+  request: Pick<PaneSessionBindingTraceRequest, "paneId" | "sessionId">,
+  attempts?: number,
+) {
+  console.warn("[Kerminal] terminal session binding operation failed", {
+    attempts,
+    operation,
+    paneId: request.paneId,
+    sessionId: request.sessionId,
+  });
+}
+
+/**
+ * 以 pane 为顺序域串行化 binding 生命周期；不同 pane 仍可并发上报，单个 pane
+ * 的 register/ready/disconnect/close 则严格按调用顺序执行，避免晚到状态覆盖新绑定。
+ */
+function enqueueBindingOperation(
+  paneId: string,
+  operation: () => Promise<void>,
+) {
+  const previous = bindingOperationQueues.get(paneId);
+  const run = () => {
+    try {
+      return Promise.resolve(operation());
+    } catch {
+      return Promise.resolve();
+    }
+  };
+  const next = (previous ? previous.catch(() => undefined).then(run) : run())
+    .catch(() => undefined);
+  bindingOperationQueues.set(paneId, next);
+  void next.then(() => {
+    if (bindingOperationQueues.get(paneId) === next) {
+      bindingOperationQueues.delete(paneId);
+    }
+  });
 }
 
 function buildTraceRequest(

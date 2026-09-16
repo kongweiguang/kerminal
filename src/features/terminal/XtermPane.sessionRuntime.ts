@@ -61,6 +61,7 @@ type SessionConfig = Pick<
   | "setLogState"
   | "shell"
   | "startupMessage"
+  | "tabIdRef"
   | "target"
   | "terminalAppearanceRef"
   | "transientStartupMessage"
@@ -152,6 +153,7 @@ export function createXtermPaneSessionRuntime({
   setShellIntegrationTrusted,
   shell,
   startupMessage,
+  tabIdRef,
   target,
   terminal,
   terminalAppearanceRef,
@@ -392,6 +394,7 @@ export function createXtermPaneSessionRuntime({
             ? target.hostId
             : remoteHostId,
         shell,
+        tabId: tabIdRef.current,
         target: terminalSessionTargetKind(target, remoteHostId),
         targetRef: session.targetRef,
         targetToken: session.targetToken,

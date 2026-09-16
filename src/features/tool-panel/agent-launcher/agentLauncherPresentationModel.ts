@@ -17,7 +17,11 @@ import {
   type AgentLauncherSettings,
   type CustomAgentDefinition,
 } from "../../settings/contracts/index";
-import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
+import {
+  isTerminalSessionTab,
+  type TerminalPane,
+  type TerminalTab,
+} from "../../workspace/contracts/index";
 import {
   customAgentExecutableName,
   resolveAgentLauncherDescriptor,
@@ -32,8 +36,12 @@ import {
 import {
   buildAgentSessionTarget,
   formatCurrentAgentTargetLabel,
+  formatTargetChipLabel,
 } from "./agentSessionTargetModel";
-import { agentSessionScopeId } from "./agentTabSessionModel";
+import {
+  agentSessionScopeFromId,
+  agentSessionScopeId,
+} from "./agentTabSessionModel";
 
 export type AgentLaunchSnapshot = Omit<AgentLauncherDescriptor, "launcherKey"> & {
   launcherKey?: string;
@@ -177,19 +185,48 @@ export function buildAgentTargetPresentation(options: {
   terminalPanes?: TerminalPane[];
 }) {
   const global = options.activeAgentViewScopeId === options.globalAgentScopeId;
-  const focusedPane = global ? undefined : options.effectiveFocusedPane;
-  const activeTab = global ? undefined : options.activeTab;
+  const preferredTarget = buildAgentSessionTarget(
+    options.effectiveFocusedPane,
+    options.activeTab,
+  );
   return {
     currentAgentScope: global
       ? ({ kind: "global" } as const)
-      : options.activeAgentScope,
-    currentAgentTarget: buildAgentSessionTarget(focusedPane, activeTab),
-    currentAgentTargetLabel: formatCurrentAgentTargetLabel(
-      focusedPane,
-      activeTab,
-      options.terminalPanes,
-    ),
+      : agentSessionScopeFromId(options.activeAgentViewScopeId),
+    currentAgentTarget: preferredTarget,
+    currentAgentTargetLabel: global
+      ? formatGlobalAgentTargetLabel(
+          preferredTarget,
+          options.effectiveFocusedPane,
+          options.activeTab,
+          options.terminalPanes,
+        )
+      : formatCurrentAgentTargetLabel(
+          options.effectiveFocusedPane,
+          options.activeTab,
+          options.terminalPanes,
+        ),
   };
+}
+
+/** 全局权限仍显示当前聚焦终端作为首选，避免用户误以为 target 被清空。 */
+function formatGlobalAgentTargetLabel(
+  preferredTarget: ReturnType<typeof buildAgentSessionTarget>,
+  focusedPane?: TerminalPane,
+  activeTab?: TerminalTab,
+  terminalPanes?: readonly TerminalPane[],
+): string {
+  const preferredLabel =
+    focusedPane?.title?.trim() ||
+    activeTab?.title?.trim() ||
+    (preferredTarget
+      ? formatTargetChipLabel(preferredTarget)
+      : isTerminalSessionTab(activeTab)
+        ? formatCurrentAgentTargetLabel(focusedPane, activeTab, terminalPanes)
+        : "无首选终端");
+  return preferredLabel === "整个 Kerminal"
+    ? preferredLabel
+    : `整个 Kerminal · 首选 ${preferredLabel}`;
 }
 
 /** 历史恢复始终从 session 快照构造启动描述，不读取可能已编辑或删除的定义。 */

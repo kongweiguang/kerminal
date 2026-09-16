@@ -17,9 +17,11 @@ import {
   applyAgentLaunchPermissionMode,
   applyManagedAgentLaunchTrust,
   buildAgentSessionTitle,
+  defaultAgentLaunchPermissionMode,
   type AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
 import {
+  buildAgentSessionTarget,
   buildAgentSessionScope,
   formatCurrentAgentTargetLabel,
 } from "./agentSessionTargetModel";
@@ -37,7 +39,10 @@ interface CreateAgentSessionForLaunchInput {
   title?: string;
 }
 
-/** 创建带显式权限作用域的持久会话；旧 target 不再决定新会话能访问哪些终端。 */
+/**
+ * 创建全局权限的持久会话，同时把启动瞬间的聚焦终端保存为首选目标；scope
+ * 决定可操作集合，target 只提供默认上下文，不能把 global 会话缩回单一终端。
+ */
 export async function createAgentSessionForLaunch(
   agentId: ExternalAgentId,
   {
@@ -45,11 +50,12 @@ export async function createAgentSessionForLaunch(
     focusedPane,
     launcherKey,
     scope: requestedScope,
-    targetMode = "current",
+    targetMode = "unbound",
     title,
   }: CreateAgentSessionForLaunchInput,
 ) {
-  const scope = requestedScope ?? buildAgentSessionScope(activeTab, targetMode);
+  const scope = normalizeAgentLaunchScope(requestedScope, activeTab, targetMode);
+  const target = buildAgentSessionTarget(focusedPane, activeTab);
   const record = await createAgentSession({
     agentId,
     launcherKey,
@@ -62,6 +68,7 @@ export async function createAgentSessionForLaunch(
           : formatCurrentAgentTargetLabel(focusedPane, activeTab),
       ),
     scope,
+    ...(target ? { target } : {}),
   });
   const resolvedScope = resolveRecordScope(record, scope);
   return {
@@ -72,6 +79,15 @@ export async function createAgentSessionForLaunch(
     target: agentSessionRecordTarget(record),
     title: record.session.title,
   };
+}
+
+/** 新建入口不再接受旧 Tab scope，避免兼容参数把全局权限意外降级为单 Tab。 */
+function normalizeAgentLaunchScope(
+  _requestedScope: AgentSessionScope | undefined,
+  activeTab?: TerminalTab,
+  targetMode: AgentLaunchTargetMode = "unbound",
+): AgentSessionScope {
+  return buildAgentSessionScope(activeTab, targetMode);
 }
 
 export type LauncherTerminalSession = AgentTerminalSession & {
@@ -96,7 +112,8 @@ export async function buildPreparedAgentTerminalSession(
   spec: ExternalAgentLaunchSpec,
   options: BuildPreparedAgentTerminalSessionOptions,
 ): Promise<LauncherTerminalSession> {
-  const permissionMode = options.permissionMode ?? "default";
+  const permissionMode =
+    options.permissionMode ?? defaultAgentLaunchPermissionMode(spec.agentId);
   const launchSpec = applyAgentLaunchPermissionMode(
     applyManagedAgentLaunchTrust(spec),
     permissionMode,
@@ -155,6 +172,11 @@ function resolveRecordScope(
     if (tabId) {
       return { kind: "tab", tabId };
     }
+  }
+  // A global launch may still carry the focused pane's tab in target; that is
+  // preferred context, not permission evidence, so keep the requested global scope.
+  if (fallback.kind === "global") {
+    return fallback;
   }
   const target = agentSessionRecordTarget(record);
   if (target?.liveStatus === "unbound") {

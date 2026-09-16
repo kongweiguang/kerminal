@@ -192,6 +192,16 @@ export function agentSupportsPermissionSkip(agentId: ExternalAgentId): boolean {
   return agentId === "codex" || agentId === "claude";
 }
 
+/**
+ * 新建或恢复入口默认采用用户授予的完整权限；PI/Custom 没有可泛化的额外 flag，
+ * 因而继续使用其既有命令快照，避免为不支持的 provider 拼接虚假参数。
+ */
+export function defaultAgentLaunchPermissionMode(
+  agentId: ExternalAgentId,
+): AgentLaunchPermissionMode {
+  return agentSupportsPermissionSkip(agentId) ? "skipPermissions" : "default";
+}
+
 export function agentPermissionSkipFlag(
   agentId: ExternalAgentId,
 ): string | undefined {

@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useEffect } from "react";
 import {
   consumeAgentSendRequest,
@@ -7,6 +8,7 @@ import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index"
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
 import type { AgentTerminalSession } from "./AgentTerminalView";
 import type { AgentSendPreviewSource } from "./agentSendPreviewModel";
+import { agentSessionScopeId } from "./agentTabSessionModel";
 
 interface UseAgentSendRequestCoordinatorInput {
   activeTab?: TerminalTab;
@@ -70,10 +72,12 @@ export function useAgentSendRequestCoordinator({
     }
 
     const scopedSessions = sessions.filter(
-      (session) => session.tabId === agentScopeId,
+      (session) =>
+        session.tabId === agentScopeId || isGlobalAgentSession(session),
     );
     const matchingSessions = scopedSessions.filter(
-      (candidate) => candidate.target?.paneId === request.paneId,
+      (candidate) =>
+        isGlobalAgentSession(candidate) || candidate.target?.paneId === request.paneId,
     );
     const session =
       matchingSessions.find(
@@ -108,4 +112,13 @@ export function useAgentSendRequestCoordinator({
     setActionError,
     targetPane,
   ]);
+}
+
+/** 全局 Agent 可接收任一用户终端的上下文发送；Tab Agent 仍只匹配其目标 pane。 */
+function isGlobalAgentSession(session: AgentTerminalSession): boolean {
+  return (
+    session.scope?.kind === "global" ||
+    session.target?.liveStatus === "unbound" ||
+    session.tabId === agentSessionScopeId({ kind: "global" })
+  );
 }

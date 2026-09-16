@@ -1,3 +1,4 @@
+// @author kongweiguang
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentWorkflowController,
@@ -97,7 +98,7 @@ export function useAgentSendPreview({
     });
     if (!prompt) {
       setActionError({
-        recoveryAction: "请切回会话绑定的目标终端，并确认存在可发送的内容。",
+        recoveryAction: "请聚焦一个仍打开的终端，并确认存在可发送的内容。",
         severity: "warning",
         title: "无法读取目标终端内容",
       });

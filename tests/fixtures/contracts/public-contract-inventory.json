@@ -3,8 +3,8 @@
   "tauri": {
     "commandCount": 188,
     "signatureFingerprint": "fnv1a64:dbb38ab0d7130a7f",
-    "frontendInvokeCount": 138,
-    "frontendInvokeFingerprint": "fnv1a64:34a6661cc7fc3a78"
+    "frontendInvokeCount": 139,
+    "frontendInvokeFingerprint": "fnv1a64:a4444ffdab30f2c7"
   },
   "events": [
     "kerminal://native-menu-action",
@@ -41,8 +41,8 @@
     ]
   },
   "mcp": {
-    "toolCount": 71,
-    "contractFingerprint": "fnv1a64:1a2340444442b245",
+    "toolCount": 72,
+    "contractFingerprint": "fnv1a64:c19b5917d6e4c7d3",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",

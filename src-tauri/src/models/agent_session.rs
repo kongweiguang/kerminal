@@ -17,7 +17,9 @@ mod validation;
 
 pub use self::agent_id::{AgentId, PI_AGENT_LAUNCH_COMMAND, PI_AGENT_RESUME_COMMAND};
 pub use self::launcher_key::normalize_agent_launcher_key;
-use self::validation::{is_valid_agent_session_id, normalize_optional_text};
+use self::validation::{
+    is_valid_agent_session_id, normalize_optional_text, serialize_global_agent_scope,
+};
 
 /// Agent session 文件 schema 版本。
 pub const AGENT_SESSION_SCHEMA_VERSION: u32 = 1;
@@ -116,16 +118,15 @@ pub enum AgentTargetLiveStatus {
     Closed,
 }
 
-/// Agent 会话的终端操作范围。
+/// Agent 会话的终端操作范围兼容形状。
 ///
-/// scope 是稳定的授权边界，而不是启动时抓取的一次性终端绑定：tab 范围
-/// 每次工具调用都按当前 pane 元数据重新解析成员，global 范围则覆盖整个
-/// Kerminal 工作区。保留 Option 兼容旧 session.toml，读取时通过
-/// [`AgentSession::effective_scope`] 迁移旧 target/tabId 语义。
+/// Tab 变体保留旧 session.toml 和前端 wire 兼容；终端工具通过
+/// [`AgentSession::effective_scope`] 将新旧会话统一投影为 global，当前 target
+/// 仍作为无显式 sessionId 时的默认首选终端。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentSessionScope {
-    /// 当前 tab 内的全部用户终端。
+    /// 历史的当前 Tab 范围；仅作为兼容 metadata，不再限制终端工具授权。
     Tab {
         /// wire 使用 camelCase；alias 保证已落盘的早期 snake_case scope 可继续恢复。
         #[serde(rename = "tabId", alias = "tab_id")]
@@ -264,8 +265,8 @@ pub struct AgentSession {
     pub session_root: String,
     /// Agent CLI 启动信息。
     pub launch: AgentSessionLaunch,
-    /// 终端操作范围；旧文件缺失时按 target/tabId 动态迁移。
-    #[serde(default)]
+    /// 终端操作范围兼容字段；读取旧 Tab 值，写出时规范化为 global。
+    #[serde(default, serialize_with = "serialize_global_agent_scope")]
     pub scope: Option<AgentSessionScope>,
     /// 当前绑定目标；未绑定时为空。
     #[serde(default)]
@@ -273,11 +274,10 @@ pub struct AgentSession {
 }
 
 impl AgentSession {
-    /// 计算当前会话的有效 scope，并为旧持久化数据提供兼容迁移。
+    /// 计算终端工具的有效 scope；保留旧 Tab 字段只用于恢复/展示，实际 Agent
+    /// 能力统一覆盖整个 Kerminal，而 `target` 仍单独承担无显式 sessionId 时的首选目标。
     pub fn effective_scope(&self) -> AgentSessionScope {
-        self.scope
-            .clone()
-            .unwrap_or_else(|| AgentSessionScope::from_legacy_target(self.target.as_ref()))
+        AgentSessionScope::Global
     }
 
     /// 校验持久化 session 元数据。
@@ -305,7 +305,9 @@ impl AgentSession {
                 "Agent workspace root 不能为空".to_owned(),
             ));
         }
-        self.effective_scope().validate()?;
+        if let Some(scope) = &self.scope {
+            scope.validate()?;
+        }
         Ok(())
     }
 }
@@ -431,8 +433,12 @@ pub struct AgentTargetBindingContext {
     pub schema_version: u32,
     /// Kerminal Agent 会话主键。
     pub agent_session_id: AgentSessionId,
-    /// 当前会话的动态终端操作范围；旧 context 文件缺失时从 binding 迁移。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// 当前会话的终端操作范围兼容字段；写出时规范化为 global。
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_global_agent_scope"
+    )]
     pub scope: Option<AgentSessionScope>,
     /// 目标绑定详情。
     pub binding: AgentTargetBindingContextBinding,
@@ -465,27 +471,16 @@ impl AgentTargetBindingContext {
             )));
         }
         AgentSessionId::new(self.agent_session_id.as_str().to_owned())?;
-        self.effective_scope().validate()?;
+        if let Some(scope) = &self.scope {
+            scope.validate()?;
+        }
         Ok(())
     }
 
-    /// 兼容读取 scope 字段出现前的 target-binding.json；旧 unbound 为 global，
-    /// 其余记录优先沿用 binding.tabId，避免历史会话恢复后扩大到整个工作区。
+    /// 兼容读取旧 target-binding.json；scope 字段继续保留以便旧客户端读取，
+    /// 但 Agent 终端能力统一为 global，目标 binding 仍作为默认首选终端。
     pub fn effective_scope(&self) -> AgentSessionScope {
-        self.scope.clone().unwrap_or_else(|| {
-            if self.binding.status == AgentTargetBindingStatus::Unbound {
-                return AgentSessionScope::Global;
-            }
-            self.binding
-                .tab_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|tab_id| !tab_id.is_empty())
-                .map(|tab_id| AgentSessionScope::Tab {
-                    tab_id: tab_id.to_owned(),
-                })
-                .unwrap_or(AgentSessionScope::Global)
-        })
+        AgentSessionScope::Global
     }
 }
 

@@ -39,7 +39,7 @@ const DEFAULT_MCP_HTTP_PORT: u16 = 37657;
 const MCP_HTTP_PORT_SCAN_LIMIT: u16 = 64;
 const MCP_PATH: &str = "/mcp";
 const MCP_AGENT_PATH: &str = "/mcp/agents";
-const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, SSH/SFTP, tmux, containers, port forwarding, server info, command history, diagnostics, authorized credential saving, and read-only file-backed config validation. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP tool approval is owned by the MCP host; Kerminal validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
+const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, headless terminal creation, SSH/SFTP, tmux, containers, port forwarding, server info, command history, diagnostics, authorized credential saving, and read-only file-backed config validation. Every external Agent session uses global terminal scope across Kerminal tabs; targetBinding is the preferred current target, not an access restriction. For ordinary commands, inspect the preferred live PTY with terminal.snapshot and write through terminal.write so input and output remain visible in the user's left terminal. If no live PTY exists, use terminal.create with target=local or target=ssh plus a saved hostId when needed, then use terminal.snapshot/write/close on its sessionId without opening a UI Tab; shell applies only to local targets, while SSH uses the saved host login shell and agentSessionId is optional correlation metadata. Use ssh.command or ssh.command_on_resolved_host only when a suitable PTY cannot be created or the user explicitly requests a background structured result; those tools do not display output in a terminal. Do not ask the user to reopen an already available terminal or create a new binding. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP host policy owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt and validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
 
 /// Streamable HTTP MCP server runtime rules used by integration tests.
 #[doc(hidden)]
@@ -291,7 +291,8 @@ fn scoped_tool_arguments(
 fn accepts_scoped_agent_session_id(tool_id: ToolId) -> bool {
     matches!(
         tool_id,
-        ToolId::TerminalList
+        ToolId::TerminalCreate
+            | ToolId::TerminalList
             | ToolId::TerminalClose
             | ToolId::TerminalLogStart
             | ToolId::TerminalLogStop
@@ -321,27 +322,21 @@ fn scoped_agent_session_id_from_http_parts(parts: &Parts) -> Option<String> {
         .or_else(|| scoped_agent_session_id_from_path(parts.uri.path()))
 }
 
+/// 只从明确的 Agent endpoint 路径提取 session id，避免根 `/mcp` 被误判为会话。
 fn scoped_agent_session_id_from_path(path: &str) -> Option<String> {
-    [
-        path.strip_prefix("/mcp/agents/"),
-        path.strip_prefix("/agents/"),
-        path.strip_prefix('/'),
-    ]
-    .into_iter()
-    .flatten()
-    .find_map(|suffix| {
-        let segment = suffix.split('/').next()?.trim();
-        if AgentSessionId::new(segment.to_owned()).is_ok() {
-            Some(segment.to_owned())
-        } else {
-            None
-        }
-    })
+    let suffix = path
+        .strip_prefix("/mcp/agents/")
+        .or_else(|| path.strip_prefix("/agents/"))?;
+    let segment = suffix.split('/').next()?.trim();
+    AgentSessionId::new(segment.to_owned())
+        .ok()
+        .map(|_| segment.to_owned())
 }
 
 fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
     McpToolExecutionContext {
         terminals: state.terminals(),
+        ssh_terminals: state.ssh_terminals(),
         agent_sessions: state.agent_sessions(),
         terminal_session_bindings: state.terminal_session_bindings(),
         terminal_reconnect: state.terminal_reconnect(),
@@ -447,5 +442,30 @@ fn app_error_to_mcp_error(error: AppError) -> McpError {
         AppError::InvalidInput(message) => McpError::invalid_params(message, None),
         AppError::NotFound(message) => McpError::invalid_params(message, None),
         other => McpError::internal_error(other.to_string(), None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scoped_agent_session_id_from_path;
+
+    /// 根 MCP endpoint 没有 Agent scope，不能把 `mcp` 当作磁盘 session id。
+    #[test]
+    fn root_mcp_path_is_not_scoped() {
+        assert_eq!(scoped_agent_session_id_from_path("/mcp"), None);
+        assert_eq!(scoped_agent_session_id_from_path("/mcp/"), None);
+    }
+
+    /// 合法的 scoped endpoint 仍须提取第一个路径段并忽略其后的路由部分。
+    #[test]
+    fn agent_path_extracts_only_explicit_session_segment() {
+        assert_eq!(
+            scoped_agent_session_id_from_path("/mcp/agents/ags_test_001"),
+            Some("ags_test_001".to_owned())
+        );
+        assert_eq!(
+            scoped_agent_session_id_from_path("/agents/ags_test_001/sse"),
+            Some("ags_test_001".to_owned())
+        );
     }
 }

@@ -9,6 +9,9 @@ use super::diagnostics_common::{
 use super::tool_examples::example_arguments_for;
 use super::*;
 
+#[path = "terminal_guide.rs"]
+mod terminal_guide;
+
 struct OperationGuidePlan {
     intent: &'static str,
     recommended_first_calls: Vec<&'static str>,
@@ -18,8 +21,8 @@ struct OperationGuidePlan {
     next_hints: Vec<&'static str>,
 }
 
-/// 根据任务意图生成 scope-aware 的 MCP 操作顺序，确保 Agent 先刷新成员再执行
-/// 带有显式 sessionId 的 terminal 操作。
+/// 根据任务意图生成 MCP 操作顺序，默认把当前 targetBinding 当作首选目标，
+/// 让普通命令经由真实可见 PTY 执行；只有切换到其它终端或后台 SSH 时才扩展流程。
 pub(super) fn execute_kerminal_operation_guide(
     tools: &[ToolDefinition],
     arguments: &serde_json::Map<String, Value>,
@@ -72,7 +75,7 @@ pub(super) fn execute_kerminal_operation_guide(
             "requestedIntent": requested_intent,
             "goal": goal,
             "note": intent_note,
-            "purpose": "Give external AI agents a concrete, safety-aware sequence for operating Kerminal through runtime MCP tools while keeping file-backed configuration file-first.",
+            "purpose": "Give external AI agents a concrete sequence for operating Kerminal through runtime MCP tools. Prefer the current targetBinding and visible PTY for ordinary commands; use global scope members or background tools only when the task needs them.",
             "recommendedFirstCalls": first_calls,
             "workflow": plan.workflow.clone(),
             "toolReference": tool_reference,
@@ -100,9 +103,10 @@ pub(super) fn execute_kerminal_operation_guide(
                 "secretBoundary": "Do not read or edit secrets/vault*.toml directly. Authorized credential work uses kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret."
             },
             "safetyBoundaries": {
-                "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit.",
-                "terminalWrite": "For Agent calls, refresh the tab/global scope with kerminal.agent.target_context and terminal.list, inspect a returned member, and pass its explicit sessionId and data to terminal.write. The server validates membership for every call.",
+                "hostPolicy": "The MCP host owns any confirmation, approval, permissions, hooks, and audit it chooses; Kerminal does not add a second per-command prompt.",
+                "terminalWrite": "Every external Agent session uses global scope. Prefer the current live targetBinding, inspect it with terminal.snapshot, and write through terminal.write so input and output remain visible in the user's left PTY. Use terminal.list and an explicit sessionId only for another user terminal or stale target; the server validates any explicit membership.",
                 "remoteWrite": "For remote file deletes, tmux kills, port-forward closes, and credential writes, rely on host approval and user intent before calling write/destructive tools.",
+                "backgroundSsh": "ssh.command and ssh.command_on_resolved_host are non-interactive background fallbacks; their structured stdout/stderr do not appear in the left terminal. Prefer terminal.create for a headless PTY when no live PTY exists, and use SSH background tools only when the user explicitly requests structured background output or PTY execution is unsuitable.",
                 "managedSsh": "For SSH-bound tool families, inspect kerminal.runtime_snapshot.managedSsh to verify whether terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools are sharing a managed session; the snapshot is redacted and never returns credential material.",
                 "externalLaunch": "External SSH launch compatibility is configured in settings.toml externalLaunch; runtime diagnostics expose only policy, counts, launch ids, and redacted rejection metadata.",
                 "secrets": "Never copy passwords, tokens, private keys, vault keys, or decrypted secret material into chat, docs, logs, ordinary config files, or diagnostics."
@@ -120,7 +124,7 @@ pub(super) fn execute_kerminal_operation_guide(
             "missingReferencedToolIds": missing_referenced_tool_ids,
             "fallbacks": plan.fallbacks.clone(),
             "stopConditions": [
-                "The selected sessionId is not a member of the current Agent scope or the requested terminal has been closed.",
+                "An explicitly selected sessionId is not a member of the global Agent scope or the requested terminal has been closed.",
                 "The task requires config CRUD tools that are intentionally absent; switch to direct file edits plus validation.",
                 "The task asks for secret extraction, vault file editing, or plaintext credential disclosure.",
                 "managedSsh diagnostics show a managed SSH failure that requires user action, host-key trust, missing credentials, or backend implementation rather than a second hidden SSH login.",
@@ -152,129 +156,11 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
         .to_ascii_lowercase()
         .replace('_', "-");
 
+    if let Some(plan) = terminal_guide::plan(&normalized_intent) {
+        return plan;
+    }
+
     match normalized_intent.as_str() {
-        "terminal" => guide_plan(
-            "terminal",
-            vec!["kerminal.runtime_snapshot", "terminal.list"],
-            vec![
-                guide_step(
-                    "discover",
-                    Some("terminal.list"),
-                    "List live terminal sessions in the current tab/global scope and choose an explicit sessionId.",
-                    &[],
-                    "There is no implicit terminal choice; terminal.list is the authoritative scope membership view.",
-                ),
-                guide_step(
-                    "inspect",
-                    Some("terminal.snapshot"),
-                    "Read recent output before deciding whether to write.",
-                    &["sessionId"],
-                    "Do not write to a terminal whose purpose is unclear.",
-                ),
-                guide_step(
-                    "act",
-                    Some("terminal.write"),
-                    "Write only the requested input to the selected live terminal.",
-                    &["sessionId", "data"],
-                    "MCP host confirmation owns approval; never infer a target from filenames.",
-                ),
-            ],
-            vec!["terminal.snapshot", "terminal.write"],
-            vec![
-                    "If no live terminal exists, report the empty scope and ask the user to open a terminal; MCP does not create terminals.",
-                "If the terminal output is ambiguous, ask before writing.",
-            ],
-            vec!["Use session-terminal intent inside an Agent session workspace."],
-        ),
-        "session-terminal" | "session" | "agent" => guide_plan(
-            "session-terminal",
-            vec![
-                "kerminal.runtime_snapshot",
-                "kerminal.agent.current_session",
-                "kerminal.agent.target_context",
-                "terminal.list",
-            ],
-            vec![
-                guide_step(
-                    "read-context",
-                    None,
-                    "Read context/mcp-endpoint.json, context/target-binding.json, and context/terminal-snapshot.json.",
-                    &["session workspace"],
-                    "These files seed the session-scoped endpoint, scope kind, and latest terminal snapshots; refresh with live tools before writes.",
-                ),
-                guide_step(
-                    "scope",
-                    Some("kerminal.agent.target_context"),
-                    "Refresh the current Agent scope and its live terminal membership. A tab scope includes all current and future panes in that tab; global includes user terminals across all tabs.",
-                    &["agentSessionId"],
-                    "The right-panel Agent TUI is excluded; a disconnected member remains in scope and can be recovered.",
-                ),
-                guide_step(
-                    "discover",
-                    Some("terminal.list"),
-                    "List every current scope member and retain each returned sessionId and paneId.",
-                    &[],
-                    "Use only sessionIds returned for this Agent scope; membership is checked server-side.",
-                ),
-                guide_step(
-                    "inspect",
-                    Some("terminal.snapshot"),
-                    "Inspect the selected scope member output before acting.",
-                    &["sessionId"],
-                    "If the member is disconnected, recover it with terminal.reconnect using its paneId and wait for acknowledgement before retrying.",
-                ),
-                guide_step(
-                    "act",
-                    Some("terminal.write"),
-                    "Write to the selected scope member using sessionId and data.",
-                    &["sessionId", "data"],
-                    "Never substitute a guessed sessionId; the service rejects members outside this Agent scope.",
-                ),
-            ],
-            vec!["terminal.list", "terminal.snapshot", "terminal.write", "terminal.reconnect"],
-            vec![
-                "If a member is disconnected, call terminal.reconnect with its paneId, wait for acknowledgement, and refresh terminal.list.",
-                "If the session-scoped endpoint is unavailable, use the global endpoint only with an explicit sessionId returned by terminal.list.",
-            ],
-            vec!["Refresh kerminal.agent.target_context and terminal.list after opening a new pane or reconnecting an existing pane."],
-        ),
-        "ssh-command" | "ssh" => guide_plan(
-            "ssh-command",
-            vec!["kerminal.runtime_snapshot", "ssh.command_on_resolved_host"],
-            vec![
-                guide_step(
-                    "target",
-                    None,
-                    "Identify the host id from a selected scope member's host context or by reading hosts/*.toml.",
-                    &["host id or target context"],
-                    "Do not add remote_host.* expectations; host metadata is file-backed.",
-                ),
-                managed_ssh_runtime_step(),
-                guide_step(
-                    "execute",
-                    Some("ssh.command_on_resolved_host"),
-                    "Run a non-interactive command on a saved host through the managed SSH exec facade.",
-                    &["hostId", "command"],
-                    "Avoid interactive commands; use terminal tools for interactive shells.",
-                ),
-                guide_step(
-                    "fallback",
-                    Some("ssh.command"),
-                    "Use direct SSH command execution when the request provides an explicit target ref accepted by the tool schema.",
-                    &["target", "command"],
-                    "Do not embed passwords, tokens, or private keys in commands.",
-                ),
-            ],
-            vec!["ssh.command", "kerminal.agent.target_context"],
-            vec![
-                "If host metadata is missing, edit hosts/*.toml directly and validate before running commands.",
-                "If credentials are missing, ask for authorization and use credential tools; do not read secrets/.",
-            ],
-            vec![
-                "For repeated interactive work, ask the user to open or bind a terminal.",
-                "After an SSH-bound operation, inspect managedSsh again when you need proof of session/channel reuse.",
-            ],
-        ),
         "sftp" => guide_plan(
             "sftp",
             vec!["kerminal.runtime_snapshot", "sftp.list"],

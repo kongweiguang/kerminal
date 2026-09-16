@@ -34,8 +34,9 @@ use support::mcp_streamable_http::{
     assert_absent_tool_help_payload, assert_app_guide_payload, assert_capability_payload,
     assert_config_operation_guide_payload, assert_config_reference_payload,
     assert_container_tool_help_payload, assert_runtime_snapshot_payload,
-    assert_session_operation_guide_payload, assert_terminal_tool_help_payload,
-    assert_tool_reference_examples_match_schema, assert_tools_list_surface,
+    assert_session_operation_guide_payload, assert_terminal_create_tool_help_payload,
+    assert_terminal_tool_help_payload, assert_tool_reference_examples_match_schema,
+    assert_tools_list_surface,
 };
 use tauri::Manager;
 

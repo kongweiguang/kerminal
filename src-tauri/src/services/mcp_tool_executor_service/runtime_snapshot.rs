@@ -340,6 +340,15 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "managedSshActiveSessionCount": managed_ssh_active_session_count,
                 "managedSshActiveChannelCount": managed_ssh_active_channel_count
             },
+            "terminalExecutionPolicy": {
+                "scope": "global",
+                "preferredTarget": "targetBinding",
+                "visiblePtyFirst": "For ordinary commands, inspect the current targetBinding with terminal.snapshot and write through terminal.write; the command and output remain visible in the user's left terminal.",
+                "otherTerminals": "All user terminals across Kerminal tabs remain available; use terminal.list and an explicit sessionId only when the task needs another terminal or the preferred target is stale.",
+                "headlessFallback": "If no live visible PTY exists, use terminal.create with target=local or target=ssh and a saved hostId when needed, then terminal.snapshot/write on its returned sessionId and terminal.close when finished.",
+                "backgroundFallback": "Use ssh.command or ssh.command_on_resolved_host only when the user explicitly requests structured background output or a suitable PTY cannot be created; those results do not appear in the left terminal.",
+                "reconnect": "Reconnect only an actually disconnected pane and continue after acknowledgement; do not ask the user to reopen an available terminal or create a new binding."
+            },
             "terminalSessions": terminal_summaries,
             "agentSessions": agent_session_summaries,
             "portForwards": port_forward_summaries,
@@ -366,9 +375,10 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "Call kerminal.capabilities for exact tool families and absent-tool boundaries.",
                 "Call kerminal.tool_help with a toolId, family, or query for exact schemas, examples, and safety annotations.",
                 "Call kerminal.config_guide or read kerminal-config.md before editing file-backed configuration.",
-                "Call kerminal.operation_guide with intent when you need a concrete tool sequence for a task.",
-                "Call terminal.list or terminal.snapshot for terminal details before terminal.write.",
-                "In a session workspace, call kerminal.agent.target_context and terminal.list, then choose an explicit sessionId from the current tab/global scope before terminal.write.",
+                "Call kerminal.operation_guide with intent when you need a concrete multi-step tool sequence; it is not required for every runtime call.",
+                "Prefer the current targetBinding and call terminal.snapshot followed by terminal.write so ordinary commands remain visible in the left PTY.",
+                "Use terminal.list and an explicit sessionId only for another global user terminal or stale target; do not ask the user to reopen an available terminal.",
+                "If no visible PTY exists, use terminal.create for a headless local or saved-host SSH PTY, then terminal.snapshot/write/close; use ssh.command or ssh.command_on_resolved_host only for explicitly background structured output, which is not visible in the left terminal.",
                 "Inspect managedSsh in this snapshot when debugging SSH terminal/SFTP/exec/tmux/container/port-forward session reuse; it is redacted and does not expose passwords, private keys, or vault refs.",
                 "Inspect externalLaunch in this snapshot before debugging bastion/jump-host launch compatibility; edit settings.toml externalLaunch and validate instead of looking for external_launch.* MCP control tools.",
                 "For config edits, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate."
@@ -376,7 +386,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         })),
         entities,
         next_hints: vec![
-            "For live terminal work, resolve current tab/global scope members and inspect the selected session before terminal.write.".to_owned(),
+            "For live terminal work, prefer targetBinding and inspect it before terminal.write; use terminal.list only when another global terminal or a refresh is needed.".to_owned(),
+            "For ordinary commands, use the visible PTY path; if none exists create a headless PTY with terminal.create before falling back to background ssh.command output, which is intentionally not shown in the left terminal.".to_owned(),
             "For SSH reuse diagnostics, inspect managedSsh session/channel counts before assuming SFTP or exec opened a separate connection.".to_owned(),
             "For host ids, read file-backed hosts/*.toml or use a terminal returned by the Agent scope context; remote_host.* MCP tools are intentionally absent.".to_owned(),
             "For config edits, validate with kerminal.config.validate after direct file edits.".to_owned(),
