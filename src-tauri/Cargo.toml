@@ -2,7 +2,7 @@
 
 [package]
 name = "kerminal"
-version = "0.3.33"
+version = "0.3.34"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -83,7 +83,7 @@ tauri-plugin-window-state = "2"
 [dev-dependencies]
 rand = { version = "0.10", features = ["thread_rng"] }
 rmcp = { version = "1.7.0", features = ["client", "transport-streamable-http-client-reqwest"] }
-rustls = { version = "0.23.40", default-features = false, features = ["ring", "std"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
 tauri = { version = "2", features = ["test"] }
 tempfile = "3.27.0"
 
