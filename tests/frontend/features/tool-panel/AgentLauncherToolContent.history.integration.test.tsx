@@ -196,7 +196,7 @@ describe("AgentLauncherToolContent history refresh", () => {
             cwd: "C:/Users/me/.kerminal/agents/sessions/ags-initial-pi",
             shell: "pi",
           },
-          scope: { kind: "global" },
+          scope: { kind: "tab", tabId: "tab-main" },
           status: "active",
           title: "Initial PI",
         },

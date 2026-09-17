@@ -248,7 +248,7 @@ describe("AgentLauncherToolContent", () => {
       "可用",
     );
     expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · 整个 Kerminal · 首选 tab-main",
+      "新建对话当前目标 · 当前 Tab · 1 个终端 · tab-main",
     );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
@@ -302,8 +302,8 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "global" },
-        title: "Codex · 整个 Kerminal",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Codex · 当前 Tab · 1 个终端 · tab-main",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -469,8 +469,7 @@ describe("AgentLauncherToolContent", () => {
               shell: "pwsh.exe",
             },
             status: "active",
-            scope: { kind: "global" },
-            target: { tabId: "tab-main" },
+            scope: { kind: "tab", tabId: "tab-main" },
             title: "Codex",
           },
         },
@@ -516,8 +515,7 @@ describe("AgentLauncherToolContent", () => {
               shell: "pwsh.exe",
             },
             status: "active",
-            scope: { kind: "global" },
-            target: { tabId: "tab-main" },
+            scope: { kind: "tab", tabId: "tab-main" },
             title: "Codex yolo",
           },
         },
@@ -543,7 +541,7 @@ describe("AgentLauncherToolContent", () => {
     });
   });
 
-  it("creates a workflow follow-up session in the source global scope", async () => {
+  it("creates a workflow follow-up session in the current tab scope", async () => {
     const user = userEvent.setup();
     apiMocks.listAgentSessions.mockResolvedValue({
       diagnostics: [],
@@ -576,8 +574,8 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "global" },
-        title: "Codex · 整个 Kerminal",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Codex · 当前 Tab · 1 个终端 · tab-main",
       });
     });
   });
@@ -638,7 +636,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
-      "新建对话当前目标 · 整个 Kerminal · 首选 prod web",
+      "新建对话当前目标 · 当前 Tab · 1 个终端",
     );
     await launchAgent(user, "Codex");
 
@@ -646,7 +644,7 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "global" },
+        scope: { kind: "tab", tabId: "tab-main" },
         target: {
           cwd: "/srv/app",
           liveStatus: "ready",
@@ -657,7 +655,7 @@ describe("AgentLauncherToolContent", () => {
           targetRef: "ssh:prod-web",
           targetTerminalSessionId: "term-prod",
         },
-        title: "Codex · 整个 Kerminal",
+        title: "Codex · 当前 Tab · 1 个终端",
       });
     });
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
@@ -666,7 +664,7 @@ describe("AgentLauncherToolContent", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the primary Codex entry global while retaining the focused pane target", async () => {
+  it("keeps the primary Codex entry in the current tab while retaining the focused pane target", async () => {
     const user = userEvent.setup();
     registerTerminalPaneSession("pane-prod", "term-prod", {
       cwd: "/srv/app",
@@ -700,7 +698,7 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "global" },
+        scope: { kind: "tab", tabId: "tab-main" },
         target: {
           cwd: "/srv/app",
           liveStatus: "ready",
@@ -711,7 +709,7 @@ describe("AgentLauncherToolContent", () => {
           targetRef: "ssh:prod-web",
           targetTerminalSessionId: "term-prod",
         },
-        title: "Codex · 整个 Kerminal",
+        title: "Codex · 当前 Tab · 1 个终端",
       });
     });
     expect(await screen.findByTestId("agent-xterm")).toHaveTextContent("Codex");
@@ -734,11 +732,8 @@ describe("AgentLauncherToolContent", () => {
             },
             sessionRoot:
               "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
-            scope: { kind: "global" },
+            scope: { kind: "tab", tabId: "tab-main" },
             status: "active",
-            target: {
-              tabId: "tab-main",
-            },
             title: "Codex",
             workspaceRoot: "C:/Users/me/.kerminal",
           },

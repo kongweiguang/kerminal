@@ -86,6 +86,46 @@ describe("useAgentSendRequestCoordinator", () => {
     expect(store.getSnapshot().request).toBeNull();
   });
 
+  it("routes another pane in the same tab into that tab's active assistant", async () => {
+    const paneB = { ...targetPane, id: "pane-2", title: "prod-worker" };
+    const createPreview = vi.fn(() => true);
+    const onActivateSession = vi.fn();
+
+    renderHook(() => {
+      const request = useAgentSendRequestSnapshot(store).request;
+      useAgentSendRequestCoordinator({
+        activeTab,
+        agentScopeId: "tab-1",
+        createPreview,
+        consumeRequest: store.consume,
+        onActivateSession,
+        request,
+        sessions: [session],
+        setActionError: vi.fn(),
+        targetPane: paneB,
+      });
+    });
+
+    act(() => {
+      store.request({
+        paneId: "pane-2",
+        source: "context",
+        tabId: "tab-1",
+      });
+    });
+
+    await waitFor(() =>
+      expect(createPreview).toHaveBeenCalledWith(
+        "context",
+        expect.objectContaining({ focusedPane: paneB, session }),
+      ),
+    );
+    expect(onActivateSession).toHaveBeenCalledWith(
+      "tab-1",
+      "agent-session-1",
+    );
+  });
+
   it("优先把内容发送到当前正在查看的 Agent 会话", async () => {
     const historicalSession = {
       ...session,

@@ -249,7 +249,7 @@ describe("AgentLauncherToolContent", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps the global Agent terminal when its original workspace tab closes", async () => {
+  it("removes the agent terminal when its owning workspace tab closes", async () => {
     const user = userEvent.setup();
     const tabA = terminalTab("tab-a");
     const tabB = terminalTab("tab-b");
@@ -275,15 +275,9 @@ describe("AgentLauncherToolContent", () => {
       <AgentLauncherToolContent activeTab={tabB} terminalTabs={[tabB]} />,
     );
 
-    expect(screen.getByTestId("agent-xterm")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-focused",
-      "true",
-    );
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
+    await waitFor(() => {
+      expect(screen.queryByTestId("agent-xterm")).not.toBeInTheDocument();
+    });
   });
 
   it("sends a desktop notification when an enabled agent terminal finishes", async () => {
@@ -458,7 +452,7 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
         launcherKey: "custom:11111111-1111-4111-8111-111111111111",
-        scope: { kind: "global" },
+        scope: { kind: "tab", tabId: "tab-main" },
         title: "Kimi",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -488,8 +482,8 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "pi",
         launcherKey: "builtin:pi",
-        scope: { kind: "global" },
-        title: "PI Agent · 整个 Kerminal",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "PI Agent · 当前 Tab · 1 个终端 · tab-main",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "pi",
@@ -536,7 +530,7 @@ describe("AgentLauncherToolContent", () => {
     expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
       agentId: "custom",
       launcherKey: "custom:11111111-1111-4111-8111-111111111111",
-      scope: { kind: "global" },
+      scope: { kind: "tab", tabId: "tab-main" },
       title: "Secret Agent",
     });
     expect(apiMocks.updateAgentSession).toHaveBeenCalledWith(
@@ -566,7 +560,7 @@ describe("AgentLauncherToolContent", () => {
               cwd: "C:/Users/me/.kerminal/agents/sessions/ags-old-pi",
               shell: "pi",
             },
-            scope: { kind: "global" },
+            scope: { kind: "tab", tabId: "tab-main" },
             status: "active",
             title: "Old PI",
           },
@@ -598,7 +592,7 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
         launcherKey,
-        scope: { kind: "global" },
+        scope: { kind: "tab", tabId: "tab-main" },
         title: "New PI",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -626,7 +620,7 @@ describe("AgentLauncherToolContent", () => {
               cwd: "C:/Users/me/.kerminal/agents/sessions/ags-deleted-pi",
               shell: "pi",
             },
-            scope: { kind: "global" },
+            scope: { kind: "tab", tabId: "tab-main" },
             status: "active",
             title: "Deleted PI",
           },
@@ -643,7 +637,7 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
         launcherKey: "custom:22222222-2222-4222-8222-222222222222",
-        scope: { kind: "global" },
+        scope: { kind: "tab", tabId: "tab-main" },
         title: "Deleted PI",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -682,7 +676,7 @@ describe("AgentLauncherToolContent", () => {
             agentId: "codex",
             agentSessionId: "ags-title",
             launch: { args: [], cwd: "", shell: "codex" },
-            scope: { kind: "global" },
+            scope: { kind: "tab", tabId: "tab-main" },
             status: "active",
             title: "旧标题",
           },

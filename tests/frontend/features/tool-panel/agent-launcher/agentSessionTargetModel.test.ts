@@ -30,22 +30,29 @@ function terminalTab() {
 }
 
 describe("agentSessionTargetModel scope", () => {
-  it("uses global permission while keeping the terminal tab as target context", () => {
+  it("uses the active tab for right-panel ownership while Rust keeps terminal access global", () => {
     const tab = terminalTab();
 
-    expect(buildAgentSessionScope(tab)).toEqual({ kind: "global" });
+    expect(buildAgentSessionScope(tab)).toEqual({
+      kind: "tab",
+      tabId: "tab-main",
+    });
     expect(formatCurrentAgentTargetLabel(undefined, tab)).toBe(
       "当前 Tab · 3 个终端 · 开发 Tab",
     );
   });
 
-  it("uses global scope for explicit whole-Kerminal and non-terminal contexts", () => {
+  it("keeps a separate assistant on every tab and only falls back to global without a tab", () => {
     const tab = terminalTab();
 
-    expect(buildAgentSessionScope(tab, "unbound")).toEqual({ kind: "global" });
+    expect(buildAgentSessionScope(tab, "unbound")).toEqual({
+      kind: "tab",
+      tabId: "tab-main",
+    });
     expect(
       buildAgentSessionScope({ id: "sftp", kind: "sftpTransfer" } as never),
-    ).toEqual({ kind: "global" });
+    ).toEqual({ kind: "tab", tabId: "sftp" });
+    expect(buildAgentSessionScope()).toEqual({ kind: "global" });
     expect(formatCurrentAgentTargetLabel(undefined, undefined)).toBe(
       "整个 Kerminal",
     );

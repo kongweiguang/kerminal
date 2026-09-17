@@ -347,7 +347,7 @@ describe("agentTabSessionModel", () => {
     );
   });
 
-  it("keeps a canonical global record restorable after switching tabs", () => {
+  it("returns an old global record with a target tab only to that tab", () => {
     const globalRecord: AgentSessionRecord = {
       session: {
         agentId: "codex",
@@ -370,11 +370,12 @@ describe("agentTabSessionModel", () => {
       },
     };
 
-    expect(agentSessionRecordTabId(globalRecord)).toBe(
-      UNBOUND_AGENT_SESSION_SCOPE_ID,
-    );
+    expect(agentSessionRecordTabId(globalRecord)).toBe("tab-a");
     expect(
       agentSessionRecordIds(restorableSessionsForTab([globalRecord], "tab-b")),
+    ).toEqual([]);
+    expect(
+      agentSessionRecordIds(restorableSessionsForTab([globalRecord], "tab-a")),
     ).toEqual(["ags-global-preferred"]);
   });
 });

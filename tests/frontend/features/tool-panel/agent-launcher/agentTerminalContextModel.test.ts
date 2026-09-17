@@ -83,6 +83,39 @@ describe("agentTerminalContextModel", () => {
     expect(prompt).not.toContain("secret unrelated output");
   });
 
+  it("attaches the focused pane context when it belongs to the assistant's current tab", () => {
+    const prompt = buildAgentTerminalContextPrompt({
+      activeTab: { id: "tab-main", title: "prod-api" },
+      focusedPane: {
+        currentCwd: "/srv/worker",
+        cwd: "/srv/worker",
+        id: "pane-worker",
+        machineId: "prod-worker",
+        mode: "ssh",
+        outputHistory: "worker output",
+        prompt: "$",
+        shell: "bash",
+        status: "online",
+        title: "prod-worker",
+      },
+      session: {
+        commandLabel: "codex",
+        cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
+        target: {
+          liveStatus: "ready",
+          paneId: "pane-prod",
+          tabId: "tab-main",
+          targetRef: "ssh:prod-api",
+          targetTerminalSessionId: "term-prod",
+        },
+        title: "Codex",
+      },
+    });
+
+    expect(prompt).toContain("Bound target: ssh:prod-api");
+    expect(prompt).toContain("worker output");
+  });
+
   it("does not attach output when the active tab differs from the bound target tab", () => {
     const prompt = buildAgentTerminalContextPrompt({
       activeTab: { id: "tab-other", title: "other-tab" },

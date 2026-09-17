@@ -266,10 +266,7 @@ describe("AgentLauncherToolContent", () => {
             },
             sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-restored-claude",
             status: "active",
-            scope: { kind: "global" },
-            target: {
-              tabId: "tab-main",
-            },
+            scope: { kind: "tab", tabId: "tab-main" },
             title: "Claude",
             workspaceRoot: "C:/Users/me/.kerminal",
           },
@@ -317,10 +314,7 @@ describe("AgentLauncherToolContent", () => {
             },
             sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
             status: "active",
-            scope: { kind: "global" },
-            target: {
-              tabId: "tab-main",
-            },
+            scope: { kind: "tab", tabId: "tab-main" },
             title: "Codex",
             workspaceRoot: "C:/Users/me/.kerminal",
           },
@@ -337,8 +331,8 @@ describe("AgentLauncherToolContent", () => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
         launcherKey: "builtin:codex",
-        scope: { kind: "global" },
-        title: "Codex · 整个 Kerminal",
+        scope: { kind: "tab", tabId: "tab-main" },
+        title: "Codex · 当前 Tab · 1 个终端 · tab-main",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
         agentId: "codex",
@@ -368,7 +362,7 @@ describe("AgentLauncherToolContent", () => {
               shell: "codex",
             },
             sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-stale-codex",
-            scope: { kind: "global" },
+            scope: { kind: "tab", tabId: "tab-old" },
             target: {
               cwd: "/srv/app",
               liveStatus: "stale",
@@ -386,12 +380,12 @@ describe("AgentLauncherToolContent", () => {
       ],
     });
 
-    renderAgentLauncher({ activeTab: undefined });
+    renderAgentLauncher({ activeTab: terminalTab("tab-old") });
 
     await launchAgent(user, "Codex");
 
     expect(await screen.findByTestId("agent-restore-target-chip")).toHaveTextContent(
-      "整个 Kerminal · 首选 已失效",
+      "已失效",
     );
 
     await user.click(screen.getByRole("button", { name: "继续上次" }));

@@ -228,7 +228,7 @@ function buildAgentTerminalRuntimePrompt({
   return lines.join("\n");
 }
 
-/** 全局 Agent 忽略旧 target 的 Tab/pane 限制，但仍以当前 focused pane 生成上下文。 */
+/** 当前 Tab 的助手优先使用聚焦 pane 构造上下文，不让首次 target 固化后遮蔽同 Tab 的其它终端。 */
 function resolveBoundTarget({
   activeTab,
   focusedPane,
@@ -238,18 +238,10 @@ function resolveBoundTarget({
   "activeTab" | "focusedPane" | "session"
 >) {
   const target = session.target;
-  const globalScope =
-    session.scope?.kind === "global" || target?.liveStatus === "unbound";
-  const tabMatches =
-    globalScope || !target?.tabId || activeTab?.id === target.tabId;
-  const pane =
-    tabMatches &&
-    focusedPane &&
-    (globalScope || !target?.paneId || focusedPane.id === target.paneId)
-      ? focusedPane
-      : undefined;
+  const tabMatches = !target?.tabId || activeTab?.id === target.tabId;
+  const pane = tabMatches && focusedPane ? focusedPane : undefined;
 
-  return { pane, target: globalScope && pane ? undefined : target };
+  return { pane, target };
 }
 
 function buildAgentTerminalContextHeaderLines({

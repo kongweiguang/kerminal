@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 内置 Codex、Claude Agent 默认获得完整 Kerminal 运行态能力；启动时所在终端仅作为首选目标，任务可直接跨 Tab 操作其它用户终端和远程工具。
-            - 普通命令优先写入可见终端，输入与输出保留在左侧工作区；会话恢复、显式继续与终端断连后的重新发现保持兼容。
-            - Kerminal MCP 新增 terminal.create，可在没有终端 Tab 时创建本地或已保存 SSH 后台 PTY，并继续使用 snapshot、write、resize 与 close 管理其生命周期。
+            - 每个终端 Tab 都有独立的右栏 AI 助手和会话历史；切换 Tab 会切换对应助手，关闭 Tab 会清理其所属助手。
+            - 内置 Codex、Claude Agent 仍默认拥有完整 Kerminal 运行态能力；Tab 只隔离右栏归属与历史，不限制跨 Tab 操作用户终端和远程工具。
+            - 普通切换 Tab 不会重绑助手的首选终端；用户显式继续当前 Tab 助手时，才将该 Tab 的聚焦终端更新为首选目标。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

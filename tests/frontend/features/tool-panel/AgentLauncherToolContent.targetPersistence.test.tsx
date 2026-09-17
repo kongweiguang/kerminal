@@ -119,6 +119,7 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
     unregisterTestTerminalPaneSessions();
     apiMocks.getExternalAgentWorkspaceStatus.mockResolvedValue(workspaceStatus());
     apiMocks.listAgentSessions.mockResolvedValue({ diagnostics: [], sessions: [] });
+    let nextSessionIndex = 0;
     apiMocks.createAgentSession.mockImplementation(
       async ({
         agentId,
@@ -132,23 +133,27 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
         scope?: unknown;
         target?: unknown;
         title?: string;
-      }) => ({
-        session: {
+      }) => {
+        nextSessionIndex += 1;
+        const agentSessionId = `ags-${agentId}-${nextSessionIndex}`;
+        return {
+          session: {
           agentId,
-          agentSessionId: `ags-${agentId}`,
+          agentSessionId,
           launcherKey,
           launch: {
             args: [],
             commandLabel: agentId,
-            cwd: `C:/Users/me/.kerminal/agents/sessions/ags-${agentId}`,
+            cwd: `C:/Users/me/.kerminal/agents/sessions/${agentSessionId}`,
             shell: agentId,
           },
           scope,
           status: "active",
           target,
           title: title ?? "Codex",
-        },
-      }),
+          },
+        };
+      },
     );
     apiMocks.prepareExternalAgentWorkspace.mockImplementation(
       async (request: {
@@ -179,7 +184,7 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
     );
   });
 
-  it("keeps global sessions across tab switches and persists B only after explicit continue", async () => {
+  it("keeps independent assistants for Tab A and B, and rebinds only after explicit continue", async () => {
     const user = userEvent.setup();
     const tabA = terminalTab("tab-a");
     const tabB = terminalTab("tab-b");
@@ -209,7 +214,7 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          scope: { kind: "global" },
+          scope: { kind: "tab", tabId: "tab-a" },
           target: expect.objectContaining({
             cwd: "/srv/a",
             paneId: "pane-a",
@@ -217,19 +222,50 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
             targetRef: "local:tab-a",
             targetTerminalSessionId: "term-a",
           }),
-          title: "Codex · 整个 Kerminal",
+          title: expect.stringContaining("当前 Tab"),
         }),
       );
     });
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex"))
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
       .toHaveAttribute("data-focused", "true");
 
     rerender(
       <AgentLauncherToolContent activeTab={tabB} focusedPane={paneB} />,
     );
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex"))
-      .toHaveAttribute("data-focused", "true");
     expect(apiMocks.rebindAgentSessionTarget).not.toHaveBeenCalled();
+
+    await launchAgent(user, "Codex");
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          scope: { kind: "tab", tabId: "tab-b" },
+          target: expect.objectContaining({
+            cwd: "/srv/b",
+            paneId: "pane-b",
+            tabId: "tab-b",
+            targetRef: "local:tab-b",
+            targetTerminalSessionId: "term-b",
+          }),
+          title: expect.stringContaining("当前 Tab"),
+        }),
+      );
+    });
+    expect(apiMocks.rebindAgentSessionTarget).not.toHaveBeenCalled();
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
+      .toHaveAttribute("data-focused", "false");
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-2"))
+      .toHaveAttribute("data-focused", "true");
+
+    rerender(
+      <AgentLauncherToolContent activeTab={tabA} focusedPane={paneA} />,
+    );
+    expect(apiMocks.rebindAgentSessionTarget).not.toHaveBeenCalled();
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
+      .toHaveAttribute("data-focused", "true");
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-2"))
+      .toHaveAttribute("data-focused", "false");
 
     await user.click(
       screen.getByRole("button", { name: "Back to agent launcher" }),
@@ -239,18 +275,18 @@ describe("AgentLauncherToolContent preferred target persistence", () => {
 
     await waitFor(() => {
       expect(apiMocks.rebindAgentSessionTarget).toHaveBeenCalledWith(
-        "ags-codex",
+        "ags-codex-1",
         expect.objectContaining({
-          cwd: "/srv/b",
-          paneId: "pane-b",
-          tabId: "tab-b",
-          targetRef: "local:tab-b",
-          targetTerminalSessionId: "term-b",
+          cwd: "/srv/a",
+          paneId: "pane-a",
+          tabId: "tab-a",
+          targetRef: "local:tab-a",
+          targetTerminalSessionId: "term-a",
         }),
       );
     });
     expect(apiMocks.rebindAgentSessionTarget).toHaveBeenCalledTimes(1);
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex"))
+    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
       .toHaveAttribute("data-focused", "true");
   });
 });

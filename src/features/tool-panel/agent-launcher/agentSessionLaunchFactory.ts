@@ -31,17 +31,17 @@ interface CreateAgentSessionForLaunchInput {
   activeTab?: TerminalTab;
   focusedPane?: TerminalPane;
   launcherKey?: string;
-  /** 旧调用方传入的 scope key，仅保留接口兼容；新作用域由 activeTab/targetMode 计算。 */
+  /** 恢复流程可显式保留原 Tab 归属；新会话默认归属当前 Tab。 */
   tabId?: string;
-  /** 恢复流程可显式指定原作用域，避免在当前 Tab 上误建 global/tab 会话。 */
+  /** 恢复流程可显式指定已持久化的会话归属。 */
   scope?: AgentSessionScope;
   targetMode?: AgentLaunchTargetMode;
   title?: string;
 }
 
 /**
- * 创建全局权限的持久会话，同时把启动瞬间的聚焦终端保存为首选目标；scope
- * 决定可操作集合，target 只提供默认上下文，不能把 global 会话缩回单一终端。
+ * 创建归属当前 Tab 的持久会话，同时记录启动时的首选终端；scope 只隔离右栏
+ * 助手和历史，Rust effective_scope 仍提供整个 Kerminal 的终端能力。
  */
 export async function createAgentSessionForLaunch(
   agentId: ExternalAgentId,
@@ -81,13 +81,13 @@ export async function createAgentSessionForLaunch(
   };
 }
 
-/** 新建入口不再接受旧 Tab scope，避免兼容参数把全局权限意外降级为单 Tab。 */
+/** 显式恢复沿用保存的 Tab 归属，普通新建则绑定当前 Tab。 */
 function normalizeAgentLaunchScope(
-  _requestedScope: AgentSessionScope | undefined,
+  requestedScope: AgentSessionScope | undefined,
   activeTab?: TerminalTab,
   targetMode: AgentLaunchTargetMode = "unbound",
 ): AgentSessionScope {
-  return buildAgentSessionScope(activeTab, targetMode);
+  return requestedScope ?? buildAgentSessionScope(activeTab, targetMode);
 }
 
 export type LauncherTerminalSession = AgentTerminalSession & {
@@ -150,7 +150,7 @@ export async function buildPreparedAgentTerminalSession(
   };
 }
 
-/** 保留旧运行态 tabId 字段，避免已打开的 Agent 面板在升级后丢失归属。 */
+/** 运行态 tabId 是右栏会话归属，不参与 Agent 的终端权限判定。 */
 function scopeIdForAgentSession(scope: AgentSessionScope): string {
   return scope.kind === "tab" ? scope.tabId : agentSessionScopeId(scope);
 }

@@ -39,7 +39,10 @@ export interface TabRemovedCleanupPlan {
   agentSessionIds: string[];
 }
 
-/** 以 scope 优先解析运行态会话；旧 unbound 统一迁移为整个 Kerminal。 */
+/**
+ * 解析右栏会话归属；旧 global 记录若留有目标 Tab，优先回到该 Tab，避免同一
+ * 历史助手在每个 Tab 重复出现。scope 仍由 Rust 单独投影为全局终端权限。
+ */
 export function agentSessionTabId(
   session: Pick<AgentSidebarTabSession, "tabId" | "target" | "scope">,
 ): string | undefined {
@@ -53,7 +56,7 @@ export interface AgentRuntimeSessionMatcher {
   launcherKey: string;
 }
 
-/** 把 tab 或显式 scope 变成可用于内存映射的稳定 key；global key 永不随 tab 生命周期变化。 */
+/** 将会话归属转换为内存索引；无 Tab 的旧全局记录使用稳定 fallback key。 */
 export function agentSessionScopeId(
   scopeOrTabId: AgentSessionScope | string | undefined,
 ): string {
@@ -67,7 +70,7 @@ export function agentSessionScopeId(
   return normalized;
 }
 
-/** 把运行态 scope key 还原成显式权限模型，避免调用方复制 global sentinel 判断。 */
+/** 将会话归属 key 还原为持久化 scope 形状，避免调用方复制 sentinel 判断。 */
 export function agentSessionScopeFromId(scopeId: string | undefined): AgentSessionScope {
   const normalized = agentSessionScopeId(scopeId);
   return normalized === GLOBAL_AGENT_SESSION_SCOPE_ID
@@ -155,38 +158,21 @@ export function tabRemovedCleanupPlan(
   };
 }
 
-/**
- * 返回当前 Tab 可恢复的 active 记录；canonical global 会话跨 Tab 可见，
- * 旧 Tab 会话仍只在其原 Tab 恢复，避免历史 scope 被误扩大或丢失。
- */
+/** 返回当前 Tab 可恢复的 active 记录，绝不把一个助手恢复到其它 Tab。 */
 export function restorableSessionsForTab(
   records: readonly AgentSessionRecord[],
   tabId: string | undefined,
 ): AgentSessionRecord[] {
   const normalizedTabId = agentSessionScopeId(tabId);
-  const globalScopeId = agentSessionScopeId({ kind: "global" });
   return records.filter((record) => {
     if (agentSessionRecordStatus(record) !== "active") {
       return false;
     }
-    const recordScopeId = agentSessionRecordTabId(record);
-    return (
-      recordScopeId === normalizedTabId ||
-      (recordScopeId === globalScopeId && isCanonicalGlobalRecord(record))
-    );
+    return agentSessionRecordTabId(record) === normalizedTabId;
   });
 }
 
-/** 明确落盘为 global/unbound 的记录可跨 Tab 恢复；无 scope 的旧空记录只在 global fallback 显示。 */
-function isCanonicalGlobalRecord(record: AgentSessionRecord): boolean {
-  const scope = record.session.scope;
-  return (
-    (typeof scope === "object" && scope?.kind === "global") ||
-    agentSessionRecordTarget(record)?.liveStatus === "unbound"
-  );
-}
-
-/** 为恢复列表返回 scope key；没有新字段的历史记录按 legacy target 兼容推断。 */
+/** 为恢复列表返回右栏 Tab 归属；旧 global 记录优先使用其最后保存的目标 Tab。 */
 export function agentSessionRecordTabId(
   record: AgentSessionRecord,
 ): string | undefined {
@@ -214,12 +200,19 @@ function normalizedText(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-/** 兼容 runtime 旧字段；旧 unbound 为 global，旧 bound 继续按 target/tab 还原。 */
+/** 兼容运行态旧字段；已保存的 Tab 归属优先，旧 global 则按最后目标 Tab 落位。 */
 function sessionScope(
   session: Pick<AgentSidebarTabSession, "tabId" | "target" | "scope">,
 ): AgentSessionScope {
-  if (session.scope) {
+  if (session.scope?.kind === "tab") {
     return session.scope;
+  }
+  const targetTabId = normalizedText(session.target?.tabId);
+  if (targetTabId) {
+    return { kind: "tab", tabId: targetTabId };
+  }
+  if (session.scope?.kind === "global" || session.target?.liveStatus === "unbound") {
+    return { kind: "global" };
   }
   const tabId = normalizedText(session.tabId);
   if (
@@ -227,13 +220,6 @@ function sessionScope(
     tabId === LEGACY_UNBOUND_AGENT_SESSION_SCOPE_ID
   ) {
     return { kind: "global" };
-  }
-  if (session.target?.liveStatus === "unbound") {
-    return { kind: "global" };
-  }
-  const targetTabId = normalizedText(session.target?.tabId);
-  if (targetTabId) {
-    return { kind: "tab", tabId: targetTabId };
   }
   return tabId ? { kind: "tab", tabId } : { kind: "global" };
 }
@@ -243,15 +229,12 @@ function scopeId(scope: AgentSessionScope): string {
   return scope.kind === "tab" ? scope.tabId : GLOBAL_AGENT_SESSION_SCOPE_ID;
 }
 
-/** 读取新 scope，并将旧 target/unbound 记录收敛到 global 或 tab key。 */
+/** 读取保存的 Tab 归属，并把旧 global 记录按最后目标 Tab 兼容落位。 */
 function recordScope(record: AgentSessionRecord): AgentSessionScope {
   const rawScope = record.session.scope as
     | { kind?: "tab" | "global"; tabId?: string; tab_id?: string }
     | null
     | undefined;
-  if (rawScope?.kind === "global") {
-    return { kind: "global" };
-  }
   if (rawScope?.kind === "tab") {
     const tabId = normalizedText(rawScope.tabId ?? rawScope.tab_id);
     if (tabId) {
@@ -259,9 +242,12 @@ function recordScope(record: AgentSessionRecord): AgentSessionScope {
     }
   }
   const target = agentSessionRecordTarget(record);
-  if (target?.liveStatus === "unbound") {
+  const targetTabId = normalizedText(target?.tabId);
+  if (targetTabId) {
+    return { kind: "tab", tabId: targetTabId };
+  }
+  if (rawScope?.kind === "global" || target?.liveStatus === "unbound") {
     return { kind: "global" };
   }
-  const targetTabId = normalizedText(target?.tabId);
-  return targetTabId ? { kind: "tab", tabId: targetTabId } : { kind: "global" };
+  return { kind: "global" };
 }

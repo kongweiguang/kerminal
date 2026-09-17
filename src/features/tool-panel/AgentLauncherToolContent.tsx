@@ -89,7 +89,10 @@ import {
 import type { AgentLauncherToolContentProps } from "./agent-launcher/AgentLauncherToolContent.types";
 type AgentLauncherScreen = "launcher" | "terminal";
 
-/** 右栏 Agent 默认使用全局权限，并把当前聚焦终端保留为首选目标。 */
+/**
+ * 每个终端 Tab 独立保存右栏助手与历史；运行态 MCP 权限由 Rust 保持全局，当前
+ * 聚焦终端只作为新建和显式继续时的首选上下文。
+ */
 export function AgentLauncherToolContent({
   activeTab,
   desktopNotifications,
@@ -165,7 +168,7 @@ export function AgentLauncherToolContent({
   const requestedPane = pendingAgentSendRequest
     ? terminalPanes?.find((pane) => pane.id === pendingAgentSendRequest.paneId)
     : undefined;
-  // pending pane 只用于发送预览，Agent 的权限范围始终跟随当前 Tab/global scope。
+  // pending pane 只用于发送预览，不会因普通 Tab 切换改写助手的持久目标。
   const effectiveFocusedPane = focusedPane;
   const { renameSession: renameWorkflowSession, renamingSessionId } =
     useAgentSessionTitleRename({
@@ -198,7 +201,7 @@ export function AgentLauncherToolContent({
     ) {
       return;
     }
-    // 仅为仍处于当前 Tab 的旧记录保留视图；切换 Tab 回到默认 global 入口。
+    // 仅为仍处于当前 Tab 的旧记录保留视图；切换 Tab 不复用其它 Tab 的助手视图。
     setScopeOverrideId(null);
   }, [activeTab?.id, globalAgentScopeId, scopeOverrideId]);
   const loadStatus = useCallback(
@@ -389,10 +392,10 @@ export function AgentLauncherToolContent({
     [],
   );
 
-  /** 激活 global 会话，或仅为旧 Tab 会话临时切换视图，不复制会话到其它 Tab。 */
+  /** 激活所属 Tab 的会话视图；旧 global 会话仅在无 Tab 入口继续使用。 */
   const activateAgentSessionForTab = useCallback(
     (tabId: string, agentSessionId: string) => {
-      // 旧 Tab scope 仍可恢复显示；新 global session 使用稳定全局 key。
+      // tabId 来自会话归属，不由当前焦点 Tab 推断，避免跨 Tab 复制历史。
       setScopeOverrideId(tabId);
       setActiveSessionIdByTabId((current) => ({
         ...current,
@@ -615,20 +618,17 @@ export function AgentLauncherToolContent({
     });
   };
 
-  /** 从恢复提示创建同一作用域的新会话，避免 global 会话落回当前 Tab。 */
+  /** 从恢复提示新建会话时始终归属当前 Tab，避免把历史助手跨 Tab 复制。 */
   const createFreshAgentSession = (choice: AgentRestoreChoice) => {
     const launcher =
       choice.newSessionLauncher ??
       launcherSnapshotFromSelection(choice.agentId, choice.session);
     void runAction(launcher.launcherKey ?? choice.agentId, async () => {
-      const globalScopeId = agentSessionScopeId({ kind: "global" });
       await startNewAgentSession(
         launcher,
         defaultAgentLaunchPermissionMode(choice.agentId),
-        choice.session.tabId === globalScopeId ? "unbound" : "current",
-        choice.session.tabId === globalScopeId
-          ? { kind: "global" }
-          : { kind: "tab", tabId: choice.session.tabId },
+        "current",
+        activeAgentScope,
       );
     });
   };
@@ -674,7 +674,7 @@ export function AgentLauncherToolContent({
     });
   };
 
-  /** 会话列表的新会话动作保留来源 scope，并允许已删除 Custom 复用历史快照。 */
+  /** 会话列表的新会话动作使用当前 Tab 归属，并允许已删除 Custom 复用历史快照。 */
   const startNewWorkflowSession = (agentSessionId: string) => {
     const resolution = resolveHistoricalAgentLaunch({
       activeScope: activeAgentScope,
@@ -687,7 +687,7 @@ export function AgentLauncherToolContent({
     if (!resolution) {
       return;
     }
-    const { agentId, launcher, sourceScope } = resolution;
+    const { agentId, launcher } = resolution;
     if (!launcher) {
       setActionError(
         buildUserFacingError(new Error("historical custom launch is missing"), {
@@ -701,8 +701,8 @@ export function AgentLauncherToolContent({
       await startNewAgentSession(
         launcher,
         defaultAgentLaunchPermissionMode(agentId),
-        sourceScope.kind === "global" ? "unbound" : "current",
-        sourceScope,
+        "current",
+        activeAgentScope,
       );
     });
   };

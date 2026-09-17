@@ -124,7 +124,13 @@ fn create_get_update_and_archive_session_files() {
         AgentSessionScope::Global,
         "persisted target/tab metadata must not narrow terminal tool access"
     );
-    assert_eq!(loaded.session.scope, Some(AgentSessionScope::Global));
+    assert_eq!(
+        loaded.session.scope,
+        Some(AgentSessionScope::Tab {
+            tab_id: "tab-1".to_owned(),
+        }),
+        "persisted Tab ownership must survive while effective_scope stays global"
+    );
     assert_eq!(
         loaded
             .target_binding

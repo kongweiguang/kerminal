@@ -13,14 +13,14 @@
     ·
     <a href="#源码开发">源码开发</a>
   </p>
-  <p><sub>当前稳定版 v0.3.34 · Tauri 2 · Windows / Linux / macOS</sub></p>
+  <p><sub>当前稳定版 v0.3.35 · Tauri 2 · Windows / Linux / macOS</sub></p>
 </div>
 
 ![Kerminal 中的 SSH 终端与 Codex Agent 并行工作](docs/assets/kerminal-hero.png)
 
 Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围绕“当前目标”组织本机与远程终端、SFTP、Docker/Podman、Compose、tmux、SSH 隧道、服务器监控和 Agent 会话，让开发、排障和交付不必在多个窗口之间反复切换。
 
-内置 Agent Launcher 支持 Codex、Claude、PI Agent 和可持久化的自定义 CLI。每个 Agent 会话都有独立工作目录，可通过 Kerminal MCP 操作整个应用的用户终端与远程工具；打开助手时的当前终端是首选目标，不是访问限制。
+内置 Agent Launcher 支持 Codex、Claude、PI Agent 和可持久化的自定义 CLI。每个终端 Tab 都有独立的右栏助手与历史；每个 Agent 会话都有独立工作目录，仍可通过 Kerminal MCP 操作整个应用的用户终端与远程工具。当前终端只是新建或显式继续时的首选目标，普通切换 Tab 不会重绑它，也不是访问限制。
 
 > README 截图使用固定的脱敏演示数据生成，不包含真实主机、凭据或用户会话。
 
@@ -33,13 +33,13 @@ Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围�
 | 文件与传输 | SFTP 文件浏览、双面板传输、队列与进度、取消/重试、断点续传、冲突策略、远程预览与文本编辑。 |
 | 容器 | 在 SSH 主机上管理 Docker、Podman 与 Compose，查看容器、镜像、服务、日志和状态，进入终端并操作容器内文件。 |
 | 远程工具 | SSH 本地/远程/SOCKS 隧道、tmux 会话、CPU/内存/磁盘/网络/GPU/NPU/进程信息和命令历史。 |
-| Agent | Codex、Claude、PI Agent、自定义 CLI；会话恢复、重命名、归档、发送预览、排队提示；默认操作当前终端，也可跨 Tab 使用其它终端与工具。 |
+| Agent | Codex、Claude、PI Agent、自定义 CLI；每个终端 Tab 独立保存助手与会话历史，支持恢复、重命名、归档、发送预览和排队提示；显式继续才更新该助手的首选终端，仍可跨 Tab 使用其它终端与工具。 |
 | MCP | 本机 loopback Streamable HTTP；提供终端、SSH/SFTP、容器与容器文件、tmux、端口转发、服务器信息、历史和诊断等运行态工具。 |
 | 配置与安全 | `~/.kerminal` 文件化配置、加密凭据库、配置校验、Workspace Sync、主题/壁纸/透明度、快捷键与自动更新。 |
 
 ## 下载与安装
 
-前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.34 已公开提供以下产物：
+前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.35 已公开提供以下产物：
 
 | 平台 | 发布产物 |
 | --- | --- |

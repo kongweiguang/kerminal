@@ -8,7 +8,6 @@ import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index"
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
 import type { AgentTerminalSession } from "./AgentTerminalView";
 import type { AgentSendPreviewSource } from "./agentSendPreviewModel";
-import { agentSessionScopeId } from "./agentTabSessionModel";
 
 interface UseAgentSendRequestCoordinatorInput {
   activeTab?: TerminalTab;
@@ -30,7 +29,7 @@ interface UseAgentSendRequestCoordinatorInput {
   targetPane?: TerminalPane;
 }
 
-/** 将终端对象动作交给绑定该 pane 的 Agent 会话；无运行会话时短暂等待用户继续或新建。 */
+/** 将终端对象动作交给当前 Tab 的活动助手；一个助手覆盖其 Tab 的全部 pane。 */
 export function useAgentSendRequestCoordinator({
   activeTab,
   agentScopeId,
@@ -71,13 +70,11 @@ export function useAgentSendRequestCoordinator({
       return () => window.clearTimeout(clearTimer);
     }
 
-    const scopedSessions = sessions.filter(
+    const matchingSessions = sessions.filter(
       (session) =>
-        session.tabId === agentScopeId || isGlobalAgentSession(session),
-    );
-    const matchingSessions = scopedSessions.filter(
-      (candidate) =>
-        isGlobalAgentSession(candidate) || candidate.target?.paneId === request.paneId,
+        session.tabId === agentScopeId &&
+        Boolean(session.target?.tabId) &&
+        session.target?.liveStatus !== "unbound",
     );
     const session =
       matchingSessions.find(
@@ -112,13 +109,4 @@ export function useAgentSendRequestCoordinator({
     setActionError,
     targetPane,
   ]);
-}
-
-/** 全局 Agent 可接收任一用户终端的上下文发送；Tab Agent 仍只匹配其目标 pane。 */
-function isGlobalAgentSession(session: AgentTerminalSession): boolean {
-  return (
-    session.scope?.kind === "global" ||
-    session.target?.liveStatus === "unbound" ||
-    session.tabId === agentSessionScopeId({ kind: "global" })
-  );
 }

@@ -4,7 +4,7 @@ import { parseAgentCommandLine } from "./agentCommandLine";
 
 export type ExternalAgentId = "codex" | "claude" | "pi" | "custom";
 
-/** Agent 会话的权限作用域；作用域决定 MCP 可以观察和操作的终端集合。 */
+/** Agent 会话的右栏归属；Rust runtime 会将其有效终端能力统一投影为 global。 */
 export type AgentSessionScope =
   | { kind: "tab"; tabId: string }
   | { kind: "global" };
@@ -313,13 +313,16 @@ export function agentSessionRecordLaunchCommand(
   return [shell, ...record.session.launch.args].join(" ").trim();
 }
 
-/** 读取新的 scope 字段，并把旧 target/unbound 记录归一化为同一作用域。 */
+/**
+ * 读取会话的右栏归属；旧 global 记录若保存了目标 Tab，迁移到该 Tab 以免同一
+ * 历史助手在各 Tab 重复出现。运行态终端能力仍由 Rust 投影为全局权限。
+ */
 export function agentSessionRecordScope(
   record: AgentSessionRecord,
   fallback?: AgentSessionScope,
 ): AgentSessionScope {
   const scope = normalizeAgentSessionScope(record.session.scope);
-  if (scope) {
+  if (scope?.kind === "tab") {
     return scope;
   }
 
@@ -330,6 +333,9 @@ export function agentSessionRecordScope(
   const tabId = target?.tabId?.trim();
   if (tabId) {
     return { kind: "tab", tabId };
+  }
+  if (scope) {
+    return scope;
   }
   return fallback ?? { kind: "global" };
 }

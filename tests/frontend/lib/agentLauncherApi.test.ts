@@ -262,4 +262,22 @@ describe("agentLauncherApi", () => {
       }),
     ).toEqual({ kind: "global" });
   });
+
+  it("maps legacy global records with a saved target tab back to that tab", async () => {
+    const { agentSessionRecordScope } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+
+    expect(
+      agentSessionRecordScope({
+        session: {
+          agentSessionId: "ags-legacy-tab",
+          launch: { args: [], cwd: "C:/sessions/legacy-tab", shell: "codex" },
+          scope: { kind: "global" },
+          target: { tabId: "tab-original" },
+          title: "Codex",
+        },
+      }),
+    ).toEqual({ kind: "tab", tabId: "tab-original" });
+  });
 });

@@ -118,15 +118,15 @@ pub enum AgentTargetLiveStatus {
     Closed,
 }
 
-/// Agent 会话的终端操作范围兼容形状。
+/// Agent 会话的右栏归属兼容形状。
 ///
-/// Tab 变体保留旧 session.toml 和前端 wire 兼容；终端工具通过
-/// [`AgentSession::effective_scope`] 将新旧会话统一投影为 global，当前 target
-/// 仍作为无显式 sessionId 时的默认首选终端。
+/// Tab 标识隔离多个右栏助手的上下文和历史；终端工具通过
+/// [`AgentSession::effective_scope`] 将所有会话统一投影为 global，当前 target
+/// 只作为无显式 sessionId 时的默认首选终端。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentSessionScope {
-    /// 历史的当前 Tab 范围；仅作为兼容 metadata，不再限制终端工具授权。
+    /// 右栏助手归属的当前 Tab；不限制终端工具授权。
     Tab {
         /// wire 使用 camelCase；alias 保证已落盘的早期 snake_case scope 可继续恢复。
         #[serde(rename = "tabId", alias = "tab_id")]
@@ -265,8 +265,8 @@ pub struct AgentSession {
     pub session_root: String,
     /// Agent CLI 启动信息。
     pub launch: AgentSessionLaunch,
-    /// 终端操作范围兼容字段；读取旧 Tab 值，写出时规范化为 global。
-    #[serde(default, serialize_with = "serialize_global_agent_scope")]
+    /// 右栏会话归属；读取旧文件时仍可按 target 推断，运行态权限另见 effective_scope。
+    #[serde(default)]
     pub scope: Option<AgentSessionScope>,
     /// 当前绑定目标；未绑定时为空。
     #[serde(default)]
@@ -274,8 +274,8 @@ pub struct AgentSession {
 }
 
 impl AgentSession {
-    /// 计算终端工具的有效 scope；保留旧 Tab 字段只用于恢复/展示，实际 Agent
-    /// 能力统一覆盖整个 Kerminal，而 `target` 仍单独承担无显式 sessionId 时的首选目标。
+    /// 计算终端工具的有效 scope；持久化 Tab 只隔离右栏会话，实际 Agent 能力
+    /// 始终覆盖整个 Kerminal，target 仍单独承担无显式 sessionId 时的首选目标。
     pub fn effective_scope(&self) -> AgentSessionScope {
         AgentSessionScope::Global
     }

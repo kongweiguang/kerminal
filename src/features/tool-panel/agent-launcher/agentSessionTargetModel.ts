@@ -17,14 +17,14 @@ import {
 import { collectPaneIds } from "../../workspace/workspaceLayout";
 
 /**
- * 新启动统一使用 global 权限；activeTab/focusedPane 只用于计算首选 target，
- * 保留 targetMode 参数是为了兼容旧调用方，避免旧 UI 传入 current 时重新收窄权限。
+ * 为右栏会话分配当前 Tab 的稳定归属；后端的 effective_scope 始终是 global，
+ * 因而这里隔离的是多个助手的上下文和历史，不是 MCP 的终端操作权限。
  */
 export function buildAgentSessionScope(
-  _activeTab?: TerminalTab,
+  activeTab?: TerminalTab,
   _targetMode: "current" | "unbound" = "unbound",
 ): AgentSessionScope {
-  return { kind: "global" };
+  return activeTab ? { kind: "tab", tabId: activeTab.id } : { kind: "global" };
 }
 
 export function buildAgentSessionTarget(
