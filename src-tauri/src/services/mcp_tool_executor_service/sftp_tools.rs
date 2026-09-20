@@ -2,7 +2,10 @@
 //!
 //! @author kongweiguang
 
-use super::{sftp_transfer_route::{sftp_transfer_route_from_arguments, SftpTransferRoute}, *};
+use super::{
+    sftp_transfer_route::{sftp_transfer_route_from_arguments, SftpTransferRoute},
+    *,
+};
 use crate::models::sftp::SftpTransferEndpoint;
 
 pub(super) async fn execute_sftp_rename(
