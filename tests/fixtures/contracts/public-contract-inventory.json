@@ -42,7 +42,7 @@
   },
   "mcp": {
     "toolCount": 72,
-    "contractFingerprint": "fnv1a64:c19b5917d6e4c7d3",
+    "contractFingerprint": "fnv1a64:9d38e5d46a5d129a",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",
