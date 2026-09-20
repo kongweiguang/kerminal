@@ -5,7 +5,7 @@
 use serde::Deserialize;
 
 use super::*;
-use crate::models::sftp::{SftpRemoteCopyRequest, SftpTransferEndpoint};
+use crate::models::sftp::SftpRemoteCopyRequest;
 
 /// MCP 统一传输请求在现有 SFTP 队列中的路由结果。
 ///
