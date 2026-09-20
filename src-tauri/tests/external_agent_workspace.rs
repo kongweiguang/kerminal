@@ -22,7 +22,7 @@ const CONFIG_REFERENCE_FILE_NAME: &str = "kerminal-config.md";
 const MANAGED_BLOCK_START: &str = "<!-- KERMINAL_EXTERNAL_AGENT_START -->";
 
 #[test]
-/// 验证 Codex 模板只描述 scope 成员操作，并保留用户自定义内容。
+/// 验证 Codex 模板保留用户内容，并生成与 MCP canonical SFTP 契约一致的配置指南。
 fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = ExternalAgentWorkspaceService::new(
@@ -80,6 +80,20 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("recoverable transaction backup"));
     assert!(config_reference.contains("protocol = \"sftp\""));
     assert!(config_reference.contains("SFTP-only hosts may use proxy, jump, and transfer settings"));
+    assert!(config_reference.contains("## SFTP Transfers"));
+    assert!(config_reference
+        .contains("canonical `source`, `destination`, `kind`, and `conflictPolicy`"));
+    assert!(config_reference.contains(
+        "local -> remote, remote -> local, same-host remote copy, and cross-host remote copy"
+    ));
+    assert!(
+        config_reference.contains("\"source\": { \"type\": \"remote\", \"hostId\": \"server-a\"")
+    );
+    assert!(config_reference
+        .contains("\"destination\": { \"type\": \"remote\", \"hostId\": \"server-b\""));
+    assert!(config_reference.contains("sftp.transfer.list` with the returned `transfer.id`"));
+    assert!(config_reference.contains("transportMode` automatically"));
+    assert!(config_reference.contains("Do not use SFTP transfer for local -> local copies"));
     assert!(config_reference.contains(r#"cwd = "~/.kerminal""#));
     assert!(config_reference.contains(r#"credential_ref = "~/.ssh/id_ed25519""#));
     assert!(config_reference.contains("secrets/vault.toml"));

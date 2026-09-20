@@ -12,4 +12,6 @@ mod headless;
 mod rules;
 #[path = "mcp_tool_executor_service/runtime.rs"]
 mod runtime;
+#[path = "mcp_tool_executor_service/sftp.rs"]
+mod sftp;
 mod support;

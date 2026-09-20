@@ -127,7 +127,9 @@ pub(super) async fn execute_tool(
         ToolId::SftpTransferEnqueue => {
             execute_sftp_transfer_enqueue(context.sftp, context.paths, arguments)
         }
-        ToolId::SftpTransferList => execute_sftp_transfer_list(context.sftp),
+        ToolId::SftpTransferList => {
+            execute_sftp_transfer_list_with_arguments(context.sftp, arguments)
+        }
         ToolId::SftpTransferCancel => execute_sftp_transfer_cancel(context.sftp, arguments),
         ToolId::SftpTransferClearCompleted => execute_sftp_transfer_clear_completed(context.sftp),
         ToolId::ContainerList => {

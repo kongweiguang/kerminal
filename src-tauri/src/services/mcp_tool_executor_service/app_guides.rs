@@ -148,7 +148,8 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
     }
 }
 
-/// 返回 Kerminal 的产品区域与 MCP 路由，明确 global scope、headless PTY 与 UI 编排边界。
+/// 返回 Kerminal 的产品区域与 MCP 路由，明确 global scope、headless PTY 与 UI 编排边界；
+/// SFTP 文件复制在这里仅指向统一 source/destination 队列，避免导航层复制执行细节。
 pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecutionResult {
     let exposed_tools = exposed_tool_definitions(tools);
     let tool_family = |candidate_tool_ids: &[&'static str]| {
@@ -398,7 +399,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 app_task_route("discover-mcp-capabilities", "Call kerminal.capabilities to read the current tool map, recommended first calls, file-first configuration boundary, and deliberately absent tool families.", &discovery_tools),
                 app_task_route("operate-terminal", "Prefer the current targetBinding and use terminal.snapshot followed by terminal.write so commands remain visible in the left PTY; use terminal.list/sessionId only for another global terminal or stale target, terminal.create for a headless local/saved-host SSH PTY when none exists, and terminal.reconnect only for an actually disconnected pane.", &terminal_tools),
                 app_task_route("run-ssh-command", "Use the current targetBinding visible PTY for ordinary commands; if no PTY exists, create a local or saved-host SSH headless PTY with terminal.create and use terminal.snapshot/write. Use ssh.command_on_resolved_host or ssh.command only when a structured background result is explicitly requested or a PTY is unsuitable. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
-                app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host, inspect managedSsh runtime reuse, then use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
+                app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host, inspect managedSsh runtime reuse, and use sftp.list/preview only when remote context is needed. For copy work, call kerminal.operation_guide with intent=sftp, then use canonical source/destination endpoints with sftp.transfer.enqueue; track the returned transfer.id through sftp.transfer.list and cancel only when requested.", &sftp_tools),
                 app_task_route("manage-containers", "Inspect managedSsh runtime reuse, then use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
                 app_task_route("manage-tmux", "Inspect managedSsh runtime reuse, then probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
                 app_task_route("manage-port-forwarding", "Inspect managedSsh runtime reuse, then use port_forward.list before create or close; keep risky remote exposure behind user approval.", &port_forward_tools),

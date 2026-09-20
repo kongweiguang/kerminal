@@ -66,6 +66,25 @@ Use `kerminal.config_guide` when an external Agent needs these generated configu
 
 Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Agent needs exact input schema, example arguments, safety annotations, and deliberately absent-tool guidance for one tool or tool family.
 
+## SFTP Transfers
+
+- Use `sftp.transfer.enqueue` with only the canonical `source`, `destination`, `kind`, and `conflictPolicy` fields. Each endpoint is either `{"type":"local","path":"..."}` for the computer running Kerminal or `{"type":"remote","hostId":"...","path":"..."}` for a saved SSH/SFTP host.
+- Supported routes are local -> remote, remote -> local, same-host remote copy, and cross-host remote copy. The operation always copies and never deletes the source. Each call queues one file or directory.
+- `kind` is required and is `file` or `directory`. `conflictPolicy` is required and is `overwrite`, `skip`, or `rename`.
+
+```json
+{
+  "source": { "type": "remote", "hostId": "server-a", "path": "/data/report" },
+  "destination": { "type": "remote", "hostId": "server-b", "path": "/backup/report" },
+  "kind": "directory",
+  "conflictPolicy": "rename"
+}
+```
+
+Recommended sequence: confirm remote endpoints with `sftp.list` when needed, call `sftp.transfer.enqueue`, then call `sftp.transfer.list` with the returned `transfer.id` as `transferId`; call `sftp.transfer.cancel` only when the user asks to stop it. Enqueue means accepted into the queue, not completed. Kerminal selects `transportMode` automatically and does not expose bridge or staging choices. The MCP host owns confirmation, approval, permissions, hooks, and audit.
+
+Do not use SFTP transfer for local -> local copies; use the local filesystem capability instead. Missing hosts, credentials, host-key trust, SFTP subsystem, or path permissions are recoverable transfer errors.
+
 ## Terminal Execution
 
 - Every external Agent session uses global terminal scope across all Kerminal tabs. `targetBinding` identifies the current preferred terminal only; it is not an access restriction, so other user terminals remain available.

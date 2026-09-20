@@ -292,8 +292,9 @@ async fn mcp_tool_help_query_external_launch_discovers_runtime_and_config_withou
     assert!(!serialized.contains("external-secret:"));
 }
 
+/// 验证 SFTP 指南固定为端点确认、入队、按 id 跟踪和按需取消，且示例使用 canonical 端点。
 #[tokio::test]
-async fn mcp_operation_guide_sftp_requires_managed_ssh_runtime_inspection() {
+async fn mcp_operation_guide_sftp_uses_canonical_transfer_sequence() {
     let (_home, state) = test_state();
     let tools = state.mcp_tool_catalog().list_tools();
 
@@ -310,21 +311,32 @@ async fn mcp_operation_guide_sftp_requires_managed_ssh_runtime_inspection() {
 
     assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
     assert_eq!(output.data["intent"], "sftp");
-    assert!(value_array_contains_str(
-        &output.data["recommendedFirstCalls"],
-        "kerminal.runtime_snapshot"
-    ));
-    assert_eq!(
-        output.data["managedSshRuntime"]["inspectTool"],
-        "kerminal.runtime_snapshot"
-    );
     let workflow = output.data["workflow"].as_array().expect("workflow");
-    assert_eq!(workflow[0]["phase"], "inspect-runtime");
-    assert_eq!(workflow[0]["toolId"], "kerminal.runtime_snapshot");
+    assert_eq!(workflow.len(), 4);
+    assert_eq!(workflow[0]["phase"], "confirm-endpoints");
+    assert_eq!(workflow[0]["toolId"], "sftp.list");
     assert!(workflow[0]["action"]
         .as_str()
-        .expect("inspect runtime action")
-        .contains("managedSsh session/channel diagnostics"));
+        .expect("endpoint action")
+        .contains("Optionally confirm each remote endpoint"));
+    assert_eq!(workflow[1]["phase"], "enqueue");
+    assert_eq!(workflow[1]["toolId"], "sftp.transfer.enqueue");
+    assert_eq!(workflow[1]["exampleArguments"]["source"]["type"], "remote");
+    assert_eq!(
+        workflow[1]["exampleArguments"]["destination"]["type"],
+        "remote"
+    );
+    assert_eq!(workflow[1]["exampleArguments"]["kind"], "directory");
+    assert_eq!(workflow[1]["exampleArguments"]["conflictPolicy"], "rename");
+    assert!(workflow[1]["exampleArguments"].get("hostId").is_none());
+    assert!(workflow[1]["exampleArguments"].get("localPath").is_none());
+    assert!(workflow[1]["exampleArguments"].get("remotePath").is_none());
+    assert!(workflow[1]["exampleArguments"].get("direction").is_none());
+    assert_eq!(workflow[2]["phase"], "track");
+    assert_eq!(workflow[2]["toolId"], "sftp.transfer.list");
+    assert_eq!(workflow[2]["requires"], json!(["transferId"]));
+    assert_eq!(workflow[3]["phase"], "cancel");
+    assert_eq!(workflow[3]["toolId"], "sftp.transfer.cancel");
 }
 
 #[tokio::test]

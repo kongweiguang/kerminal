@@ -10,6 +10,7 @@ use kerminal_lib::{
     models::{
         agent_session::{AgentId, AgentSessionCreateRequest},
         mcp_server::{McpHttpServerStartRequest, McpToolAnnotations, ToolCategory, ToolDefinition},
+        sftp::SftpTrustHostKeyRequest,
         target::RemoteTargetRef,
     },
     paths::KerminalPaths,
@@ -42,6 +43,9 @@ use tauri::Manager;
 
 #[path = "mcp_streamable_http_server/generated_configs.rs"]
 mod generated_configs;
+#[allow(dead_code)]
+#[path = "sftp_service/support/mod.rs"]
+mod sftp_test_support;
 #[test]
 fn filters_disabled_or_unexposed_tools_from_external_mcp_surface() {
     let mut disabled = tool("terminal.list");

@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 每个终端 Tab 都有独立的右栏 AI 助手和会话历史；切换 Tab 会切换对应助手，关闭 Tab 会清理其所属助手。
-            - 内置 Codex、Claude Agent 仍默认拥有完整 Kerminal 运行态能力；Tab 只隔离右栏归属与历史，不限制跨 Tab 操作用户终端和远程工具。
-            - 普通切换 Tab 不会重绑助手的首选终端；用户显式继续当前 Tab 助手时，才将该 Tab 的聚焦终端更新为首选目标。
+            - SFTP 传输统一使用 `source`、`destination`、`kind` 与 `conflictPolicy` 描述端点，支持本机与远端双向传输，以及同主机和跨主机的远端复制。
+            - 入队前会拒绝本机到本机复制、空端点和危险的远端目录嵌套，传输列表可按返回的 transfer id 跟踪状态并按需取消。
+            - Kerminal MCP 应用导航、操作指南和外部 Agent 工作区配置已同步 canonical SFTP 契约与示例，避免依赖内部 legacy 参数。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

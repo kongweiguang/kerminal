@@ -9,7 +9,8 @@ use super::*;
 /// 这里按公开字符串先处理可选的运行态工具，避免指南代码在 catalog 增加
 /// `terminal.reconnect` 等工具时复制一套业务分支；具体 schema 仍由 catalog
 /// 返回，样例表达 global scope 下 targetBinding 首选、显式 sessionId 选其它
-/// 终端以及 paneId 重连的最小调用边界。
+/// 终端以及 paneId 重连的最小调用边界。SFTP 队列样例固定使用 canonical
+/// source/destination，避免 Agent 从示例推断内部 legacy flat 参数。
 pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
     match tool_id {
         ToolId::KerminalCapabilities | ToolId::KerminalRuntimeSnapshot | ToolId::TerminalList => {
@@ -112,16 +113,26 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
             "localPath": "C:/path/to/local/file-or-directory"
         })),
         ToolId::SftpTransferEnqueue => Some(json!({
-            "hostId": "<host-id>",
-            "remotePath": "/srv/app/archive.tar.gz",
-            "localPath": "C:/path/to/archive.tar.gz",
-            "direction": "download",
-            "kind": "file"
+            "source": {
+                "type": "remote",
+                "hostId": "<source-host-id>",
+                "path": "/srv/app/reports"
+            },
+            "destination": {
+                "type": "remote",
+                "hostId": "<destination-host-id>",
+                "path": "/backup/reports"
+            },
+            "kind": "directory",
+            "conflictPolicy": "rename"
         })),
         ToolId::SftpTransferCancel => Some(json!({
-            "transferId": "<transfer-id-from-sftp.transfer.list>"
+            "transferId": "<transfer-id-from-sftp.transfer.enqueue>"
         })),
-        ToolId::SftpTransferList | ToolId::SftpTransferClearCompleted => Some(json!({})),
+        ToolId::SftpTransferList => Some(json!({
+            "transferId": "<transfer-id-from-sftp.transfer.enqueue>"
+        })),
+        ToolId::SftpTransferClearCompleted => Some(json!({})),
         ToolId::TmuxProbe | ToolId::TmuxListSessions => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>"

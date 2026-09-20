@@ -1,7 +1,9 @@
 // @author kongweiguang
 
 use super::*;
+use crate::sftp_test_support::{create_password_remote_host, loopback::start_loopback_sftp_server};
 
+/// 验证外部 Streamable HTTP client 看到 canonical SFTP schema，并拒绝本机到本机复制。
 #[tokio::test]
 async fn generated_codex_and_claude_configs_connect_to_tools_list() {
     install_test_rustls_provider();
@@ -88,6 +90,191 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .await
         .expect("list tools through mcp endpoint");
     assert_tools_list_surface(&tools);
+
+    let enqueue_tool = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "sftp.transfer.enqueue")
+        .expect("sftp transfer enqueue tool through mcp endpoint");
+    let enqueue_schema = &enqueue_tool.input_schema;
+    let mut enqueue_properties = enqueue_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("enqueue schema properties")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    enqueue_properties.sort_unstable();
+    assert_eq!(
+        enqueue_properties,
+        vec![
+            "conflictPolicy".to_owned(),
+            "destination".to_owned(),
+            "kind".to_owned(),
+            "source".to_owned(),
+        ]
+    );
+    assert_eq!(
+        enqueue_schema
+            .get("allOf")
+            .and_then(Value::as_array)
+            .and_then(|all_of| all_of.first())
+            .and_then(|constraint| constraint.get("required")),
+        Some(&serde_json::json!([
+            "source",
+            "destination",
+            "kind",
+            "conflictPolicy"
+        ]))
+    );
+    let list_tool = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "sftp.transfer.list")
+        .expect("sftp transfer list tool through mcp endpoint");
+    assert_eq!(
+        list_tool
+            .input_schema
+            .get("properties")
+            .and_then(|properties| properties.get("transferId"))
+            .and_then(|transfer_id| transfer_id.get("type"))
+            .and_then(Value::as_str),
+        Some("string")
+    );
+    assert!(list_tool
+        .input_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty));
+
+    let local_local_arguments = serde_json::json!({
+        "source": { "type": "local", "path": "C:/data/source" },
+        "destination": { "type": "local", "path": "C:/data/target" },
+        "kind": "directory",
+        "conflictPolicy": "rename"
+    })
+    .as_object()
+    .cloned()
+    .expect("local-local arguments object");
+    let local_local = client
+        .peer()
+        .call_tool(
+            CallToolRequestParams::new("sftp.transfer.enqueue")
+                .with_arguments(local_local_arguments),
+        )
+        .await
+        .expect("local-local transfer returns structured tool error");
+    assert_eq!(local_local.is_error, Some(true));
+    assert!(local_local
+        .structured_content
+        .as_ref()
+        .and_then(|content| content.pointer("/error"))
+        .and_then(Value::as_str)
+        .is_some_and(|error| error.contains("local -> local")));
+    let transfers = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("sftp.transfer.list"))
+        .await
+        .expect("list transfers after rejected local-local request");
+    assert_eq!(transfers.is_error, Some(false));
+    assert_eq!(
+        transfers
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/data/count"))
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+
+    let source_root = tempfile::tempdir().expect("source SFTP root");
+    let target_root = tempfile::tempdir().expect("target SFTP root");
+    tokio::fs::write(source_root.path().join("artifact.txt"), b"mcp remote copy")
+        .await
+        .expect("seed source SFTP file");
+    let source_server = start_loopback_sftp_server(source_root.path().to_path_buf()).await;
+    let target_server = start_loopback_sftp_server(target_root.path().to_path_buf()).await;
+    let source_host_id =
+        create_password_remote_host(&state, "mcp source", source_server.addr.port());
+    let target_host_id =
+        create_password_remote_host(&state, "mcp target", target_server.addr.port());
+    for host_id in [&source_host_id, &target_host_id] {
+        state
+            .sftp()
+            .trust_host_key(
+                state.paths(),
+                SftpTrustHostKeyRequest {
+                    host_id: host_id.clone(),
+                },
+            )
+            .await
+            .expect("trust loopback SFTP host");
+    }
+    let remote_copy_arguments = serde_json::json!({
+        "source": { "type": "remote", "hostId": source_host_id, "path": "/artifact.txt" },
+        "destination": { "type": "remote", "hostId": target_host_id, "path": "/copied.txt" },
+        "kind": "file",
+        "conflictPolicy": "overwrite"
+    })
+    .as_object()
+    .cloned()
+    .expect("remote copy arguments object");
+    let remote_copy = client
+        .peer()
+        .call_tool(
+            CallToolRequestParams::new("sftp.transfer.enqueue")
+                .with_arguments(remote_copy_arguments),
+        )
+        .await
+        .expect("enqueue remote copy through MCP endpoint");
+    assert_eq!(remote_copy.is_error, Some(false));
+    let transfer_id = remote_copy
+        .structured_content
+        .as_ref()
+        .and_then(|content| content.pointer("/data/transfer/id"))
+        .and_then(Value::as_str)
+        .expect("remote copy transfer id")
+        .to_owned();
+    let mut completed_transfer = None;
+    for _ in 0..100 {
+        let list_arguments = serde_json::json!({ "transferId": transfer_id })
+            .as_object()
+            .cloned()
+            .expect("transfer list arguments object");
+        let listed = client
+            .peer()
+            .call_tool(
+                CallToolRequestParams::new("sftp.transfer.list").with_arguments(list_arguments),
+            )
+            .await
+            .expect("poll remote copy through MCP endpoint");
+        let transfer = listed
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/data/transfers/0"));
+        match transfer
+            .and_then(|transfer| transfer.get("status"))
+            .and_then(Value::as_str)
+        {
+            Some("succeeded") => {
+                completed_transfer = transfer.cloned();
+                break;
+            }
+            Some("failed" | "canceled") => {
+                panic!("remote copy failed: {transfer:?}");
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+        }
+    }
+    let completed_transfer =
+        completed_transfer.expect("remote copy completes through MCP endpoint");
+    assert_eq!(completed_transfer["operation"], "remoteCopy");
+    assert!(completed_transfer["transportMode"].is_string());
+    assert_eq!(
+        tokio::fs::read(target_root.path().join("copied.txt"))
+            .await
+            .expect("read MCP remote copy target"),
+        b"mcp remote copy"
+    );
 
     let mut host_credential_arguments = serde_json::Map::new();
     host_credential_arguments.insert(

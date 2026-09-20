@@ -149,7 +149,7 @@ pub(super) fn execute_kerminal_operation_guide(
     }
 }
 
-/// 将用户意图映射到最窄的运行态流程，并保留断线恢复作为终端流程的一等分支。
+/// 将用户意图映射到最窄的运行态流程，并为 SFTP 传输固定端点确认、入队、跟踪和取消顺序。
 fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
     let normalized_intent = requested_intent
         .trim()
@@ -163,29 +163,35 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
     match normalized_intent.as_str() {
         "sftp" => guide_plan(
             "sftp",
-            vec!["kerminal.runtime_snapshot", "sftp.list"],
+            vec!["sftp.list"],
             vec![
-                managed_ssh_runtime_step(),
                 guide_step(
-                    "browse",
+                    "confirm-endpoints",
                     Some("sftp.list"),
-                    "List the remote directory before previewing or transferring files.",
+                    "Optionally confirm each remote endpoint with sftp.list when its existence or kind is uncertain; local endpoints are paths on the Kerminal machine and need no remote listing.",
                     &["hostId", "path"],
-                    "Use saved Kerminal host credentials; do not read vault files.",
+                    "Use saved Kerminal host credentials and inspect only the needed directory; do not read vault files or dump sensitive contents.",
                 ),
                 guide_step(
-                    "inspect",
-                    Some("sftp.preview"),
-                    "Preview text-like files before editing or transferring when the user needs content context.",
-                    &["hostId", "path"],
-                    "Avoid dumping large or sensitive files into chat.",
-                ),
-                guide_step(
-                    "transfer",
+                    "enqueue",
                     Some("sftp.transfer.enqueue"),
-                    "Queue upload/download/copy style transfer work when a managed transfer is needed.",
-                    &["operation", "source", "destination"],
-                    "Confirm overwrite/delete semantics through the MCP host for risky paths.",
+                    "Queue one copy with canonical source and destination endpoints. This covers local-to-remote, remote-to-local, same-host, and cross-host remote copies for files or directories.",
+                    &["source", "destination", "kind", "conflictPolicy"],
+                    "conflictPolicy is required and must be overwrite, skip, or rename; copying never deletes the source, and the MCP host owns approval.",
+                ),
+                guide_step(
+                    "track",
+                    Some("sftp.transfer.list"),
+                    "Read the transfer.id returned by enqueue by calling sftp.transfer.list with { transferId } until the task reaches a terminal state.",
+                    &["transferId"],
+                    "Enqueue means accepted into the queue, not completed; transportMode is selected automatically and is not an Agent option.",
+                ),
+                guide_step(
+                    "cancel",
+                    Some("sftp.transfer.cancel"),
+                    "If the user asks to stop the task, cancel it with the same transferId and inspect the returned transfer snapshot.",
+                    &["transferId"],
+                    "Cancel only the explicitly selected task and rely on MCP host approval for the remote side effect.",
                 ),
             ],
             vec![
@@ -205,11 +211,18 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 "sftp.transfer.clear_completed",
             ],
             vec![
+                "Canonical source and destination endpoints support local -> remote, remote -> local, same-host remote copy, and cross-host remote copy; a local path always means the computer running Kerminal.",
+                "kind and conflictPolicy are required for every transfer; choose file or directory and overwrite, skip, or rename respectively.",
+                "Do not choose clientBridge or localStage: the runtime selects transportMode automatically and hides temporary staging paths.",
+                "A missing host, credential, host-key trust, SFTP subsystem, or path permission is a recoverable transfer error; fix that condition before retrying.",
                 "If the host id is unknown, read hosts/*.toml directly or use the selected scope member's host context.",
-                "If managedSsh reports backend unsupported/unwired, legacy fallback may be expected; auth, host-key, connect, subsystem, or channel errors should not be retried through a hidden legacy SSH login.",
-                "If a destructive remote file operation is requested, rely on host approval and clear user intent.",
+                "If a local-to-local copy is requested, use the local filesystem capability instead; SFTP transfer does not implement it.",
             ],
-            vec!["Use sftp.transfer.list after enqueueing long-running transfers."],
+            vec![
+                "After enqueue, call sftp.transfer.list with the returned transfer.id as transferId.",
+                "Call sftp.transfer.cancel with that transferId only when the user asks to stop the task.",
+                "Use sftp.transfer.clear_completed after reviewing finished tasks when queue cleanup is requested.",
+            ],
         ),
         "tmux" => guide_plan(
             "tmux",

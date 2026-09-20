@@ -7,6 +7,8 @@ use crate::{
     services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
 };
 
+use serde_json::json;
+
 use super::super::schema::{
     boolean_field, enum_field, number_field, object_schema, string_field, tool, tool_with_exposure,
     ToolEffect,
@@ -149,24 +151,22 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SftpTransferEnqueue,
             "创建 SFTP 传输任务",
-            "加入 SFTP 队列，返回任务 id。",
+            "按 source -> destination 加入 SFTP 队列；支持本机与远程主机之间，以及远程主机之间的文件或目录复制。",
             ToolCategory::Sftp,
             ToolEffect::Remote,
-            object_schema(vec![
-                string_field("hostId", "远程主机 id。", true),
-                string_field("remotePath", "远程路径。", true),
-                string_field("localPath", "本地路径。", true),
-                enum_field("direction", "传输方向。", true, vec!["upload", "download"]),
-                enum_field("kind", "传输对象类型。", true, vec!["file", "directory"]),
-            ]),
+            sftp_transfer_enqueue_schema(),
         ),
         tool(
             ToolId::SftpTransferList,
             "列出 SFTP 传输任务",
-            "读取 SFTP 队列、状态和进度。",
+            "读取 SFTP 队列、状态和进度；可按 transferId 精确查询。",
             ToolCategory::Sftp,
             ToolEffect::Read,
-            object_schema(vec![]),
+            object_schema(vec![string_field(
+                "transferId",
+                "可选的 SFTP 传输任务 id；不传则返回全部任务。",
+                false,
+            )]),
         ),
         tool(
             ToolId::SftpTransferCancel,
@@ -256,4 +256,60 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
             object_schema(vec![string_field("forwardId", "端口转发会话 id。", true)]),
         ),
     ]
+}
+
+/// 构造统一传输工具的公开 schema；allOf 保留 canonical 必填约束，同时让执行器能接收旧 flat 参数。
+///
+/// 执行器的通用必填检查只读取顶层 `required`；将约束放进 allOf 不会把旧参数暴露到公开 schema，
+/// 也能让旧 flat 请求继续进入兼容解析器，而不是在 MCP 入口处被提前拦截。
+fn sftp_transfer_enqueue_schema() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "allOf": [{
+            "required": ["source", "destination", "kind", "conflictPolicy"]
+        }],
+        "properties": {
+            "source": sftp_transfer_endpoint_schema("源端点"),
+            "destination": sftp_transfer_endpoint_schema("目标端点"),
+            "kind": {
+                "type": "string",
+                "description": "传输对象类型。",
+                "enum": ["file", "directory"]
+            },
+            "conflictPolicy": {
+                "type": "string",
+                "description": "目标已存在时的处理方式。",
+                "enum": ["overwrite", "skip", "rename"]
+            }
+        }
+    })
+}
+
+/// 构造 endpoint 的 oneOf schema，避免 public MCP schema 暴露内部 direction/hostId flat 契约。
+fn sftp_transfer_endpoint_schema(description: &str) -> serde_json::Value {
+    json!({
+        "description": description,
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "path"],
+                "properties": {
+                    "type": { "const": "local", "description": "运行 Kerminal 的本机。" },
+                    "path": { "type": "string", "description": "本机文件或目录路径。" }
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "hostId", "path"],
+                "properties": {
+                    "type": { "const": "remote", "description": "保存的 SSH/SFTP 主机。" },
+                    "hostId": { "type": "string", "description": "保存的远程主机 id。" },
+                    "path": { "type": "string", "description": "远程文件或目录路径。" }
+                }
+            }
+        ]
+    })
 }
