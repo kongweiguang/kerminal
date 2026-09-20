@@ -43,6 +43,8 @@ use tauri::Manager;
 
 #[path = "mcp_streamable_http_server/generated_configs.rs"]
 mod generated_configs;
+#[path = "mcp_streamable_http_server/generated_sftp.rs"]
+mod generated_sftp;
 #[allow(dead_code)]
 #[path = "sftp_service/support/mod.rs"]
 mod sftp_test_support;

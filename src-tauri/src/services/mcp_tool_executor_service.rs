@@ -105,6 +105,7 @@ mod host_vault_tools;
 mod operation_guide;
 mod port_forward_tools;
 mod runtime_snapshot;
+mod sftp_transfer_route;
 mod sftp_tools;
 mod ssh_tools;
 mod terminal_tools;

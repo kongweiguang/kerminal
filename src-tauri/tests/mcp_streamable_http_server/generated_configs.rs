@@ -127,26 +127,6 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
             "conflictPolicy"
         ]))
     );
-    let list_tool = tools
-        .tools
-        .iter()
-        .find(|tool| tool.name == "sftp.transfer.list")
-        .expect("sftp transfer list tool through mcp endpoint");
-    assert_eq!(
-        list_tool
-            .input_schema
-            .get("properties")
-            .and_then(|properties| properties.get("transferId"))
-            .and_then(|transfer_id| transfer_id.get("type"))
-            .and_then(Value::as_str),
-        Some("string")
-    );
-    assert!(list_tool
-        .input_schema
-        .get("required")
-        .and_then(Value::as_array)
-        .is_some_and(Vec::is_empty));
-
     let local_local_arguments = serde_json::json!({
         "source": { "type": "local", "path": "C:/data/source" },
         "destination": { "type": "local", "path": "C:/data/target" },
@@ -171,21 +151,6 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .and_then(|content| content.pointer("/error"))
         .and_then(Value::as_str)
         .is_some_and(|error| error.contains("local -> local")));
-    let transfers = client
-        .peer()
-        .call_tool(CallToolRequestParams::new("sftp.transfer.list"))
-        .await
-        .expect("list transfers after rejected local-local request");
-    assert_eq!(transfers.is_error, Some(false));
-    assert_eq!(
-        transfers
-            .structured_content
-            .as_ref()
-            .and_then(|content| content.pointer("/data/count"))
-            .and_then(Value::as_u64),
-        Some(0)
-    );
-
     let source_root = tempfile::tempdir().expect("source SFTP root");
     let target_root = tempfile::tempdir().expect("target SFTP root");
     tokio::fs::write(source_root.path().join("artifact.txt"), b"mcp remote copy")
