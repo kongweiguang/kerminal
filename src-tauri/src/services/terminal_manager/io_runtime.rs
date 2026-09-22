@@ -1,4 +1,6 @@
 //! 终端 reader、过滤链、有界 channel、child waiter 与清理资源所有权。
+//!
+//! @author kongweiguang
 
 use super::{
     secret_input::TerminalSecretInputResponder, transport::SharedWriterHandle,
@@ -80,6 +82,10 @@ pub(super) fn pty_output_channel(
     )
 }
 
+/// 启动唯一的 PTY reader，并确保 EOF 前将任何跨分片敏感前缀安全收口。
+///
+/// reader 是输出脱敏的单一所有者；在结束时仍经由同一过滤链发送占位，避免一个没有后续
+/// 分片的敏感值前缀被静默重新暴露或遗留在内部缓冲。
 pub(super) fn spawn_reader_thread(
     mut reader: Box<dyn Read + Send>,
     cleanup_paths: Vec<PathBuf>,
@@ -150,6 +156,9 @@ pub(super) fn spawn_reader_thread(
 }
 
 /// 让每个解码结果依次经过 escape、secret 和 agent 过滤，再进入有界 output queue。
+///
+/// 空解码结果只在 EOF 或读取错误收尾时进入此函数，此时 secret filter 会输出安全占位来
+/// 覆盖跨分片敏感前缀；普通空读仍保持无输出。
 fn forward_decoded_terminal_output(
     mut data: String,
     escape_responder: &mut TerminalEscapeResponder,
@@ -159,7 +168,12 @@ fn forward_decoded_terminal_output(
     agent_detector: &Arc<Mutex<TerminalAgentSignalDetector>>,
 ) -> bool {
     if data.is_empty() {
-        return true;
+        if let Some(responder) = secret_responder.as_mut() {
+            data = responder.finish_output();
+        }
+        if data.is_empty() {
+            return true;
+        }
     }
 
     let observation = escape_responder.observe(&data);
