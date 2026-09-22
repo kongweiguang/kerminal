@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use russh::ChannelMsg;
 
 use crate::{
@@ -221,7 +223,7 @@ async fn execute_managed_sftp_helper(
         key,
         endpoint.host.clone(),
         endpoint.known_hosts_path.clone(),
-        settings.timeout_seconds,
+        u64::from(endpoint.host.ssh_options.terminal.connect_timeout_seconds).max(1),
     )
     .with_host_key_policy(runtime_host_key_policy_for_host_id(&endpoint.host.id))
     .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(
@@ -233,7 +235,7 @@ async fn execute_managed_sftp_helper(
         .with_target_label(sftp_host_label(&endpoint.host));
     let request = SshRuntimeExecRequest::new(
         script.to_owned(),
-        settings.timeout_seconds,
+        settings.browser_request_timeout_seconds,
         max_output_bytes,
     );
     match facade.execute_exec(&context, request).await {

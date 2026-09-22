@@ -196,7 +196,7 @@ describe("settingsModel", () => {
         hostTransfers: 999,
         packetBytes: 1,
         pipelineDepth: 0,
-        timeoutSeconds: 999,
+        timeoutSeconds: 9_999,
       },
       themeMode: "auto",
     } as unknown as Partial<typeof defaultAppSettings>);
@@ -264,7 +264,7 @@ describe("settingsModel", () => {
       hostTransfers: 8,
       packetBytes: 32 * 1024,
       pipelineDepth: 1,
-      timeoutSeconds: 300,
+      idleTimeoutSeconds: 3600,
     });
   });
 

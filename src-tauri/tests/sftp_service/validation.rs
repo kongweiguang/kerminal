@@ -81,6 +81,7 @@ fn normalize_remote_copy_request_rejects_unsafe_boundaries() {
         kind: SftpTransferKind::File,
         conflict_policy: SftpTransferConflictPolicy::Overwrite,
         view_scope: None,
+        idle_timeout_seconds: None,
     };
 
     let cross_host_same_path =
@@ -209,6 +210,7 @@ fn remote_copy_staging_policy_uses_safe_fallback_only_when_needed() {
         kind: SftpTransferKind::File,
         conflict_policy: SftpTransferConflictPolicy::Overwrite,
         view_scope: None,
+        idle_timeout_seconds: None,
     };
     let nested_same_host_directory = SftpRemoteCopyRequest {
         source_host_id: "source-host".to_owned(),
@@ -218,6 +220,7 @@ fn remote_copy_staging_policy_uses_safe_fallback_only_when_needed() {
         kind: SftpTransferKind::Directory,
         conflict_policy: SftpTransferConflictPolicy::Overwrite,
         view_scope: None,
+        idle_timeout_seconds: None,
     };
 
     assert!(

@@ -250,9 +250,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - SFTP 传输统一使用 `source`、`destination`、`kind` 与 `conflictPolicy` 描述端点，支持本机与远端双向传输，以及同主机和跨主机的远端复制。
-            - 入队前会拒绝本机到本机复制、空端点和危险的远端目录嵌套，传输列表可按返回的 transfer id 跟踪状态并按需取消。
-            - Kerminal MCP 应用导航、操作指南和外部 Agent 工作区配置已同步 canonical SFTP 契约与示例，避免依赖内部 legacy 参数。
+            - SFTP 后台传输不再受固定总时长限制；连接阶段继续使用主机 SSH 连接超时，连续无进度默认 3 分钟才会失败。
+            - 无进度失败会保留 `.kerminal-part`，队列直接说明网络无响应并提供唯一“继续传输”动作，按已确认偏移恢复且仅在最终大小一致后提交。
+            - MCP 的 `sftp.transfer.enqueue` 只快速返回任务 id；使用 `list`、`cancel` 和重试形成闭环。旧同步传输工具已下线并返回迁移提示。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

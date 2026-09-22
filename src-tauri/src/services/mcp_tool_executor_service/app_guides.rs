@@ -192,10 +192,6 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
     let sftp_tools = tool_family(&[
         "sftp.list",
         "sftp.preview",
-        "sftp.upload",
-        "sftp.upload_directory",
-        "sftp.download",
-        "sftp.download_directory",
         "sftp.rename",
         "sftp.move",
         "sftp.create_directory",

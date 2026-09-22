@@ -7,7 +7,7 @@ use std::{
     fmt, io,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     task::{Context, Poll},
@@ -18,6 +18,7 @@ use tauri::{Emitter, Window};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::Notify,
+    time::{interval, MissedTickBehavior},
 };
 
 use crate::{
@@ -264,6 +265,7 @@ pub(super) struct TransferProgress {
     transfer_id: Option<String>,
     transfers: Option<Arc<Mutex<HashMap<String, TransferTask>>>>,
     pub(super) cancel_requested: Arc<AtomicBool>,
+    last_activity_at_ms: Arc<AtomicU64>,
     event_emitter: Option<TransferEventEmitter>,
 }
 
@@ -287,15 +289,7 @@ impl TransferProgress {
             transfer_id: None,
             transfers: None,
             cancel_requested: Arc::new(AtomicBool::new(false)),
-            event_emitter: None,
-        }
-    }
-
-    pub(super) fn detached_with_cancel(cancel_requested: Arc<AtomicBool>) -> Self {
-        Self {
-            transfer_id: None,
-            transfers: None,
-            cancel_requested,
+            last_activity_at_ms: Arc::new(AtomicU64::new(unix_timestamp_millis())),
             event_emitter: None,
         }
     }
@@ -310,6 +304,7 @@ impl TransferProgress {
             transfer_id: Some(transfer_id),
             transfers: Some(transfers),
             cancel_requested,
+            last_activity_at_ms: Arc::new(AtomicU64::new(unix_timestamp_millis())),
             event_emitter,
         }
     }
@@ -325,7 +320,48 @@ impl TransferProgress {
         Ok(())
     }
 
+    /// 为本地中转子步骤创建共享取消与活动时钟的轻量进度句柄。
+    ///
+    /// 中转下载不应重复累计到用户可见总进度，但它确实在传输字节；共享时钟避免长文件在
+    /// 临时落盘阶段被误判为无进度。
+    pub(super) fn detached_child(&self) -> Self {
+        Self {
+            transfer_id: None,
+            transfers: None,
+            cancel_requested: self.cancel_requested.clone(),
+            last_activity_at_ms: self.last_activity_at_ms.clone(),
+            event_emitter: None,
+        }
+    }
+
+    /// 在连接、传输、提交等实际工作边界重置活动时间。
+    ///
+    /// 排队阶段不会调用此方法，因此等待并发槽不会消耗无进度预算；只有已获取槽位的任务
+    /// 才开始被 watchdog 观察。
+    pub(super) fn refresh_activity(&self) {
+        self.last_activity_at_ms
+            .store(unix_timestamp_millis(), Ordering::SeqCst);
+    }
+
+    /// 判断后台任务是否已连续超过阈值而没有字节或阶段推进。
+    pub(super) fn idle_timeout_elapsed(&self, idle_timeout_seconds: u64, now_ms: u64) -> bool {
+        idle_timeout_elapsed(
+            self.last_activity_at_ms.load(Ordering::SeqCst),
+            idle_timeout_seconds,
+            now_ms,
+        )
+    }
+
+    /// 返回任务是否已由 watchdog 写入稳定的无进度失败状态。
+    pub(super) fn failed_with_idle_timeout(&self) -> bool {
+        self.with_summary(|summary| {
+            summary.failure_kind == Some(crate::models::sftp::SftpTransferFailureKind::IdleTimeout)
+        })
+        .unwrap_or(false)
+    }
+
     pub(super) fn mark_running(&self) {
+        self.refresh_activity();
         self.update_summary(true, |summary| {
             summary.status = SftpTransferStatus::Running;
             summary.phase = Some("running".to_owned());
@@ -334,6 +370,7 @@ impl TransferProgress {
     }
 
     pub(super) fn mark_phase(&self, phase: impl Into<String>, current_item: Option<String>) {
+        self.refresh_activity();
         self.update_summary(true, |summary| {
             summary.status = SftpTransferStatus::Running;
             summary.phase = Some(phase.into());
@@ -357,6 +394,9 @@ impl TransferProgress {
     }
 
     pub(super) fn add_bytes(&self, bytes: u64) {
+        if bytes > 0 {
+            self.refresh_activity();
+        }
         let now_ms = unix_timestamp_millis();
         self.update_task(false, |task| {
             task.summary.bytes_transferred = task.summary.bytes_transferred.saturating_add(bytes);
@@ -370,6 +410,7 @@ impl TransferProgress {
         self.update_summary(true, |summary| {
             summary.status = SftpTransferStatus::Succeeded;
             summary.error = None;
+            summary.failure_kind = None;
             summary.phase = Some("done".to_owned());
             summary.current_item = None;
             summary.speed_bytes_per_second = 0;
@@ -381,6 +422,7 @@ impl TransferProgress {
         self.update_summary(true, |summary| {
             summary.status = SftpTransferStatus::Canceled;
             summary.cancel_requested = true;
+            summary.failure_kind = None;
             summary.phase = Some("canceled".to_owned());
             summary.current_item = None;
             summary.speed_bytes_per_second = 0;
@@ -393,6 +435,7 @@ impl TransferProgress {
             summary.status = SftpTransferStatus::Canceled;
             summary.cancel_requested = true;
             summary.error = Some(error.to_string());
+            summary.failure_kind = None;
             summary.phase = Some("canceled".to_owned());
             summary.current_item = None;
             summary.speed_bytes_per_second = 0;
@@ -404,7 +447,24 @@ impl TransferProgress {
         self.update_summary(true, |summary| {
             summary.status = SftpTransferStatus::Failed;
             summary.error = Some(error.into());
+            summary.failure_kind = Some(crate::models::sftp::SftpTransferFailureKind::Other);
             summary.phase = Some("failed".to_owned());
+            summary.speed_bytes_per_second = 0;
+            summary.updated_at = unix_timestamp();
+        });
+    }
+
+    /// 以不含路径、凭据或底层库文本的结构化语义结束无进度任务。
+    ///
+    /// partial 文件故意不在这里清理：可靠写入层仅在空 partial 或成功原子提交后清理，
+    /// 这样用户点击继续传输时可以从确认偏移量恢复。
+    pub(super) fn fail_idle_timeout(&self, idle_timeout_seconds: u64) {
+        self.update_summary(true, |summary| {
+            summary.status = SftpTransferStatus::Failed;
+            summary.error = Some(idle_timeout_message(idle_timeout_seconds));
+            summary.failure_kind = Some(crate::models::sftp::SftpTransferFailureKind::IdleTimeout);
+            summary.phase = Some("failed".to_owned());
+            summary.current_item = None;
             summary.speed_bytes_per_second = 0;
             summary.updated_at = unix_timestamp();
         });
@@ -445,6 +505,84 @@ impl TransferProgress {
         if let (Some(summary), Some(emitter)) = (next_summary, &self.event_emitter) {
             emitter.emit(&summary, force_event);
         }
+    }
+
+    fn with_summary<T>(&self, map: impl FnOnce(&SftpTransferSummary) -> T) -> Option<T> {
+        let (Some(transfer_id), Some(transfers)) = (&self.transfer_id, &self.transfers) else {
+            return None;
+        };
+        transfers
+            .lock()
+            .ok()
+            .and_then(|transfers| transfers.get(transfer_id).map(|task| map(&task.summary)))
+    }
+}
+
+/// 用单个定时器监督一段后台网络工作，而不为每个读写分片创建任务。
+///
+/// 该 future 不限制总执行时长：每次实际字节确认或阶段切换都会刷新 `TransferProgress`；
+/// 只有在已运行状态连续无进度时才中断底层 future 并留下 resumable partial。
+pub(super) async fn run_with_idle_watchdog<T>(
+    progress: &TransferProgress,
+    idle_timeout_seconds: u64,
+    future: impl std::future::Future<Output = AppResult<T>>,
+) -> AppResult<T> {
+    let mut future = std::pin::pin!(future);
+    let mut ticker = interval(Duration::from_secs(1));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            result = &mut future => return result,
+            _ = ticker.tick() => {
+                if progress.idle_timeout_elapsed(idle_timeout_seconds, unix_timestamp_millis()) {
+                    progress.fail_idle_timeout(idle_timeout_seconds);
+                    return Err(AppError::Sftp(idle_timeout_message(idle_timeout_seconds)));
+                }
+            }
+        }
+    }
+}
+
+/// 将无进度阈值转换为稳定、可在浅深色界面与 MCP 中复用的用户可见文案。
+fn idle_timeout_message(seconds: u64) -> String {
+    if seconds.is_multiple_of(60) {
+        format!("网络连续 {} 分钟无响应", seconds / 60)
+    } else {
+        format!("网络连续 {seconds} 秒无响应")
+    }
+}
+
+/// 纯时间判断便于覆盖长总时长但持续有进度的状态机边界。
+fn idle_timeout_elapsed(last_activity_at_ms: u64, idle_timeout_seconds: u64, now_ms: u64) -> bool {
+    now_ms.saturating_sub(last_activity_at_ms) >= idle_timeout_seconds.saturating_mul(1000)
+}
+
+#[cfg(test)]
+mod idle_timeout_tests {
+    use super::{idle_timeout_elapsed, idle_timeout_message};
+
+    /// 验证每次确认字节都会重置无进度时钟，因此累计超过一分钟不构成传输总时长限制。
+    #[test]
+    fn continuous_progress_can_run_past_a_minute_without_idle_failure() {
+        let idle_timeout_seconds = 30;
+        let mut last_activity_at_ms = 0;
+
+        for now_ms in [29_000, 58_000, 87_000, 116_000, 145_000] {
+            assert!(
+                !idle_timeout_elapsed(last_activity_at_ms, idle_timeout_seconds, now_ms),
+                "byte progress before the threshold must keep a long task alive"
+            );
+            last_activity_at_ms = now_ms;
+        }
+    }
+
+    /// 验证 watchdog 只在连续无字节进度达到阈值后触发，并维持脱敏的稳定用户文案。
+    #[test]
+    fn idle_timeout_requires_a_full_inactive_interval() {
+        assert!(!idle_timeout_elapsed(10_000, 180, 189_999));
+        assert!(idle_timeout_elapsed(10_000, 180, 190_000));
+        assert_eq!(idle_timeout_message(180), "网络连续 3 分钟无响应");
     }
 }
 

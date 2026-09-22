@@ -22,8 +22,8 @@ import {
   SFTP_PACKET_BYTES_MIN,
   SFTP_PIPELINE_DEPTH_MAX,
   SFTP_PIPELINE_DEPTH_MIN,
-  SFTP_TIMEOUT_SECONDS_MAX,
-  SFTP_TIMEOUT_SECONDS_MIN,
+  SFTP_IDLE_TIMEOUT_SECONDS_MAX,
+  SFTP_IDLE_TIMEOUT_SECONDS_MIN,
   TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX,
   TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN,
 } from "./settingsLimits";
@@ -52,8 +52,8 @@ export {
   SFTP_PACKET_BYTES_MIN,
   SFTP_PIPELINE_DEPTH_MAX,
   SFTP_PIPELINE_DEPTH_MIN,
-  SFTP_TIMEOUT_SECONDS_MAX,
-  SFTP_TIMEOUT_SECONDS_MIN,
+  SFTP_IDLE_TIMEOUT_SECONDS_MAX,
+  SFTP_IDLE_TIMEOUT_SECONDS_MIN,
 } from "./settingsLimits";
 
 export {
@@ -216,7 +216,13 @@ export interface SftpPerformanceSettings {
   hostTransfers: number;
   pipelineDepth: number;
   packetBytes: number;
-  timeoutSeconds: number;
+  idleTimeoutSeconds: number;
+  /**
+   * 仅用于读取旧版 settings payload；归一化后的设置不会再写回该字段。
+   *
+   * @author kongweiguang
+   */
+  timeoutSeconds?: number;
 }
 
 export interface AppSettings {
@@ -335,11 +341,11 @@ export function normalizeAppSettings(
         SFTP_PIPELINE_DEPTH_MAX,
         defaultSftpPerformanceSettings.pipelineDepth,
       ),
-      timeoutSeconds: clampNumber(
-        sftp.timeoutSeconds,
-        SFTP_TIMEOUT_SECONDS_MIN,
-        SFTP_TIMEOUT_SECONDS_MAX,
-        defaultSftpPerformanceSettings.timeoutSeconds,
+      idleTimeoutSeconds: clampNumber(
+        sftp.idleTimeoutSeconds ?? sftp.timeoutSeconds,
+        SFTP_IDLE_TIMEOUT_SECONDS_MIN,
+        SFTP_IDLE_TIMEOUT_SECONDS_MAX,
+        defaultSftpPerformanceSettings.idleTimeoutSeconds,
       ),
     },
     toolRail,

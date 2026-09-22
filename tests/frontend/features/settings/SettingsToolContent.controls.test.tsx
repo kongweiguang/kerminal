@@ -327,12 +327,12 @@ describe("SettingsToolContent controls", () => {
         sftp: expect.objectContaining({ packetBytes: 256 * 1024 }),
       }),
     );
-    fireEvent.change(screen.getByLabelText("请求超时"), {
+    fireEvent.change(screen.getByLabelText("无进度超时"), {
       target: { value: "45" },
     });
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        sftp: expect.objectContaining({ timeoutSeconds: 45 }),
+        sftp: expect.objectContaining({ idleTimeoutSeconds: 45 }),
       }),
     );
 

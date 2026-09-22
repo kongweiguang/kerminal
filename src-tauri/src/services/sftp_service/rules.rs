@@ -1,4 +1,6 @@
 //! SFTP 传输规则测试入口。
+//!
+//! @author kongweiguang
 
 use std::{
     path::{Path, PathBuf},
@@ -121,7 +123,7 @@ pub fn normalized_sftp_runtime_settings(
         settings.host_transfers,
         settings.pipeline_depth,
         settings.packet_bytes,
-        settings.timeout_seconds,
+        settings.idle_timeout_seconds,
     )
 }
 
@@ -134,7 +136,7 @@ pub fn external_bulk_transfer_runtime_settings(
         settings.host_transfers,
         settings.pipeline_depth,
         settings.packet_bytes,
-        settings.timeout_seconds,
+        settings.idle_timeout_seconds,
     )
 }
 

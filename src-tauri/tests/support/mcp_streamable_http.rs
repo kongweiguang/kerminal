@@ -43,8 +43,6 @@ const EXPECTED_TOOL_IDS: &[&str] = &[
     "sftp.chmod",
     "sftp.create_directory",
     "sftp.delete",
-    "sftp.download",
-    "sftp.download_directory",
     "sftp.list",
     "sftp.move",
     "sftp.preview",
@@ -53,8 +51,6 @@ const EXPECTED_TOOL_IDS: &[&str] = &[
     "sftp.transfer.clear_completed",
     "sftp.transfer.enqueue",
     "sftp.transfer.list",
-    "sftp.upload",
-    "sftp.upload_directory",
     "ssh.command",
     "ssh.command_on_resolved_host",
     "terminal.close",
@@ -159,6 +155,10 @@ pub fn assert_tools_list_surface(tools: &ListToolsResult) {
         "workspace.focus_tab",
         "history.clear",
         "kerminal.host.migrate_legacy_secrets",
+        "sftp.upload",
+        "sftp.upload_directory",
+        "sftp.download",
+        "sftp.download_directory",
     ] {
         assert!(
             tools.tools.iter().all(|tool| tool.name != removed_tool),

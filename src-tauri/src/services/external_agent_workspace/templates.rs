@@ -71,6 +71,7 @@ Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Ag
 - Use `sftp.transfer.enqueue` with only the canonical `source`, `destination`, `kind`, and `conflictPolicy` fields. Each endpoint is either `{"type":"local","path":"..."}` for the computer running Kerminal or `{"type":"remote","hostId":"...","path":"..."}` for a saved SSH/SFTP host.
 - Supported routes are local -> remote, remote -> local, same-host remote copy, and cross-host remote copy. The operation always copies and never deletes the source. Each call queues one file or directory.
 - `kind` is required and is `file` or `directory`. `conflictPolicy` is required and is `overwrite`, `skip`, or `rename`.
+- `idleTimeoutSeconds` is optional for enqueue and must be 30-3600. It defaults from `[sftp].idleTimeoutSeconds` (180 seconds) and limits only consecutive missing byte progress; there is no transfer total-duration limit. Saved-host `sshOptions.terminal.connectTimeoutSeconds` is the separate connection timeout and defaults to 30 seconds. Legacy `timeoutSeconds` is read-compatible only and a normal settings save writes `idleTimeoutSeconds`.
 
 ```json
 {
@@ -81,7 +82,11 @@ Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Ag
 }
 ```
 
-Recommended sequence: confirm remote endpoints with `sftp.list` when needed, call `sftp.transfer.enqueue`, then call `sftp.transfer.list` with the returned `transfer.id` as `transferId`; call `sftp.transfer.cancel` only when the user asks to stop it. Enqueue means accepted into the queue, not completed. Kerminal selects `transportMode` automatically and does not expose bridge or staging choices. The MCP host owns confirmation, approval, permissions, hooks, and audit.
+Recommended sequence: confirm remote endpoints with `sftp.list` when needed, call `sftp.transfer.enqueue`, then call `sftp.transfer.list` with the returned `transfer.id` as `transferId`; call `sftp.transfer.cancel` only when the user asks to stop it. Enqueue means accepted into the queue, not completed. The 60-second MCP client call guard applies only to these short enqueue/query/cancel calls, never to the queued transfer lifetime. Kerminal selects `transportMode` automatically and does not expose bridge or staging choices. The MCP host owns confirmation, approval, permissions, hooks, and audit.
+
+Queue wait time does not consume the idle budget. Connecting, transferring, and committing refresh activity; only consecutive missing progress reaches `failureKind = "idleTimeout"`. That failure keeps the `.kerminal-part` data and reports the adopted threshold, confirmed bytes, and retryability without credentials or internal temporary paths. Re-enqueue the same endpoints, conflict policy, kind, and returned `idleTimeoutSeconds` to resume from the confirmed offset; final files are committed atomically only after the full size matches.
+
+`sftp.upload`, `sftp.upload_directory`, `sftp.download`, and `sftp.download_directory` are deliberately absent from tools/list. A cached call only returns the migration sequence `enqueue -> list -> cancel/retry` and never starts a synchronous transfer.
 
 Do not use SFTP transfer for local -> local copies; use the local filesystem capability instead. Missing hosts, credentials, host-key trust, SFTP subsystem, or path permissions are recoverable transfer errors.
 

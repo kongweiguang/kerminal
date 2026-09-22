@@ -171,7 +171,7 @@ async fn read_dir_with_browser_transport(
         _opened_at,
         last_used_at,
     } = transport;
-    let seconds = settings.timeout_seconds.max(1);
+    let seconds = settings.browser_request_timeout_seconds.max(1);
     let result = timeout(Duration::from_secs(seconds), connection.sftp.read_dir(path)).await;
     let transport = SftpBrowserTransport {
         connection,
@@ -249,7 +249,7 @@ fn browser_transport_key(endpoint: &SftpEndpoint, settings: SftpRuntimeSettings)
         endpoint.route_auth.summary,
         settings.packet_bytes,
         settings.pipeline_depth,
-        settings.timeout_seconds
+        settings.browser_request_timeout_seconds
     )
 }
 

@@ -110,6 +110,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         vec![
             "conflictPolicy".to_owned(),
             "destination".to_owned(),
+            "idleTimeoutSeconds".to_owned(),
             "kind".to_owned(),
             "source".to_owned(),
         ]

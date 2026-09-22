@@ -13,7 +13,7 @@
     ·
     <a href="#源码开发">源码开发</a>
   </p>
-  <p><sub>当前稳定版 v0.3.40 · Tauri 2 · Windows / Linux / macOS</sub></p>
+  <p><sub>当前稳定版 v0.3.41 · Tauri 2 · Windows / Linux / macOS</sub></p>
 </div>
 
 ![Kerminal 中的 SSH 终端与 Codex Agent 并行工作](docs/assets/kerminal-hero.png)
@@ -39,7 +39,7 @@ Kerminal 是一个本地优先的桌面终端和远程运维工作台。它围�
 
 ## 下载与安装
 
-前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.40 将提供以下产物：
+前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases/latest) 获取当前稳定版。v0.3.41 将提供以下产物：
 
 | 平台 | 发布产物 |
 | --- | --- |
@@ -137,7 +137,7 @@ SFTP 既可以停靠在右侧作为文件浏览器，也可以打开为中央双
 ![Kerminal SFTP 双面板传输与传输队列](docs/assets/kerminal-sftp.png)
 
 - 上传、下载、目录传输、远端复制和跨主机传输。
-- 队列、实时进度、取消、失败重试、断点续传、完成历史和冲突策略。
+- 队列、实时进度、取消、无进度失败后继续传输、断点续传、完成历史和冲突策略；持续有进度的传输不受总时长限制。
 - 列表、树形和工作区模式，支持隐藏文件、路径书签和终端目录跟随。
 - 远程文件预览与文本编辑；保存时校验 revision，避免静默覆盖远端并发修改。
 

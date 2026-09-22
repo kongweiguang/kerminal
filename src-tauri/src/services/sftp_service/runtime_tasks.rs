@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use std::{
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
@@ -76,13 +78,18 @@ impl SftpService {
             }
 
             progress.mark_running();
-            let result = backend
-                .transfer(endpoint, request, progress.clone(), settings)
-                .await;
+            progress.mark_phase("connecting", None);
+            let result = run_with_idle_watchdog(
+                &progress,
+                settings.idle_timeout_seconds,
+                backend.transfer(endpoint, request, progress.clone(), settings),
+            )
+            .await;
             match result {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
                 Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
             drop(transfer_permit);
@@ -141,11 +148,16 @@ impl SftpService {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
                 Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
         });
     }
 
+    /// 启动归档下载，并只在实际远程传输段施加无进度保护。
+    ///
+    /// ZIP 打包是本地 CPU/磁盘工作，不应被网络无进度阈值误杀；下载段复用普通传输的单个
+    /// watchdog，既保留 partial 续传，也避免归档任务成为绕过超时策略的长连接入口。
     pub(super) fn spawn_archive_download_task(&self, task: ArchiveDownloadTaskInput) {
         let ArchiveDownloadTaskInput {
             transfer_id,
@@ -184,8 +196,10 @@ impl SftpService {
                 }
                 progress.mark_running();
                 progress.mark_phase("downloading", Some(request.source_remote_path.clone()));
-                backend
-                    .transfer(
+                run_with_idle_watchdog(
+                    &progress,
+                    settings.idle_timeout_seconds,
+                    backend.transfer(
                         endpoint,
                         SftpManagedTransferRequest {
                             direction: SftpTransferDirection::Download,
@@ -195,11 +209,13 @@ impl SftpService {
                             remote_path: request.source_remote_path.clone(),
                             conflict_policy: SftpTransferConflictPolicy::Overwrite,
                             view_scope: None,
+                            idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                         },
                         progress.clone(),
                         settings,
-                    )
-                    .await?;
+                    ),
+                )
+                .await?;
                 drop(transfer_permit);
 
                 progress.ensure_not_cancelled()?;
@@ -231,11 +247,16 @@ impl SftpService {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
                 Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
         });
     }
 
+    /// 启动归档上传，并把无进度预算限定在完成归档后的远程写入段。
+    ///
+    /// 本地压缩阶段会刷新阶段活动时间但不创建网络 timer；真正上传时使用单个 watchdog，避免
+    /// 大归档的持续字节进度被总时长截断，同时让失联后的 partial 保持可恢复。
     pub(super) fn spawn_archive_upload_task(&self, task: ArchiveUploadTaskInput) {
         let ArchiveUploadTaskInput {
             transfer_id,
@@ -292,8 +313,10 @@ impl SftpService {
                 let transfer_permit = transfer_limiter
                     .acquire(request.host_id.clone(), settings, progress.clone())
                     .await?;
-                backend
-                    .transfer(
+                run_with_idle_watchdog(
+                    &progress,
+                    settings.idle_timeout_seconds,
+                    backend.transfer(
                         endpoint,
                         SftpManagedTransferRequest {
                             direction: SftpTransferDirection::Upload,
@@ -303,11 +326,13 @@ impl SftpService {
                             remote_path: request.target_remote_path.clone(),
                             conflict_policy: request.conflict_policy,
                             view_scope: None,
+                            idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                         },
                         progress.clone(),
                         settings,
-                    )
-                    .await?;
+                    ),
+                )
+                .await?;
                 drop(transfer_permit);
                 Ok(())
             }
@@ -318,11 +343,16 @@ impl SftpService {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
                 Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
         });
     }
 
+    /// 启动剪贴板下载，确保文件获取与普通队列共享相同的断线恢复边界。
+    ///
+    /// 写入系统剪贴板发生在下载成功以后，不属于网络活动；watchdog 只包住远程读取，因而不会
+    /// 因 UI 或系统剪贴板短暂阻塞而误报无进度。
     pub(super) fn spawn_clipboard_download_task(&self, task: ClipboardDownloadTaskInput) {
         let ClipboardDownloadTaskInput {
             transfer_id,
@@ -363,8 +393,10 @@ impl SftpService {
                     return Err(AppError::Sftp("传输已取消".to_owned()));
                 }
                 progress.mark_running();
-                backend
-                    .transfer(
+                run_with_idle_watchdog(
+                    &progress,
+                    settings.idle_timeout_seconds,
+                    backend.transfer(
                         endpoint,
                         SftpManagedTransferRequest {
                             direction: SftpTransferDirection::Download,
@@ -374,11 +406,13 @@ impl SftpService {
                             remote_path: request.source_remote_path.clone(),
                             conflict_policy: SftpTransferConflictPolicy::Overwrite,
                             view_scope: None,
+                            idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                         },
                         progress.clone(),
                         settings,
-                    )
-                    .await?;
+                    ),
+                )
+                .await?;
                 drop(transfer_permit);
 
                 progress.ensure_not_cancelled()?;
@@ -400,6 +434,7 @@ impl SftpService {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
                 Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
         });
@@ -442,15 +477,19 @@ async fn run_streamed_remote_copy(
         return Err(AppError::Sftp("传输已取消".to_owned()));
     }
     progress.mark_running();
-    backend
-        .remote_copy(
+    progress.mark_phase("connecting", None);
+    run_with_idle_watchdog(
+        &progress,
+        settings.idle_timeout_seconds,
+        backend.remote_copy(
             source_endpoint,
             target_endpoint,
             request,
-            progress,
+            progress.clone(),
             settings,
-        )
-        .await?;
+        ),
+    )
+    .await?;
     drop(transfer_permits);
     Ok(())
 }
@@ -483,10 +522,12 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
             return Err(AppError::Sftp("传输已取消".to_owned()));
         }
         progress.mark_running();
-        let source_progress =
-            TransferProgress::detached_with_cancel(progress.cancel_requested.clone());
-        backend
-            .transfer(
+        progress.mark_phase("connecting", None);
+        let source_progress = progress.detached_child();
+        run_with_idle_watchdog(
+            &progress,
+            settings.idle_timeout_seconds,
+            backend.transfer(
                 source_endpoint,
                 SftpManagedTransferRequest {
                     direction: SftpTransferDirection::Download,
@@ -496,19 +537,24 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                     remote_path: request.source_remote_path.clone(),
                     conflict_policy: SftpTransferConflictPolicy::Overwrite,
                     view_scope: None,
+                    idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                 },
                 source_progress,
                 settings,
-            )
-            .await?;
+            ),
+        )
+        .await?;
         drop(source_permit);
 
         progress.ensure_not_cancelled()?;
         let target_permit = transfer_limiter
             .acquire(request.target_host_id.clone(), settings, progress.clone())
             .await?;
-        backend
-            .transfer(
+        progress.mark_phase("connecting", None);
+        run_with_idle_watchdog(
+            &progress,
+            settings.idle_timeout_seconds,
+            backend.transfer(
                 target_endpoint,
                 SftpManagedTransferRequest {
                     direction: SftpTransferDirection::Upload,
@@ -518,11 +564,13 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                     remote_path: request.target_remote_path.clone(),
                     conflict_policy: request.conflict_policy,
                     view_scope: None,
+                    idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                 },
-                progress,
+                progress.clone(),
                 settings,
-            )
-            .await?;
+            ),
+        )
+        .await?;
         drop(target_permit);
         Ok(())
     }

@@ -31,12 +31,12 @@ pub const DEFAULT_SFTP_PACKET_BYTES: u32 = 256 * 1024;
 pub const MIN_SFTP_PACKET_BYTES: u32 = 32 * 1024;
 /// SFTP 单包最大字节数最大值。
 pub const MAX_SFTP_PACKET_BYTES: u32 = 256 * 1024;
-/// SFTP 请求超时默认秒数。
-pub const DEFAULT_SFTP_TIMEOUT_SECONDS: u16 = 30;
-/// SFTP 请求超时最小秒数。
-pub const MIN_SFTP_TIMEOUT_SECONDS: u16 = 5;
-/// SFTP 请求超时最大秒数。
-pub const MAX_SFTP_TIMEOUT_SECONDS: u16 = 300;
+/// SFTP 后台传输连续无字节进度的默认保护秒数。
+pub const DEFAULT_SFTP_IDLE_TIMEOUT_SECONDS: u16 = 180;
+/// SFTP 后台传输连续无字节进度的最小保护秒数。
+pub const MIN_SFTP_IDLE_TIMEOUT_SECONDS: u16 = 30;
+/// SFTP 后台传输连续无字节进度的最大保护秒数。
+pub const MAX_SFTP_IDLE_TIMEOUT_SECONDS: u16 = 3600;
 
 /// SFTP 传输和连接性能设置。
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -54,9 +54,16 @@ pub struct SftpPerformanceSettings {
     /// SFTP 协议单包最大字节数。
     #[serde(default = "default_sftp_packet_bytes")]
     pub packet_bytes: u32,
-    /// SSH/SFTP 连接和请求超时秒数。
-    #[serde(default = "default_sftp_timeout_seconds")]
-    pub timeout_seconds: u16,
+    /// 后台传输连续无字节进度的保护秒数。
+    ///
+    /// `timeoutSeconds` 是旧版单一超时字段的反序列化别名。连接仍由各主机
+    /// `sshOptions.terminal.connectTimeoutSeconds` 控制；保存时只写新字段，避免把
+    /// 大文件传输误解为总时长限制。
+    #[serde(
+        default = "default_sftp_idle_timeout_seconds",
+        alias = "timeoutSeconds"
+    )]
+    pub idle_timeout_seconds: u16,
 }
 
 impl Default for SftpPerformanceSettings {
@@ -66,7 +73,7 @@ impl Default for SftpPerformanceSettings {
             host_transfers: DEFAULT_SFTP_HOST_TRANSFERS,
             packet_bytes: DEFAULT_SFTP_PACKET_BYTES,
             pipeline_depth: DEFAULT_SFTP_PIPELINE_DEPTH,
-            timeout_seconds: DEFAULT_SFTP_TIMEOUT_SECONDS,
+            idle_timeout_seconds: DEFAULT_SFTP_IDLE_TIMEOUT_SECONDS,
         }
     }
 }
@@ -87,9 +94,9 @@ impl SftpPerformanceSettings {
         self.packet_bytes = self
             .packet_bytes
             .clamp(MIN_SFTP_PACKET_BYTES, MAX_SFTP_PACKET_BYTES);
-        self.timeout_seconds = self
-            .timeout_seconds
-            .clamp(MIN_SFTP_TIMEOUT_SECONDS, MAX_SFTP_TIMEOUT_SECONDS);
+        self.idle_timeout_seconds = self
+            .idle_timeout_seconds
+            .clamp(MIN_SFTP_IDLE_TIMEOUT_SECONDS, MAX_SFTP_IDLE_TIMEOUT_SECONDS);
         self
     }
 }
@@ -110,6 +117,31 @@ fn default_sftp_packet_bytes() -> u32 {
     DEFAULT_SFTP_PACKET_BYTES
 }
 
-fn default_sftp_timeout_seconds() -> u16 {
-    DEFAULT_SFTP_TIMEOUT_SECONDS
+fn default_sftp_idle_timeout_seconds() -> u16 {
+    DEFAULT_SFTP_IDLE_TIMEOUT_SECONDS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SftpPerformanceSettings;
+
+    /// 验证旧设置只在读取时映射为无进度保护，下一次序列化不会继续写入误导性的总时长字段。
+    #[test]
+    fn legacy_timeout_seconds_reads_as_idle_timeout_and_serializes_new_field() {
+        let settings: SftpPerformanceSettings = toml::from_str(
+            r#"
+globalTransfers = 4
+hostTransfers = 2
+pipelineDepth = 8
+packetBytes = 262144
+timeoutSeconds = 45
+"#,
+        )
+        .expect("deserialize legacy sftp settings");
+
+        assert_eq!(settings.idle_timeout_seconds, 45);
+        let serialized = toml::to_string(&settings).expect("serialize migrated sftp settings");
+        assert!(serialized.contains("idleTimeoutSeconds = 45"));
+        assert!(!serialized.contains("timeoutSeconds"));
+    }
 }

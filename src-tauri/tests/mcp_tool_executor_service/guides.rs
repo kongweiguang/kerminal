@@ -312,7 +312,7 @@ async fn mcp_operation_guide_sftp_uses_canonical_transfer_sequence() {
     assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
     assert_eq!(output.data["intent"], "sftp");
     let workflow = output.data["workflow"].as_array().expect("workflow");
-    assert_eq!(workflow.len(), 4);
+    assert_eq!(workflow.len(), 5);
     assert_eq!(workflow[0]["phase"], "confirm-endpoints");
     assert_eq!(workflow[0]["toolId"], "sftp.list");
     assert!(workflow[0]["action"]
@@ -335,8 +335,10 @@ async fn mcp_operation_guide_sftp_uses_canonical_transfer_sequence() {
     assert_eq!(workflow[2]["phase"], "track");
     assert_eq!(workflow[2]["toolId"], "sftp.transfer.list");
     assert_eq!(workflow[2]["requires"], json!(["transferId"]));
-    assert_eq!(workflow[3]["phase"], "cancel");
-    assert_eq!(workflow[3]["toolId"], "sftp.transfer.cancel");
+    assert_eq!(workflow[3]["phase"], "resume");
+    assert_eq!(workflow[3]["toolId"], "sftp.transfer.enqueue");
+    assert_eq!(workflow[4]["phase"], "cancel");
+    assert_eq!(workflow[4]["toolId"], "sftp.transfer.cancel");
 }
 
 #[tokio::test]

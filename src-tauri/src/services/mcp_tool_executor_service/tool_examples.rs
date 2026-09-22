@@ -102,16 +102,6 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
             "path": "/srv/app/obsolete.txt",
             "directory": false
         })),
-        ToolId::SftpUpload | ToolId::SftpUploadDirectory => Some(json!({
-            "hostId": "<host-id>",
-            "localPath": "C:/path/to/local/file-or-directory",
-            "remotePath": "/srv/app/file-or-directory"
-        })),
-        ToolId::SftpDownload | ToolId::SftpDownloadDirectory => Some(json!({
-            "hostId": "<host-id>",
-            "remotePath": "/srv/app/file-or-directory",
-            "localPath": "C:/path/to/local/file-or-directory"
-        })),
         ToolId::SftpTransferEnqueue => Some(json!({
             "source": {
                 "type": "remote",

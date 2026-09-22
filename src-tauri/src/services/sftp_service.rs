@@ -77,8 +77,8 @@ use self::transfer_paths::{
 };
 
 use self::transfer::{
-    CancellationReader, ProgressWriter, TransferEventEmitter, TransferLimiter, TransferProgress,
-    TransferTask,
+    run_with_idle_watchdog, CancellationReader, ProgressWriter, TransferEventEmitter,
+    TransferLimiter, TransferProgress, TransferTask,
 };
 
 const DEFAULT_PREVIEW_BYTES: usize = 16 * 1024;
@@ -330,6 +330,7 @@ impl SftpService {
                 remote_path: request.remote_path,
                 conflict_policy: request.conflict_policy,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .await
@@ -351,6 +352,7 @@ impl SftpService {
                 remote_path: request.remote_path,
                 conflict_policy: request.conflict_policy,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .await
@@ -372,6 +374,7 @@ impl SftpService {
                 remote_path: request.remote_path,
                 conflict_policy: request.conflict_policy,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .await
@@ -393,6 +396,7 @@ impl SftpService {
                 remote_path: request.remote_path,
                 conflict_policy: request.conflict_policy,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .await

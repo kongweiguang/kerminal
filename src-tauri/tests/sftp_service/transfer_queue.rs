@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use super::support::{
     create_password_remote_host, loopback::start_loopback_sftp_server, test_state,
 };
@@ -46,6 +48,7 @@ async fn enqueue_transfer_tracks_public_progress_and_success() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: Some("scope-a".to_owned()),
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue transfer");
@@ -93,6 +96,7 @@ async fn failed_upload_reports_only_confirmed_bytes_and_cleans_empty_partial() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: Some("failed-upload".to_owned()),
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue rejected upload");
@@ -135,6 +139,7 @@ async fn upload_retries_sequentially_when_first_pipelined_write_leaves_empty_par
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: Some("sequential-retry".to_owned()),
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue retry upload");
@@ -197,6 +202,7 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue remote copy");
@@ -273,6 +279,7 @@ async fn staged_remote_copy_removes_temp_dir_on_success() {
                 kind: SftpTransferKind::Directory,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue staged remote copy");
@@ -504,5 +511,7 @@ fn transfer_summary(
         transport_mode: SftpTransferTransportMode::SingleHostSftp,
         phase: Some("queued".to_owned()),
         current_item: None,
+        idle_timeout_seconds: 180,
+        failure_kind: None,
     }
 }

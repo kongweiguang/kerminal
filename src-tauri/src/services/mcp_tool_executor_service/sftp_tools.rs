@@ -6,7 +6,43 @@ use super::{
     sftp_transfer_route::{sftp_transfer_route_from_arguments, SftpTransferRoute},
     *,
 };
-use crate::models::sftp::SftpTransferEndpoint;
+use crate::models::sftp::{SftpTransferEndpoint, SftpTransferFailureKind};
+
+const RETIRED_SYNC_SFTP_TRANSFER_TOOLS: &[&str] = &[
+    "sftp.upload",
+    "sftp.upload_directory",
+    "sftp.download",
+    "sftp.download_directory",
+];
+
+/// 判断调用是否命中已从公开目录下线的同步传输工具。
+///
+/// 旧 Agent 可能在工具列表缓存尚未刷新时继续调用这些 id；保留这一极窄的识别层能够给出
+/// 稳定迁移提示，而不会重新开放会等待文件完成的 MCP 长任务入口。
+pub(super) fn is_retired_sync_sftp_transfer_tool(tool_id: &str) -> bool {
+    RETIRED_SYNC_SFTP_TRANSFER_TOOLS.contains(&tool_id)
+}
+
+/// 返回同步传输工具的固定迁移结果，不执行任何网络或文件副作用。
+///
+/// 调用方必须显式改为 enqueue -> list -> cancel/retry 闭环；失败状态避免 MCP host 把此
+/// 响应误判为已经完成文件复制。
+pub(super) fn retired_sync_sftp_transfer_result() -> ToolExecutionResult {
+    let message = "同步 SFTP 传输工具已下线：请使用 sftp.transfer.enqueue 获取任务 id，再使用 sftp.transfer.list 查询；需要停止或恢复时使用 sftp.transfer.cancel 或继续传输。";
+    ToolExecutionResult {
+        status: McpToolExecutionStatus::Failed,
+        result_summary: Some(message.to_owned()),
+        error: Some(message.to_owned()),
+        structured_result: Some(json!({
+            "migration": "sftp.transfer.enqueue -> sftp.transfer.list -> sftp.transfer.cancel/retry",
+            "retryable": false,
+        })),
+        next_hints: vec![
+            "sftp.transfer.enqueue 立即返回任务 id，不等待连接或文件传输完成。".to_owned(),
+        ],
+        ..ToolExecutionResult::default()
+    }
+}
 
 pub(super) async fn execute_sftp_rename(
     sftp: &SftpService,
@@ -217,129 +253,6 @@ pub(super) fn sftp_chmod_request_from_arguments(
         path: required_string_arg(arguments, "path")?,
         mode: required_string_arg(arguments, "mode")?,
     })
-}
-
-pub(super) async fn execute_sftp_upload(
-    sftp: &SftpService,
-    paths: &KerminalPaths,
-    arguments: &serde_json::Map<String, Value>,
-) -> ToolExecutionResult {
-    let request = match sftp_transfer_request_from_arguments(arguments) {
-        Ok(request) => request,
-        Err(error) => return failure(error.to_string()),
-    };
-    let summary = summarize_sftp_upload_for_agent(&request);
-
-    match sftp.upload(paths, request).await {
-        Ok(true) => ToolExecutionResult {
-            status: McpToolExecutionStatus::Succeeded,
-            result_summary: Some(summary),
-            error: None,
-            ..ToolExecutionResult::default()
-        },
-        Ok(false) => failure("SFTP 上传未完成。"),
-        Err(error) => failure(error.to_string()),
-    }
-}
-
-pub(super) fn summarize_sftp_upload_for_agent(request: &SftpTransferRequest) -> String {
-    format!(
-        "本地文件已上传：{} -> {}:{}。",
-        request.local_path, request.host_id, request.remote_path
-    )
-}
-
-pub(super) async fn execute_sftp_upload_directory(
-    sftp: &SftpService,
-    paths: &KerminalPaths,
-    arguments: &serde_json::Map<String, Value>,
-) -> ToolExecutionResult {
-    let request = match sftp_transfer_request_from_arguments(arguments) {
-        Ok(request) => request,
-        Err(error) => return failure(error.to_string()),
-    };
-    let summary = format!(
-        "本地目录已递归上传：{} -> {}:{}。",
-        request.local_path, request.host_id, request.remote_path
-    );
-
-    match sftp.upload_directory(paths, request).await {
-        Ok(true) => ToolExecutionResult {
-            status: McpToolExecutionStatus::Succeeded,
-            result_summary: Some(summary),
-            error: None,
-            ..ToolExecutionResult::default()
-        },
-        Ok(false) => failure("SFTP 递归上传未完成。"),
-        Err(error) => failure(error.to_string()),
-    }
-}
-
-pub(super) async fn execute_sftp_download(
-    sftp: &SftpService,
-    paths: &KerminalPaths,
-    arguments: &serde_json::Map<String, Value>,
-) -> ToolExecutionResult {
-    let request = match sftp_transfer_request_from_arguments(arguments) {
-        Ok(request) => request,
-        Err(error) => return failure(error.to_string()),
-    };
-    let summary = summarize_sftp_download_for_agent(&request);
-
-    match sftp.download(paths, request).await {
-        Ok(true) => ToolExecutionResult {
-            status: McpToolExecutionStatus::Succeeded,
-            result_summary: Some(summary),
-            error: None,
-            ..ToolExecutionResult::default()
-        },
-        Ok(false) => failure("SFTP 下载未完成。"),
-        Err(error) => failure(error.to_string()),
-    }
-}
-
-pub(super) async fn execute_sftp_download_directory(
-    sftp: &SftpService,
-    paths: &KerminalPaths,
-    arguments: &serde_json::Map<String, Value>,
-) -> ToolExecutionResult {
-    let request = match sftp_transfer_request_from_arguments(arguments) {
-        Ok(request) => request,
-        Err(error) => return failure(error.to_string()),
-    };
-    let summary = format!(
-        "远程目录已递归下载：{}:{} -> {}。",
-        request.host_id, request.remote_path, request.local_path
-    );
-
-    match sftp.download_directory(paths, request).await {
-        Ok(true) => ToolExecutionResult {
-            status: McpToolExecutionStatus::Succeeded,
-            result_summary: Some(summary),
-            error: None,
-            ..ToolExecutionResult::default()
-        },
-        Ok(false) => failure("SFTP 递归下载未完成。"),
-        Err(error) => failure(error.to_string()),
-    }
-}
-
-pub(super) fn sftp_transfer_request_from_arguments(
-    arguments: &serde_json::Map<String, Value>,
-) -> AppResult<SftpTransferRequest> {
-    Ok(SftpTransferRequest {
-        host_id: required_string_arg(arguments, "hostId")?,
-        remote_path: required_string_arg(arguments, "remotePath")?,
-        local_path: required_string_arg(arguments, "localPath")?,
-        conflict_policy: SftpTransferConflictPolicy::Overwrite,
-    })
-}
-
-pub(super) fn summarize_sftp_download_for_agent(request: &SftpTransferRequest) -> String {
-    format!(
-        "远程文件已下载：{}:{} -> {}。",
-        request.host_id, request.remote_path, request.local_path
-    )
 }
 
 pub(super) async fn execute_sftp_delete(
@@ -568,6 +481,14 @@ fn sftp_transfer_projection(summary: &SftpTransferSummary) -> Value {
             "totalBytes": summary.total_bytes,
             "speedBytesPerSecond": summary.speed_bytes_per_second,
         },
+        "idleTimeoutSeconds": summary.idle_timeout_seconds,
+        "failureKind": summary.failure_kind,
+        "failure": summary.failure_kind.map(|failure_kind| json!({
+            "kind": failure_kind,
+            "idleTimeoutSeconds": summary.idle_timeout_seconds,
+            "bytesTransferred": summary.bytes_transferred,
+            "retryable": matches!(failure_kind, SftpTransferFailureKind::IdleTimeout),
+        })),
         "transportMode": serde_json::to_value(summary.transport_mode).unwrap_or(Value::Null),
         "phase": summary.phase,
         "error": sanitize_sftp_transfer_error(summary.error.as_ref()),

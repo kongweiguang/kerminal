@@ -93,6 +93,10 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
         .contains("\"destination\": { \"type\": \"remote\", \"hostId\": \"server-b\""));
     assert!(config_reference.contains("sftp.transfer.list` with the returned `transfer.id`"));
     assert!(config_reference.contains("transportMode` automatically"));
+    assert!(config_reference.contains("[sftp].idleTimeoutSeconds"));
+    assert!(config_reference.contains("60-second MCP client call guard"));
+    assert!(config_reference.contains("failureKind = \"idleTimeout\""));
+    assert!(config_reference.contains("sftp.upload`, `sftp.upload_directory`"));
     assert!(config_reference.contains("Do not use SFTP transfer for local -> local copies"));
     assert!(config_reference.contains(r#"cwd = "~/.kerminal""#));
     assert!(config_reference.contains(r#"credential_ref = "~/.ssh/id_ed25519""#));

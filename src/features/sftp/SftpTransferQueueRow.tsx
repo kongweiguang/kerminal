@@ -19,6 +19,8 @@ import type { SftpTransferSummary } from "../../lib/sftpApi";
 import {
   canCancelTransfer,
   formatTransferBytes,
+  transferFailureMessage,
+  transferInlineSpeedLabel,
   transferMethodLabel,
   transferPathSummary,
   transferPercentLabel,
@@ -36,7 +38,10 @@ interface SftpTransferQueueRowProps {
 }
 
 /**
- * 默认只展示任务、方向、状态和进度，路径、字节和错误按需披露。
+ * 保持普通任务为单行摘要，仅在无进度失败时直接露出原因和唯一恢复动作。
+ *
+ * 长路径、字节明细仍按需展开，避免正常队列因错误说明而持续增高；但网络失联不能藏在
+ * 详情里，否则用户无法判断刷新图标是否会安全地从断点继续。
  */
 export function SftpTransferQueueRow({
   onCancel,
@@ -59,6 +64,8 @@ export function SftpTransferQueueRow({
   const DetailIcon = detailExpanded ? ChevronUp : ChevronDown;
   const directionLabel = transfer.direction === "upload" ? "上传" : "下载";
   const title = transferTitle(transfer);
+  const isIdleTimeout = transfer.failureKind === "idleTimeout";
+  const failureMessage = transferFailureMessage(transfer);
 
   return (
     <div
@@ -98,6 +105,12 @@ export function SftpTransferQueueRow({
         <span className="w-12 shrink-0 text-right font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
           {transferPercentLabel(transfer)}
         </span>
+        <span
+          className="w-14 shrink-0 truncate text-right font-mono text-[10px] text-zinc-500 dark:text-zinc-400"
+          title={transferInlineSpeedLabel(transfer)}
+        >
+          {transferInlineSpeedLabel(transfer)}
+        </span>
         <Button
           aria-controls={detailId}
           aria-expanded={detailExpanded}
@@ -111,7 +124,7 @@ export function SftpTransferQueueRow({
         >
           <DetailIcon aria-hidden="true" className="h-3 w-3" />
         </Button>
-        {retryDecision?.canRetry && onRetry ? (
+        {retryDecision?.canRetry && onRetry && !isIdleTimeout ? (
           <Button
             aria-label={`重试传输 ${title}`}
             className="kerminal-muted-surface h-6 w-6 shrink-0 rounded-md border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] dark:text-zinc-300"
@@ -162,6 +175,26 @@ export function SftpTransferQueueRow({
           />
         </div>
       </div>
+      {isIdleTimeout && failureMessage ? (
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-rose-500/20 bg-rose-500/8 px-2 py-1 text-[11px] text-rose-700 dark:border-rose-300/20 dark:bg-rose-400/10 dark:text-rose-200">
+          <span className="min-w-0 flex-1 break-words" role="alert">
+            {failureMessage}
+          </span>
+          {retryDecision?.canRetry && onRetry ? (
+            <Button
+              aria-label={`继续传输 ${title}`}
+              className="h-6 shrink-0 gap-1 rounded-[var(--radius-control)] border border-current/25 bg-transparent px-2 text-[11px] text-current hover:bg-rose-500/10 dark:hover:bg-rose-300/10"
+              onClick={() => onRetry(transfer)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <RefreshCw aria-hidden="true" className="h-3 w-3" />
+              继续传输
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {detailExpanded ? (
         <div
           className="mt-2 grid gap-1 border-t border-[var(--border-subtle)] pt-2 text-[11px] text-zinc-500 dark:text-zinc-400"
@@ -174,9 +207,9 @@ export function SftpTransferQueueRow({
           <div className="break-all font-mono" title={transferPathSummary(transfer)}>
             {transferPathSummary(transfer)}
           </div>
-          {transfer.error ? (
+          {failureMessage && !isIdleTimeout ? (
             <div className="break-words text-rose-600 dark:text-rose-300">
-              {transfer.error}
+              {failureMessage}
             </div>
           ) : null}
           {showRetryUnavailable ? (

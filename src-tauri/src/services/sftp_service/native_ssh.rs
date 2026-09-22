@@ -70,6 +70,8 @@ struct NativeSftpHopExecution {
     label: String,
     port: u16,
     username: String,
+    /// 连接阶段沿用目标主机 SSH 配置，不能从传输 idle 设置借用。
+    connect_timeout_seconds: u64,
 }
 
 impl client::Handler for NativeClientHandler {
@@ -109,7 +111,9 @@ pub(super) async fn connect_native_ssh_chain(
     settings: SftpRuntimeSettings,
 ) -> AppResult<NativeSftpSshConnection> {
     let target = build_native_target_execution(endpoint)?;
-    let jumps = build_native_jump_executions(endpoint)?;
+    let connect_timeout_seconds =
+        u64::from(endpoint.host.ssh_options.terminal.connect_timeout_seconds).max(1);
+    let jumps = build_native_jump_executions(endpoint, connect_timeout_seconds)?;
     if jumps.is_empty() {
         let mut target_ssh = connect_native_ssh_hop(&target, settings).await?;
         authenticate_native_sftp(&mut target_ssh, &target).await?;
@@ -163,7 +167,7 @@ async fn connect_native_ssh(
     host: &RemoteHost,
     known_hosts_path: PathBuf,
     host_key_policy: HostKeyPolicy,
-    settings: SftpRuntimeSettings,
+    _settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
     let config = client::Config {
         inactivity_timeout: None,
@@ -175,7 +179,8 @@ async fn connect_native_ssh(
         known_hosts_path,
         host_key_policy,
     };
-    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    let timeout =
+        Duration::from_secs(u64::from(host.ssh_options.terminal.connect_timeout_seconds).max(1));
     match tokio::time::timeout(
         timeout,
         client::connect(Arc::new(config), (host.host.as_str(), host.port), handler),
@@ -195,7 +200,7 @@ async fn connect_native_ssh(
 
 async fn connect_native_ssh_hop(
     hop: &NativeSftpHopExecution,
-    settings: SftpRuntimeSettings,
+    _settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
     let config = client::Config {
         inactivity_timeout: None,
@@ -207,7 +212,7 @@ async fn connect_native_ssh_hop(
         known_hosts_path: hop.known_hosts_path.clone(),
         host_key_policy: hop.host_key_policy,
     };
-    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    let timeout = Duration::from_secs(hop.connect_timeout_seconds.max(1));
     match tokio::time::timeout(
         timeout,
         client::connect(Arc::new(config), (hop.host.as_str(), hop.port), handler),
@@ -226,9 +231,9 @@ async fn connect_native_ssh_hop(
 async fn connect_native_ssh_through_direct_tcpip(
     upstream: &client::Handle<NativeClientHandler>,
     hop: &NativeSftpHopExecution,
-    settings: SftpRuntimeSettings,
+    _settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
-    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    let timeout = Duration::from_secs(hop.connect_timeout_seconds.max(1));
     let channel = match tokio::time::timeout(
         timeout,
         upstream.channel_open_direct_tcpip(hop.host.clone(), u32::from(hop.port), "127.0.0.1", 0),
@@ -283,10 +288,21 @@ fn build_native_target_execution(endpoint: &SftpEndpoint) -> AppResult<NativeSft
         label: "目标主机".to_owned(),
         port: required_native_port(endpoint.host.port, "目标主机 port")?,
         username: required_native_text(&endpoint.host.username, "目标主机 username")?,
+        connect_timeout_seconds: u64::from(
+            endpoint.host.ssh_options.terminal.connect_timeout_seconds,
+        )
+        .max(1),
     })
 }
 
-fn build_native_jump_executions(endpoint: &SftpEndpoint) -> AppResult<Vec<NativeSftpHopExecution>> {
+/// 构造跳板执行描述并继承目标连接预算。
+///
+/// 跳板配置没有独立 terminal timeout 字段，因此整条路由使用用户为目标主机选择的 SSH
+/// 连接等待值；这与传输无进度保护刻意分离，避免大文件设置影响建连。
+fn build_native_jump_executions(
+    endpoint: &SftpEndpoint,
+    connect_timeout_seconds: u64,
+) -> AppResult<Vec<NativeSftpHopExecution>> {
     endpoint
         .host
         .ssh_options
@@ -294,7 +310,12 @@ fn build_native_jump_executions(endpoint: &SftpEndpoint) -> AppResult<Vec<Native
         .iter()
         .enumerate()
         .map(|(index, jump)| {
-            build_native_jump_execution(index, jump, endpoint.known_hosts_path.clone())
+            build_native_jump_execution(
+                index,
+                jump,
+                endpoint.known_hosts_path.clone(),
+                connect_timeout_seconds,
+            )
         })
         .collect()
 }
@@ -303,6 +324,7 @@ fn build_native_jump_execution(
     index: usize,
     jump: &SshJumpHostOptions,
     known_hosts_path: PathBuf,
+    connect_timeout_seconds: u64,
 ) -> AppResult<NativeSftpHopExecution> {
     let label = format!("跳板主机 jump-{index}");
     Ok(NativeSftpHopExecution {
@@ -313,6 +335,7 @@ fn build_native_jump_execution(
         label: label.clone(),
         port: required_native_port(jump.port, &format!("{label} port"))?,
         username: required_native_text(&jump.username, &format!("{label} username"))?,
+        connect_timeout_seconds: connect_timeout_seconds.max(1),
     })
 }
 

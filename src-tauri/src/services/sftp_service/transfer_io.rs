@@ -166,6 +166,7 @@ pub(super) async fn upload_file(
         .shutdown()
         .await
         .map_err(|error| AppError::Sftp(format!("远端文件关闭失败: {}", io_sftp_error(error))))?;
+    progress.mark_phase("committing", Some(remote_path.to_owned()));
     commit_remote_reliable_write_target(
         sftp,
         &remote_target.final_path,
@@ -334,6 +335,10 @@ pub(super) async fn download_file(
     let partial_path = local_target.partial_path.clone();
     drop(local_target.file);
     remote_file.shutdown().await.map_err(io_sftp_error)?;
+    progress.mark_phase(
+        "committing",
+        Some(local_path.to_string_lossy().into_owned()),
+    );
     commit_local_reliable_write_target(&final_path, &partial_path, remote_size).await
 }
 
@@ -569,6 +574,7 @@ pub(super) async fn copy_remote_file_between_sessions(
     }
     target.file.shutdown().await.map_err(io_sftp_error)?;
     source_file.shutdown().await.map_err(io_sftp_error)?;
+    progress.mark_phase("committing", Some(target_remote_path.to_owned()));
     commit_remote_reliable_write_target(
         target_sftp,
         &target.final_path,

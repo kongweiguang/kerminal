@@ -293,7 +293,7 @@ fn normalized_sftp_runtime_settings_preserve_user_performance_profile() {
         host_transfers: 2,
         packet_bytes: 256 * 1024,
         pipeline_depth: 64,
-        timeout_seconds: 30,
+        idle_timeout_seconds: 30,
     };
 
     assert_eq!(
@@ -309,12 +309,12 @@ fn external_bulk_transfer_runtime_settings_use_bastion_safe_profile() {
         host_transfers: 2,
         packet_bytes: 256 * 1024,
         pipeline_depth: 64,
-        timeout_seconds: 30,
+        idle_timeout_seconds: 30,
     };
 
     assert_eq!(
         rules::external_bulk_transfer_runtime_settings(settings),
-        (1, 8, 64 * 1024, 180)
+        (1, 8, 64 * 1024, 30)
     );
 }
 

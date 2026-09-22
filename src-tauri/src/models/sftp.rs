@@ -346,6 +346,19 @@ pub enum SftpTransferStatus {
     Canceled,
 }
 
+/// 可供调用方稳定识别的传输失败类型。
+///
+/// 原始 I/O 错误继续保留在脱敏后的 error 中，而该字段只表达恢复语义，避免 Agent 或前端
+/// 依赖易变的底层网络错误文本。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SftpTransferFailureKind {
+    /// 后台传输连续一段时间没有确认任何新字节。
+    IdleTimeout,
+    /// 非结构化或当前不需要进一步细分的失败。
+    Other,
+}
+
 /// 创建可管理 SFTP 传输任务请求。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -364,6 +377,9 @@ pub struct SftpManagedTransferRequest {
     pub conflict_policy: SftpTransferConflictPolicy,
     /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
+    /// 覆盖全局设置的连续无进度保护秒数；为空时在入队时固化全局值。
+    #[serde(default)]
+    pub idle_timeout_seconds: Option<u16>,
 }
 
 /// 创建远程复制或跨主机传输任务请求。
@@ -384,6 +400,9 @@ pub struct SftpRemoteCopyRequest {
     pub conflict_policy: SftpTransferConflictPolicy,
     /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
+    /// 覆盖全局设置的连续无进度保护秒数；为空时在入队时固化全局值。
+    #[serde(default)]
+    pub idle_timeout_seconds: Option<u16>,
 }
 
 /// 创建远程条目下载为本地 ZIP 的归档任务请求。
@@ -555,6 +574,12 @@ pub struct SftpTransferSummary {
     pub phase: Option<String>,
     /// 当前正在处理的文件或目录。
     pub current_item: Option<String>,
+    /// 入队时实际采用的连续无进度保护秒数；重试必须继承该值而不是重新读取全局设置。
+    #[serde(default)]
+    pub idle_timeout_seconds: u16,
+    /// 结构化失败原因；成功、排队、运行和取消时为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_kind: Option<SftpTransferFailureKind>,
 }
 
 /// 显式信任 SSH/SFTP 主机密钥请求。

@@ -34,7 +34,13 @@ impl SftpService {
         let settings = load_sftp_runtime_settings(paths)?;
         let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
-        let settings = settings.for_bulk_transfer_target(&endpoint);
+        let idle_timeout_seconds = resolve_transfer_idle_timeout(
+            request.idle_timeout_seconds,
+            settings.idle_timeout_seconds,
+        )?;
+        let settings = settings
+            .for_bulk_transfer_target(&endpoint)
+            .with_idle_timeout_seconds(idle_timeout_seconds);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -61,6 +67,8 @@ impl SftpService {
             transport_mode: SftpTransferTransportMode::SingleHostSftp,
             phase: Some("queued".to_owned()),
             current_item: None,
+            idle_timeout_seconds,
+            failure_kind: None,
         };
 
         self.transfers()?.insert(
@@ -118,9 +126,14 @@ impl SftpService {
         let source_endpoint = self.resolve_endpoint(paths, &request.source_host_id)?;
         let target_endpoint = self.resolve_endpoint(paths, &request.target_host_id)?;
         let request = normalize_remote_copy_request(request)?;
+        let idle_timeout_seconds = resolve_transfer_idle_timeout(
+            request.idle_timeout_seconds,
+            settings.idle_timeout_seconds,
+        )?;
         let settings = settings
             .for_bulk_transfer_target(&source_endpoint)
-            .for_bulk_transfer_target(&target_endpoint);
+            .for_bulk_transfer_target(&target_endpoint)
+            .with_idle_timeout_seconds(idle_timeout_seconds);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -158,6 +171,8 @@ impl SftpService {
             transport_mode,
             phase: Some("queued".to_owned()),
             current_item: None,
+            idle_timeout_seconds,
+            failure_kind: None,
         };
 
         self.transfers()?.insert(
@@ -243,6 +258,8 @@ impl SftpService {
             transport_mode: SftpTransferTransportMode::SingleHostSftp,
             phase: Some("queued".to_owned()),
             current_item: None,
+            idle_timeout_seconds: settings.idle_timeout_seconds as u16,
+            failure_kind: None,
         };
 
         self.transfers()?.insert(
@@ -327,6 +344,8 @@ impl SftpService {
             transport_mode: SftpTransferTransportMode::SingleHostSftp,
             phase: Some("queued".to_owned()),
             current_item: None,
+            idle_timeout_seconds: settings.idle_timeout_seconds as u16,
+            failure_kind: None,
         };
 
         self.transfers()?.insert(
@@ -414,6 +433,8 @@ impl SftpService {
             transport_mode: SftpTransferTransportMode::SingleHostSftp,
             phase: Some("queued".to_owned()),
             current_item: None,
+            idle_timeout_seconds: settings.idle_timeout_seconds as u16,
+            failure_kind: None,
         };
 
         self.transfers()?.insert(
@@ -439,4 +460,20 @@ impl SftpService {
         });
         Ok(summary)
     }
+}
+
+/// 固化单个传输的无进度保护，并拒绝不安全的 MCP/IPC 覆盖值。
+///
+/// 队列会把最终值写入摘要，重试始终沿用摘要而不是读取可能已变化的全局设置；这使恢复
+/// 行为可预期，也避免调用方借超大数值长期占用并发槽。
+fn resolve_transfer_idle_timeout(requested: Option<u16>, configured: u64) -> AppResult<u16> {
+    use crate::models::settings::{MAX_SFTP_IDLE_TIMEOUT_SECONDS, MIN_SFTP_IDLE_TIMEOUT_SECONDS};
+
+    let seconds = requested.unwrap_or_else(|| configured.min(u64::from(u16::MAX)) as u16);
+    if !(MIN_SFTP_IDLE_TIMEOUT_SECONDS..=MAX_SFTP_IDLE_TIMEOUT_SECONDS).contains(&seconds) {
+        return Err(AppError::InvalidInput(format!(
+            "idleTimeoutSeconds 必须在 {MIN_SFTP_IDLE_TIMEOUT_SECONDS}-{MAX_SFTP_IDLE_TIMEOUT_SECONDS} 秒之间。"
+        )));
+    }
+    Ok(seconds)
 }

@@ -53,11 +53,25 @@ async fn generated_configs_expose_canonical_sftp_transfer_contract() {
     properties.sort_unstable();
     assert_eq!(
         properties,
-        vec!["conflictPolicy", "destination", "kind", "source"]
+        vec![
+            "conflictPolicy",
+            "destination",
+            "idleTimeoutSeconds",
+            "kind",
+            "source"
+        ]
     );
     assert_eq!(
         enqueue_tool.input_schema["allOf"][0]["required"],
         serde_json::json!(["source", "destination", "kind", "conflictPolicy"])
+    );
+    assert_eq!(
+        enqueue_tool.input_schema["properties"]["idleTimeoutSeconds"]["minimum"],
+        30
+    );
+    assert_eq!(
+        enqueue_tool.input_schema["properties"]["idleTimeoutSeconds"]["maximum"],
+        3600
     );
 
     let local_local = client

@@ -317,3 +317,27 @@ function transferSpeedLabel(transfer: SftpTransferSummary) {
   }
   return `${formatFileSize(speedBytesPerSecond)}/s`;
 }
+
+/**
+ * 将结构化无进度失败投影为稳定恢复文案，避免前端解析后端网络错误文本。
+ *
+ * @author kongweiguang
+ */
+export function transferFailureMessage(transfer: SftpTransferSummary) {
+  if (transfer.failureKind !== "idleTimeout") {
+    return transfer.error ?? null;
+  }
+  const seconds = transfer.idleTimeoutSeconds ?? 180;
+  return seconds % 60 === 0
+    ? `网络连续 ${seconds / 60} 分钟无响应`
+    : `网络连续 ${seconds} 秒无响应`;
+}
+
+/**
+ * 为紧凑队列行提供固定宽度的实时速度文本；未运行时保持短占位避免布局跳动。
+ *
+ * @author kongweiguang
+ */
+export function transferInlineSpeedLabel(transfer: SftpTransferSummary) {
+  return transferSpeedLabel(transfer) ?? "-";
+}

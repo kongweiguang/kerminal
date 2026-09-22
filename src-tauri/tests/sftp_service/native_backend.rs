@@ -1,3 +1,5 @@
+//! @author kongweiguang
+
 use super::support::{
     create_password_remote_host, create_password_remote_host_without_credentials,
     loopback::{
@@ -325,6 +327,7 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue remote copy over real SFTP");
@@ -354,6 +357,7 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Skip,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue skip conflicting remote copy target");
@@ -377,6 +381,7 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Rename,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue rename conflicting remote copy target");
@@ -400,6 +405,7 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
                 kind: SftpTransferKind::Directory,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue remote directory copy over real SFTP");
@@ -488,6 +494,7 @@ async fn native_sftp_service_falls_back_to_directory_for_file_requests() {
                 kind: SftpTransferKind::File,
                 conflict_policy: SftpTransferConflictPolicy::Overwrite,
                 view_scope: None,
+                idle_timeout_seconds: None,
             },
         )
         .expect("enqueue remote copy directory through file request fallback");

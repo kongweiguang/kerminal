@@ -79,6 +79,7 @@ export function resolveSftpTransferRetry(
       localPath: transfer.localPath,
       remotePath: transfer.remotePath,
       viewScope: transfer.viewScope ?? null,
+      idleTimeoutSeconds: transfer.idleTimeoutSeconds,
     },
     statusMessage:
       "已重新加入传输队列；将优先尝试断点续传。",

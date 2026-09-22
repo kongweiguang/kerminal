@@ -25,6 +25,8 @@ fn mcp_sftp_transfer_enqueue_schema_is_canonical() {
     assert!(schema["additionalProperties"] == false);
     assert!(properties.contains_key("source"));
     assert!(properties.contains_key("destination"));
+    assert_eq!(properties["idleTimeoutSeconds"]["minimum"], 30);
+    assert_eq!(properties["idleTimeoutSeconds"]["maximum"], 3600);
     assert!(!properties.contains_key("hostId"));
     assert!(!properties.contains_key("localPath"));
     assert!(!properties.contains_key("remotePath"));
@@ -100,6 +102,7 @@ async fn mcp_sftp_transfer_enqueue_returns_canonical_projection_for_three_routes
         assert_eq!(transfer["operation"], operation);
         assert_eq!(transfer["source"]["type"], source_type);
         assert_eq!(transfer["destination"]["type"], destination_type);
+        assert_eq!(transfer["idleTimeoutSeconds"], 180);
         assert!(transfer.get("target").is_none());
         assert!(transfer.get("hostLabel").is_none());
         assert!(transfer.get("localPath").is_none());
@@ -109,6 +112,91 @@ async fn mcp_sftp_transfer_enqueue_returns_canonical_projection_for_three_routes
             .next_hints
             .iter()
             .any(|hint| hint.contains("sftp.transfer.list")));
+    }
+}
+
+/// 验证 MCP 入队会固化边界值，并在网络任务开始前拒绝范围外的无进度保护值。
+#[tokio::test]
+async fn mcp_sftp_transfer_enqueue_validates_and_projects_idle_timeout() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    for idle_timeout_seconds in [30, 3600] {
+        let output = state
+            .mcp_tool_executor()
+            .execute(
+                mcp_context(&state, state.ssh_commands()),
+                &tools,
+                "sftp.transfer.enqueue",
+                json!({
+                    "source": { "type": "local", "path": "C:/data/report.txt" },
+                    "destination": { "type": "remote", "hostId": host_id, "path": "/data/report.txt" },
+                    "kind": "file",
+                    "conflictPolicy": "overwrite",
+                    "idleTimeoutSeconds": idle_timeout_seconds
+                }),
+            )
+            .await
+            .expect("enqueue bounded idle-timeout transfer");
+        assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
+        assert_eq!(
+            output.data["transfer"]["idleTimeoutSeconds"],
+            idle_timeout_seconds
+        );
+    }
+
+    let invalid = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "sftp.transfer.enqueue",
+            json!({
+                "source": { "type": "local", "path": "C:/data/report.txt" },
+                "destination": { "type": "remote", "hostId": host_id, "path": "/data/report.txt" },
+                "kind": "file",
+                "conflictPolicy": "overwrite",
+                "idleTimeoutSeconds": 3601
+            }),
+        )
+        .await
+        .expect("return validation failure result");
+    assert_eq!(invalid.status, McpToolExecutionStatus::Failed);
+    assert!(invalid
+        .error
+        .as_deref()
+        .is_some_and(|message| message.contains("30-3600")));
+}
+
+/// 验证已退役同步工具不再出现在自发现目录，旧缓存调用也只收到无副作用迁移提示。
+#[tokio::test]
+async fn mcp_sftp_retired_sync_tools_return_migration_hint() {
+    let (_home, state) = test_state();
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    for tool_id in [
+        "sftp.upload",
+        "sftp.upload_directory",
+        "sftp.download",
+        "sftp.download_directory",
+    ] {
+        assert!(tools.iter().all(|tool| tool.id != tool_id));
+        let output = state
+            .mcp_tool_executor()
+            .execute(
+                mcp_context(&state, state.ssh_commands()),
+                &tools,
+                tool_id,
+                json!({}),
+            )
+            .await
+            .expect("return retired-tool migration result");
+        assert_eq!(output.status, McpToolExecutionStatus::Failed);
+        assert_eq!(
+            output.data["migration"],
+            "sftp.transfer.enqueue -> sftp.transfer.list -> sftp.transfer.cancel/retry"
+        );
     }
 }
 

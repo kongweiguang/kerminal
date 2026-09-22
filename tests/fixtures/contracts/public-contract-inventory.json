@@ -41,8 +41,8 @@
     ]
   },
   "mcp": {
-    "toolCount": 72,
-    "contractFingerprint": "fnv1a64:9d38e5d46a5d129a",
+    "toolCount": 68,
+    "contractFingerprint": "fnv1a64:5b640ec2da21a29f",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",
@@ -52,7 +52,9 @@
       "workflow.",
       "ui.",
       "approval.",
-      "audit.write"
+      "audit.write",
+      "sftp.upload",
+      "sftp.download"
     ]
   }
 }

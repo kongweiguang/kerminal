@@ -2,7 +2,7 @@
 
 [package]
 name = "kerminal"
-version = "0.3.40"
+version = "0.3.41"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

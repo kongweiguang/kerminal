@@ -646,7 +646,7 @@ async fn with_sftp_timeout<T>(
     settings: SftpRuntimeSettings,
     future: impl Future<Output = AppResult<T>>,
 ) -> AppResult<T> {
-    let seconds = settings.timeout_seconds.max(1);
+    let seconds = settings.browser_request_timeout_seconds.max(1);
     match timeout(Duration::from_secs(seconds), future).await {
         Ok(result) => result,
         Err(_) => Err(AppError::Sftp(format!(
@@ -690,7 +690,7 @@ async fn connect_native_sftp(
         NativeSftpConfig {
             max_packet_len: settings.packet_bytes,
             max_concurrent_writes: settings.pipeline_depth,
-            request_timeout_secs: settings.timeout_seconds,
+            request_timeout_secs: settings.request_timeout_seconds(managed_lane),
         },
     )
     .await
@@ -721,7 +721,7 @@ async fn connect_managed_sftp(
         key,
         endpoint.host.clone(),
         endpoint.known_hosts_path.clone(),
-        settings.timeout_seconds,
+        u64::from(endpoint.host.ssh_options.terminal.connect_timeout_seconds).max(1),
     )
     .with_host_key_policy(runtime_host_key_policy_for_host_id(&endpoint.host.id))
     .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(
@@ -749,7 +749,7 @@ async fn connect_managed_sftp(
         NativeSftpConfig {
             max_packet_len: settings.packet_bytes,
             max_concurrent_writes: settings.pipeline_depth,
-            request_timeout_secs: settings.timeout_seconds,
+            request_timeout_secs: settings.request_timeout_seconds(managed_lane),
         },
     )
     .await

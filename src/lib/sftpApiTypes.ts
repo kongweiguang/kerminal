@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 export type SftpEntryKind = "file" | "directory" | "symlink" | "other";
 
 export interface SftpEntry {
@@ -145,6 +147,7 @@ type SftpTransferTransportMode =
 export interface SftpManagedTransferRequest extends SftpTransferRequest {
   direction: SftpTransferDirection;
   kind: SftpTransferKind;
+  idleTimeoutSeconds?: number;
 }
 
 export interface SftpRemoteCopyRequest {
@@ -155,6 +158,7 @@ export interface SftpRemoteCopyRequest {
   targetRemotePath: string;
   kind: SftpTransferKind;
   viewScope?: string | null;
+  idleTimeoutSeconds?: number;
 }
 
 export interface SftpArchiveDownloadRequest {
@@ -225,6 +229,9 @@ export interface SftpTransferSummary {
   transportMode: SftpTransferTransportMode;
   phase?: string | null;
   currentItem?: string | null;
+  /** 实际采用的保护值；旧版缓存任务可暂时缺失。 */
+  idleTimeoutSeconds?: number;
+  failureKind?: "idleTimeout" | "other" | null;
 }
 
 export interface SftpTrustHostKeyRequest {

@@ -115,14 +115,6 @@ pub(super) async fn execute_tool(
             execute_sftp_create_directory(context.sftp, context.paths, arguments).await
         }
         ToolId::SftpChmod => execute_sftp_chmod(context.sftp, context.paths, arguments).await,
-        ToolId::SftpUpload => execute_sftp_upload(context.sftp, context.paths, arguments).await,
-        ToolId::SftpUploadDirectory => {
-            execute_sftp_upload_directory(context.sftp, context.paths, arguments).await
-        }
-        ToolId::SftpDownload => execute_sftp_download(context.sftp, context.paths, arguments).await,
-        ToolId::SftpDownloadDirectory => {
-            execute_sftp_download_directory(context.sftp, context.paths, arguments).await
-        }
         ToolId::SftpDelete => execute_sftp_delete(context.sftp, context.paths, arguments).await,
         ToolId::SftpTransferEnqueue => {
             execute_sftp_transfer_enqueue(context.sftp, context.paths, arguments)

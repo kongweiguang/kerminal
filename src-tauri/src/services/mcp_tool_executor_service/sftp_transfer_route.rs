@@ -5,7 +5,7 @@
 use serde::Deserialize;
 
 use super::*;
-use crate::models::sftp::SftpRemoteCopyRequest;
+use crate::models::sftp::{SftpRemoteCopyRequest, SftpTransferConflictPolicy};
 
 /// MCP 统一传输请求在现有 SFTP 队列中的路由结果。
 ///
@@ -45,6 +45,9 @@ struct CanonicalSftpTransferRequest {
     kind: SftpTransferKind,
     /// 目标冲突处理策略。
     conflict_policy: SftpTransferConflictPolicy,
+    /// 可选的连续无字节进度保护秒数；为空时使用并固化全局设置。
+    #[serde(default)]
+    idle_timeout_seconds: Option<u16>,
 }
 
 /// 解析并路由统一 source/destination 请求，同时保留旧 flat 请求的长期兼容入口。
@@ -121,6 +124,7 @@ fn canonical_sftp_transfer_route(
             kind: request.kind,
             conflict_policy: request.conflict_policy,
             view_scope: None,
+            idle_timeout_seconds: request.idle_timeout_seconds,
         })),
         (
             CanonicalSftpEndpoint::Remote {
@@ -136,6 +140,7 @@ fn canonical_sftp_transfer_route(
             kind: request.kind,
             conflict_policy: request.conflict_policy,
             view_scope: None,
+            idle_timeout_seconds: request.idle_timeout_seconds,
         })),
         (
             CanonicalSftpEndpoint::Remote {
@@ -171,6 +176,7 @@ fn canonical_sftp_transfer_route(
                 kind: request.kind,
                 conflict_policy: request.conflict_policy,
                 view_scope: None,
+                idle_timeout_seconds: request.idle_timeout_seconds,
             }))
         }
     }

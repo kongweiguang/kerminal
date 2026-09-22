@@ -44,8 +44,7 @@ use crate::{
             SftpChmodRequest, SftpDeleteRequest, SftpDirectoryListing, SftpEntryKind,
             SftpFilePreview, SftpListDirectoryRequest, SftpManagedTransferRequest, SftpPathRequest,
             SftpPreviewRequest, SftpRenameRequest, SftpTransferCancelRequest,
-            SftpTransferConflictPolicy, SftpTransferDirection, SftpTransferKind,
-            SftpTransferRequest, SftpTransferStatus, SftpTransferSummary,
+            SftpTransferDirection, SftpTransferKind, SftpTransferStatus, SftpTransferSummary,
         },
         ssh_command::{SshCommandOutput, SshCommandRequest},
         target::RemoteTargetRef,
@@ -293,8 +292,13 @@ impl McpToolExecutorService {
             return Err(AppError::InvalidInput("工具 id 不能为空".to_owned()));
         }
 
-        let tool = find_enabled_tool(tools, tool_id)?;
         let arguments = normalized_arguments(arguments)?;
+        if is_retired_sync_sftp_transfer_tool(tool_id) {
+            let result = retired_sync_sftp_transfer_result();
+            append_agent_mcp_call_log(&context, tool_id, &arguments, &result);
+            return Ok(result.into());
+        }
+        let tool = find_enabled_tool(tools, tool_id)?;
         validate_required_arguments(&tool, &arguments)?;
         let typed_tool_id = ToolId::parse(&tool.id).ok_or_else(|| {
             AppError::InvalidInput(format!("工具未登记到 typed catalog: {}", tool.id))

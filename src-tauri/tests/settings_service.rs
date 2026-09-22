@@ -12,9 +12,9 @@ use kerminal_lib::{
         TerminalRendererType, TerminalRightClickBehavior, ThemeMode, BUILTIN_PI_LAUNCHER_KEY,
         DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH, MAX_CUSTOM_AGENT_COMMAND_CHARS,
         MAX_CUSTOM_AGENT_DEFINITIONS, MAX_CUSTOM_AGENT_NAME_CHARS, MAX_SFTP_GLOBAL_TRANSFERS,
-        MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH,
-        MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS,
-        MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
+        MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_IDLE_TIMEOUT_SECONDS, MAX_SFTP_PACKET_BYTES,
+        MAX_SFTP_PIPELINE_DEPTH, MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS,
+        MIN_SFTP_IDLE_TIMEOUT_SECONDS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -97,7 +97,7 @@ fn settings_service_persists_settings_in_toml() {
         settings.sftp.host_transfers = 3;
         settings.sftp.pipeline_depth = 96;
         settings.sftp.packet_bytes = 256 * 1024;
-        settings.sftp.timeout_seconds = 45;
+        settings.sftp.idle_timeout_seconds = 45;
         settings.desktop_notifications.enabled = true;
         settings.desktop_notifications.background_only = false;
         settings.desktop_notifications.important_only = true;
@@ -224,7 +224,7 @@ fn settings_service_persists_settings_in_toml() {
     assert_eq!(settings.sftp.host_transfers, 3);
     assert_eq!(settings.sftp.pipeline_depth, 96);
     assert_eq!(settings.sftp.packet_bytes, 256 * 1024);
-    assert_eq!(settings.sftp.timeout_seconds, 45);
+    assert_eq!(settings.sftp.idle_timeout_seconds, 45);
     assert!(settings.desktop_notifications.enabled);
     assert!(!settings.desktop_notifications.background_only);
     assert!(settings.desktop_notifications.important_only);
@@ -250,6 +250,8 @@ fn settings_service_persists_settings_in_toml() {
     assert!(settings_source.contains("[externalLaunch]"));
     assert!(settings_source.contains("acceptVendorArgs = false"));
     assert!(settings_source.contains("autoOpenSftp = true"));
+    assert!(settings_source.contains("idleTimeoutSeconds = 45"));
+    assert!(!settings_source.contains("timeoutSeconds ="));
     let settings_toml: toml::Value = toml::from_str(&settings_source).expect("settings toml value");
     let disabled_tools = settings_toml
         .get("externalLaunch")
@@ -501,6 +503,44 @@ fn settings_service_migrates_legacy_command_suggestion_switches() {
     assert!(settings.terminal.inline_suggestion.partial_accept);
 }
 
+/// 验证旧 SFTP 字段只在读取时兼容，用户下一次正常保存后自动收敛为无进度语义。
+#[test]
+fn settings_service_migrates_legacy_sftp_timeout_on_next_save() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+
+    AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
+    let settings_path = paths.root.join("settings.toml");
+    let source = std::fs::read_to_string(&settings_path).expect("read generated settings toml");
+    let mut document: toml::Value = toml::from_str(&source).expect("parse settings toml");
+    let sftp = document
+        .get_mut("sftp")
+        .and_then(toml::Value::as_table_mut)
+        .expect("sftp settings table");
+    sftp.remove("idleTimeoutSeconds");
+    sftp.insert("timeoutSeconds".to_owned(), toml::Value::Integer(75));
+    std::fs::write(
+        &settings_path,
+        toml::to_string_pretty(&document).expect("serialize legacy settings toml"),
+    )
+    .expect("write legacy settings toml");
+
+    let state = AppState::initialize_with_paths(paths.clone()).expect("reopen legacy app state");
+    let loaded = state
+        .settings()
+        .load_settings()
+        .expect("load legacy settings");
+    assert_eq!(loaded.sftp.idle_timeout_seconds, 75);
+    state
+        .settings()
+        .update_settings(loaded)
+        .expect("save migrated settings");
+
+    let saved = std::fs::read_to_string(settings_path).expect("read migrated settings toml");
+    assert!(saved.contains("idleTimeoutSeconds = 75"));
+    assert!(!saved.contains("timeoutSeconds ="));
+}
+
 #[test]
 fn app_state_syncs_external_launch_policy_from_settings() {
     let home = tempdir().expect("create temp home");
@@ -593,7 +633,7 @@ fn settings_service_clamps_sftp_performance_settings() {
     too_small.sftp.host_transfers = 0;
     too_small.sftp.pipeline_depth = 0;
     too_small.sftp.packet_bytes = 1;
-    too_small.sftp.timeout_seconds = 1;
+    too_small.sftp.idle_timeout_seconds = 1;
     let stored = state
         .settings()
         .update_settings(too_small)
@@ -602,14 +642,17 @@ fn settings_service_clamps_sftp_performance_settings() {
     assert_eq!(stored.sftp.host_transfers, MIN_SFTP_HOST_TRANSFERS);
     assert_eq!(stored.sftp.pipeline_depth, MIN_SFTP_PIPELINE_DEPTH);
     assert_eq!(stored.sftp.packet_bytes, MIN_SFTP_PACKET_BYTES);
-    assert_eq!(stored.sftp.timeout_seconds, MIN_SFTP_TIMEOUT_SECONDS);
+    assert_eq!(
+        stored.sftp.idle_timeout_seconds,
+        MIN_SFTP_IDLE_TIMEOUT_SECONDS
+    );
 
     let mut too_large = AppSettings::default();
     too_large.sftp.global_transfers = usize::MAX;
     too_large.sftp.host_transfers = usize::MAX;
     too_large.sftp.pipeline_depth = usize::MAX;
     too_large.sftp.packet_bytes = u32::MAX;
-    too_large.sftp.timeout_seconds = u16::MAX;
+    too_large.sftp.idle_timeout_seconds = u16::MAX;
     let stored = state
         .settings()
         .update_settings(too_large)
@@ -618,7 +661,10 @@ fn settings_service_clamps_sftp_performance_settings() {
     assert_eq!(stored.sftp.host_transfers, MAX_SFTP_HOST_TRANSFERS);
     assert_eq!(stored.sftp.pipeline_depth, MAX_SFTP_PIPELINE_DEPTH);
     assert_eq!(stored.sftp.packet_bytes, MAX_SFTP_PACKET_BYTES);
-    assert_eq!(stored.sftp.timeout_seconds, MAX_SFTP_TIMEOUT_SECONDS);
+    assert_eq!(
+        stored.sftp.idle_timeout_seconds,
+        MAX_SFTP_IDLE_TIMEOUT_SECONDS
+    );
 
     let mut host_above_global = AppSettings::default();
     host_above_global.sftp.global_transfers = 2;

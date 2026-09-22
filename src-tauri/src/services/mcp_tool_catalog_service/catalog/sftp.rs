@@ -63,30 +63,6 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
                 number_field("maxBytes", "最多读取字节数。", false),
             ]),
         ),
-        tool(
-            ToolId::SftpDownload,
-            "下载远程文件",
-            "下载远程文件到本地；调用前确认由 MCP host 负责。",
-            ToolCategory::Sftp,
-            ToolEffect::Remote,
-            object_schema(vec![
-                string_field("hostId", "远程主机 id。", true),
-                string_field("remotePath", "远程文件路径。", true),
-                string_field("localPath", "本地保存路径。", true),
-            ]),
-        ),
-        tool(
-            ToolId::SftpUpload,
-            "上传本地文件",
-            "上传本地文件到远程；调用前确认由 MCP host 负责。",
-            ToolCategory::Sftp,
-            ToolEffect::Remote,
-            object_schema(vec![
-                string_field("hostId", "远程主机 id。", true),
-                string_field("localPath", "本地文件路径。", true),
-                string_field("remotePath", "远程保存路径。", true),
-            ]),
-        ),
         tool_with_exposure(
             ToolId::SftpDelete,
             "删除远程文件",
@@ -122,30 +98,6 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
                 string_field("hostId", "远程主机 id。", true),
                 string_field("path", "远程路径。", true),
                 string_field("mode", "八进制权限模式，例如 644 或 0755。", true),
-            ]),
-        ),
-        tool(
-            ToolId::SftpUploadDirectory,
-            "上传本地目录",
-            "递归上传本地目录；调用前确认由 MCP host 负责。",
-            ToolCategory::Sftp,
-            ToolEffect::Remote,
-            object_schema(vec![
-                string_field("hostId", "远程主机 id。", true),
-                string_field("localPath", "本地目录路径。", true),
-                string_field("remotePath", "远程保存路径。", true),
-            ]),
-        ),
-        tool(
-            ToolId::SftpDownloadDirectory,
-            "下载远程目录",
-            "递归下载远程目录；调用前确认由 MCP host 负责。",
-            ToolCategory::Sftp,
-            ToolEffect::Remote,
-            object_schema(vec![
-                string_field("hostId", "远程主机 id。", true),
-                string_field("remotePath", "远程目录路径。", true),
-                string_field("localPath", "本地保存路径。", true),
             ]),
         ),
         tool(
@@ -281,6 +233,12 @@ fn sftp_transfer_enqueue_schema() -> serde_json::Value {
                 "type": "string",
                 "description": "目标已存在时的处理方式。",
                 "enum": ["overwrite", "skip", "rename"]
+            },
+            "idleTimeoutSeconds": {
+                "type": "number",
+                "description": "可选的连续无字节进度保护秒数；30-3600，未传时使用全局设置。不会限制传输总时长。",
+                "minimum": 30,
+                "maximum": 3600
             }
         }
     })

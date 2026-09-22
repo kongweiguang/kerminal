@@ -51,6 +51,7 @@ pub(super) fn normalize_managed_transfer_request(
         kind: request.kind,
         conflict_policy: request.conflict_policy,
         view_scope: normalize_view_scope(request.view_scope)?,
+        idle_timeout_seconds: request.idle_timeout_seconds,
     })
 }
 
@@ -73,6 +74,7 @@ pub(super) fn normalize_remote_copy_request(
         kind: request.kind,
         conflict_policy: request.conflict_policy,
         view_scope: normalize_view_scope(request.view_scope)?,
+        idle_timeout_seconds: request.idle_timeout_seconds,
     })
 }
 

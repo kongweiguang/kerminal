@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 import { Network } from "lucide-react";
 import {
   SFTP_GLOBAL_TRANSFERS_MAX,
@@ -8,8 +10,8 @@ import {
   SFTP_PACKET_BYTES_MIN,
   SFTP_PIPELINE_DEPTH_MAX,
   SFTP_PIPELINE_DEPTH_MIN,
-  SFTP_TIMEOUT_SECONDS_MAX,
-  SFTP_TIMEOUT_SECONDS_MIN,
+  SFTP_IDLE_TIMEOUT_SECONDS_MAX,
+  SFTP_IDLE_TIMEOUT_SECONDS_MIN,
   type AppSettings,
   type SftpPerformanceSettings,
 } from "../settingsModel";
@@ -55,7 +57,7 @@ export function SftpSettingsSection({
       </section>
 
       <SettingsDisclosure
-        summary={`${normalizedSettings.sftp.timeoutSeconds} 秒超时`}
+        summary={`总时长不限 · ${formatIdleTimeoutSummary(normalizedSettings.sftp.idleTimeoutSeconds)}`}
         title="高级传输参数"
       >
         <div className="grid gap-3 md:grid-cols-3">
@@ -79,16 +81,27 @@ export function SftpSettingsSection({
               value={normalizedSettings.sftp.packetBytes}
             />
             <NumberSetting
-              help="慢链路可调高。"
-              label="请求超时"
-              max={SFTP_TIMEOUT_SECONDS_MAX}
-              min={SFTP_TIMEOUT_SECONDS_MIN}
-              onChange={(timeoutSeconds) => updateSftp({ timeoutSeconds })}
+              help="仅在连续无数据时停止，不限制文件大小或总时长。"
+              label="无进度超时"
+              max={SFTP_IDLE_TIMEOUT_SECONDS_MAX}
+              min={SFTP_IDLE_TIMEOUT_SECONDS_MIN}
+              onChange={(idleTimeoutSeconds) => updateSftp({ idleTimeoutSeconds })}
               suffix="秒"
-              value={normalizedSettings.sftp.timeoutSeconds}
+              value={normalizedSettings.sftp.idleTimeoutSeconds}
             />
         </div>
       </SettingsDisclosure>
     </div>
   );
+}
+
+/**
+ * 将设置值压缩为折叠区摘要；分钟整除时优先使用分钟，避免用户把保护阈值误读为总时长。
+ *
+ * @author kongweiguang
+ */
+function formatIdleTimeoutSummary(seconds: number) {
+  return seconds % 60 === 0
+    ? `${seconds / 60} 分钟无进度保护`
+    : `${seconds} 秒无进度保护`;
 }
