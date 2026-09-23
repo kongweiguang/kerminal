@@ -31,6 +31,7 @@ type SftpBrowserViewProps = SftpBrowserPresenterProps & {
   viewModel: SftpBrowserViewModel;
 };
 
+/** 保留取消与重试 Promise 到队列行，确保窄工具面板能立即禁用重复操作。 */
 export function SftpBrowserView({
   capabilities,
   dialogs,
@@ -509,9 +510,9 @@ export function SftpBrowserView({
 
       {showTransferStatusBar ? (
         <SftpTransferStatusBar
-          onCancel={(transferId) => void cancelTransfer(transferId)}
+          onCancel={cancelTransfer}
           onClearCompleted={() => void clearFinishedTransfers()}
-          onRetry={(transfer) => void retryTransfer(transfer)}
+          onRetry={retryTransfer}
           transfers={safeVisibleTransfers}
         />
       ) : null}

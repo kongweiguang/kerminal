@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 import { invoke } from "@tauri-apps/api/core";
 import type {
   SftpArchiveDownloadRequest,
@@ -21,6 +23,7 @@ import type {
   SftpRenameRequest,
   SftpTransferCancelRequest,
   SftpTransferRequest,
+  SftpTransferRetryRequest,
   SftpTransferScopeRequest,
   SftpTransferSummary,
   SftpTrustHostKeyRequest,
@@ -154,6 +157,17 @@ export function tauriCancelSftpTransfer(
   request: SftpTransferCancelRequest,
 ): Promise<SftpTransferSummary> {
   return invoke<SftpTransferSummary>("sftp_cancel_transfer", { request });
+}
+
+/**
+ * 只把旧任务 ID 交给后端恢复，避免前端重建路径参数导致断点、重命名结果或幂等键丢失。
+ *
+ * @author kongweiguang
+ */
+export function tauriRetrySftpTransfer(
+  request: SftpTransferRetryRequest,
+): Promise<SftpTransferSummary> {
+  return invoke<SftpTransferSummary>("sftp_retry_transfer", { ...request });
 }
 
 export function tauriClearCompletedSftpTransfers(

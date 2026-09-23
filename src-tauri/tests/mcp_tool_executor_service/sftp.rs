@@ -3,6 +3,10 @@
 //! @author kongweiguang
 
 use super::fixtures::*;
+use kerminal_lib::models::sftp::{
+    SftpManagedTransferRequest, SftpTransferCancelRequest, SftpTransferConflictPolicy,
+    SftpTransferDirection,
+};
 
 /// 验证公开 enqueue schema 只暴露 canonical source/destination 端点和必填策略。
 #[test]
@@ -38,6 +42,18 @@ fn mcp_sftp_transfer_enqueue_schema_is_canonical() {
     assert_eq!(
         properties["source"]["oneOf"][1]["properties"]["type"]["const"],
         "remote"
+    );
+
+    let retry_tool = state
+        .mcp_tool_catalog()
+        .list_tools()
+        .into_iter()
+        .find(|tool| tool.id == "sftp.transfer.retry")
+        .expect("sftp transfer retry tool");
+    assert_eq!(retry_tool.input_schema["required"], json!(["transferId"]));
+    assert_eq!(
+        retry_tool.input_schema["properties"]["transferId"]["type"],
+        "string"
     );
 }
 
@@ -103,6 +119,10 @@ async fn mcp_sftp_transfer_enqueue_returns_canonical_projection_for_three_routes
         assert_eq!(transfer["source"]["type"], source_type);
         assert_eq!(transfer["destination"]["type"], destination_type);
         assert_eq!(transfer["idleTimeoutSeconds"], 180);
+        assert_eq!(transfer["cancelRequested"], false);
+        assert_eq!(transfer["recoveryAttempt"], 0);
+        assert_eq!(transfer["retryable"], false);
+        assert_eq!(transfer["resumable"], false);
         assert!(transfer.get("target").is_none());
         assert!(transfer.get("hostLabel").is_none());
         assert!(transfer.get("localPath").is_none());
@@ -401,4 +421,113 @@ async fn mcp_sftp_transfer_cancel_returns_canonical_projection() {
             "legacy entity field leaked: {field}"
         );
     }
+}
+
+/// 先同步取消排队文件，再从公开 MCP 入口重试两次；锁定短调用与唯一后继契约。
+#[tokio::test(flavor = "current_thread")]
+async fn mcp_sftp_transfer_retry_reuses_one_successor_and_requires_followup_query() {
+    let (home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let source = home.path().join("probe.bin");
+    fs::write(&source, b"probe").expect("write source");
+    let source_task = state
+        .sftp()
+        .enqueue_transfer(
+            state.paths(),
+            SftpManagedTransferRequest {
+                host_id,
+                remote_path: "/tmp/kerminal-mcp-retry-test.bin".to_owned(),
+                local_path: source.to_string_lossy().into_owned(),
+                direction: SftpTransferDirection::Upload,
+                kind: SftpTransferKind::File,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
+                idle_timeout_seconds: Some(30),
+            },
+        )
+        .expect("enqueue source task");
+    let canceled = state
+        .sftp()
+        .cancel_transfer(SftpTransferCancelRequest {
+            transfer_id: source_task.id.clone(),
+            view_scope: None,
+        })
+        .expect("cancel queued source task");
+    assert!(canceled.retryable);
+
+    let tools = state.mcp_tool_catalog().list_tools();
+    let unavailable = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "sftp.transfer.retry",
+            json!({ "transferId": "missing-transfer" }),
+        )
+        .await
+        .expect("unknown retry returns stable result");
+    assert_eq!(unavailable.status, McpToolExecutionStatus::Failed);
+    assert_eq!(
+        unavailable.error_kind.as_deref(),
+        Some("sftpTransferRetryUnavailable")
+    );
+    assert!(unavailable
+        .next_hints
+        .iter()
+        .any(|hint| hint.contains("sftp.transfer.list")));
+    let first = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "sftp.transfer.retry",
+            json!({ "transferId": source_task.id }),
+        )
+        .await
+        .expect("first retry call");
+    assert_eq!(first.status, McpToolExecutionStatus::Succeeded);
+    let successor_id = first.data["retry"]["transferId"]
+        .as_str()
+        .expect("successor id")
+        .to_owned();
+    assert_eq!(first.data["retry"]["sourceTransferId"], source_task.id);
+    assert_eq!(first.data["retry"]["accepted"], true);
+    assert_eq!(first.data["retry"]["resumeMode"], "pendingValidation");
+    assert_eq!(first.data["transfer"]["idleTimeoutSeconds"], 30);
+    assert!(first
+        .next_hints
+        .iter()
+        .any(|hint| hint.contains("sftp.transfer.list")));
+
+    let repeated = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "sftp.transfer.retry",
+            json!({ "transferId": source_task.id }),
+        )
+        .await
+        .expect("repeated retry call");
+    assert_eq!(repeated.status, McpToolExecutionStatus::Succeeded);
+    assert_eq!(repeated.data["retry"]["transferId"], successor_id);
+
+    let source_snapshot = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "sftp.transfer.list",
+            json!({ "transferId": source_task.id }),
+        )
+        .await
+        .expect("source list");
+    assert_eq!(
+        source_snapshot.data["transfers"][0]["successorId"],
+        successor_id
+    );
+    assert!(source_snapshot
+        .next_hints
+        .iter()
+        .any(|hint| hint.contains("successorId")));
 }

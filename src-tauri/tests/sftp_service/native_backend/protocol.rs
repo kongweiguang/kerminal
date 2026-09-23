@@ -94,6 +94,8 @@ async fn sftp_only_host_browses_files_and_rejects_command_before_transport() {
 }
 
 #[tokio::test]
+/// 协议冒烟使用全新目标；无同任务 checkpoint 的孤儿 partial 必须由可靠传输层拒绝，
+/// 不能在基础上传测试里继续伪装成可续传数据。
 async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
     let server_root = tempdir().expect("server root");
     fs::write(
@@ -188,18 +190,6 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
     fs::write(&upload_source, b"uploaded over native SFTP")
         .await
         .expect("write local upload source");
-    fs::write(
-        server_root.path().join("uploaded.txt"),
-        b"old remote content",
-    )
-    .await
-    .expect("seed existing remote upload target");
-    fs::write(
-        server_root.path().join("uploaded.txt.kerminal-part"),
-        b"uploaded over ",
-    )
-    .await
-    .expect("seed resumable remote upload partial");
     state
         .sftp()
         .upload(
@@ -256,12 +246,6 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
     fs::write(&download_target, b"old local content")
         .await
         .expect("seed existing local download target");
-    fs::write(
-        client_root.path().join("downloaded.txt.kerminal-part"),
-        b"hello ",
-    )
-    .await
-    .expect("seed resumable local download partial");
     state
         .sftp()
         .download(

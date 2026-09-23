@@ -31,6 +31,7 @@ export function dockerContainerTransferHostId(target: DockerContainerFileTarget)
   return `container:${target.hostId}:${target.containerId}`;
 }
 
+/** 容器直传没有可中断的后台任务 ID，不能借用 cancelRequested 伪造取消状态。 */
 export function buildDockerDirectTransferSummary({
   createdAt,
   direction,
@@ -65,7 +66,8 @@ export function buildDockerDirectTransferSummary({
 
   return {
     bytesTransferred: 0,
-    cancelRequested: true,
+    cancelRequested: false,
+    cancelable: false,
     conflictPolicy: null,
     createdAt,
     currentItem: fileNameFromPath(

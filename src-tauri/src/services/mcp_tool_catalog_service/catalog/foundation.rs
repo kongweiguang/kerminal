@@ -12,12 +12,14 @@ use super::super::schema::{
     ToolEffect,
 };
 
+/// 生成基础运行态工具描述；外部 MCP 默认走后台路径，右栏 Agent 的 targetBinding
+/// 仅作为内置 session-terminal 的兼容首选，因此描述必须同时标出两种调用边界。
 pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
             ToolId::KerminalCapabilities,
             "读取 Kerminal MCP 能力指南",
-            "返回外部 Agent 使用 Kerminal MCP 的结构化能力地图、global 终端 scope、targetBinding 首选目标、可见 PTY 优先规则、文件型配置边界和故意不提供的 MCP CRUD/UI 编排工具族。",
+            "返回外部 Agent 使用 Kerminal MCP 的结构化能力地图、global 终端 scope、外部 MCP 默认后台执行规则、内置 Agent 的 targetBinding 首选目标、文件型配置边界和故意不提供的 MCP CRUD/UI 编排工具族。",
             ToolCategory::Diagnostics,
             ToolEffect::Read,
             object_schema(vec![]),
@@ -25,7 +27,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::KerminalAppGuide,
             "读取 Kerminal 应用导航指南",
-            "返回面向外部 Agent 的 Kerminal 产品结构地图：左栏主机、中间终端工作区、右栏工具、Agent 会话、global 终端 scope、targetBinding 首选目标、文件型配置和对应 MCP 工具族；不执行 UI 编排。",
+            "返回面向外部 Agent 的 Kerminal 产品结构地图：左栏主机、中间终端工作区、右栏工具、Agent 会话、global 终端 scope、外部 MCP 默认后台工具、内置 Agent 的 targetBinding 首选目标、文件型配置和对应 MCP 工具族；不执行 UI 编排。",
             ToolCategory::Diagnostics,
             ToolEffect::Read,
             object_schema(vec![]),
@@ -77,7 +79,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::KerminalOperationGuide,
             "读取 Kerminal 操作指南",
-            "按任务意图返回外部 Agent 操作 Kerminal 的推荐 MCP 调用顺序，默认优先当前 targetBinding 对应的可见 PTY；同时说明后台 SSH fallback、文件优先配置边界和缺席工具；不读取 secrets，不执行动作。",
+            "按任务意图返回外部 Agent 操作 Kerminal 的推荐 MCP 调用顺序，默认使用后台工具；持久/交互/local shell 才创建 headless PTY，并说明内置 Agent 的 targetBinding、显式 UI Tab 边界、文件优先配置和缺席工具；不读取 secrets，不执行动作。",
             ToolCategory::Diagnostics,
             ToolEffect::Read,
             object_schema(vec![
@@ -107,7 +109,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::KerminalRuntimeSnapshot,
             "读取 Kerminal 运行态快照",
-            "返回当前 Kerminal 运行态摘要：终端、Agent session、targetBinding、端口转发、本机代理入口和 MCP 工具数量，并说明可见 PTY 与后台 SSH 的执行路径；不读取 secrets，不提供文件型配置 CRUD。",
+            "返回当前 Kerminal 运行态摘要：终端、Agent session、targetBinding、端口转发、本机代理入口和 MCP 工具数量，并说明外部 MCP 默认后台、headless PTY 与显式 UI Tab 的执行路径；不读取 secrets，不提供文件型配置 CRUD。",
             ToolCategory::Diagnostics,
             ToolEffect::Read,
             object_schema(vec![]),
@@ -115,7 +117,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalCreate,
             "创建后台终端",
-            "在没有可见 PTY 或第三方 MCP 未打开终端 Tab 时创建可操作的 headless PTY；target=local 支持本地 shell，target=ssh 使用已保存 SSH 主机的登录 shell，返回 sessionId 供 terminal.snapshot/write/resize/close 使用，不创建 UI pane 或 Tab。已有可见 PTY 时仍优先复用当前 targetBinding。",
+            "为持久、交互或 local shell 创建可操作的 headless PTY；target=local 支持本地 shell，target=ssh 使用已保存 SSH 主机的登录 shell，返回 sessionId 供 terminal.snapshot/write/resize/close 使用，不创建 UI pane 或 Tab。外部 MCP 必须沿用该显式 sessionId；内置右栏 Agent 的 session-terminal 才可按 targetBinding 解析现有用户终端。",
             ToolCategory::Terminal,
             ToolEffect::Write,
             object_schema(vec![
@@ -152,16 +154,16 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalWrite,
             "写入终端",
-            "向既有终端写入原始输入。Agent session 默认使用 global scope，targetBinding 只是首选目标；普通命令优先使用此工具，输入和输出会出现在用户左侧可见 PTY。选择其它终端时再传入 terminal.list 返回的 sessionId，不额外创建 Kerminal 确认步骤。",
+            "向既有终端写入原始输入。外部 MCP 仅在 terminal.create 返回的 headless sessionId 或用户明确指定并确认的 UI Tab sessionId 上使用；可见输入/输出不是默认路径。内置右栏 Agent/session-terminal 仍使用 global scope 和 targetBinding 首选目标，不额外创建 Kerminal 确认步骤。",
             ToolCategory::Terminal,
             ToolEffect::Write,
             object_schema(vec![
                 string_field(
                     "sessionId",
-                    "可选终端 session id；省略时优先使用当前 targetBinding，选择其它终端时传入 terminal.list 返回的 sessionId。Agent session 的 scope 为 global。",
+                    "外部 MCP 使用 terminal.create 后必须传回的显式 session id，或用户明确指定并确认的 UI Tab session id；内置右栏 Agent 可省略并按 targetBinding 解析，Agent session 的 scope 为 global。",
                     false,
                 ),
-                string_field("agentSessionId", "Kerminal Agent session id；用于解析首选 targetBinding 和 global scope。", false),
+                string_field("agentSessionId", "Kerminal Agent session id；仅内置右栏 Agent/session-terminal 用于解析 targetBinding 和 global scope。", false),
                 number_field(
                     "bindingGeneration",
                     "兼容旧调用的可选 generation；当前 targetBinding 或显式 sessionId 路径无需提供。",
@@ -173,19 +175,19 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalSnapshot,
             "读取终端快照",
-            "读取指定终端或当前 Agent targetBinding 首选终端的最近输出快照，用于在 visible PTY 写入前确认上下文；global scope 中的其它用户终端也可显式选择。",
+            "读取指定 headless session 或用户明确指定的 UI Tab 的最近输出快照，用于写入前确认上下文；内置右栏 Agent/session-terminal 也可按 targetBinding 读取 global scope 成员。",
             ToolCategory::Terminal,
             ToolEffect::Read,
             object_schema(vec![
-                string_field("sessionId", "可选终端 session id；省略时使用当前 targetBinding 首选终端。", false),
-                string_field("agentSessionId", "Kerminal Agent session id；用于解析首选 targetBinding 和 global scope。", false),
+                string_field("sessionId", "外部 MCP 使用 terminal.create 返回的显式 session id，或用户明确确认的 UI Tab session id；内置 Agent 可省略。", false),
+                string_field("agentSessionId", "Kerminal Agent session id；仅内置右栏 Agent/session-terminal 用于解析 targetBinding 和 global scope。", false),
                 number_field("maxBytes", "最多读取的最近输出字节数，默认 24576。", false),
             ]),
         ),
         tool(
             ToolId::TerminalResolveAgentTarget,
             "解析 Agent 目标终端",
-            "把 Kerminal Agent session id 解析为当前 targetBinding 首选终端，并返回 live/stale 状态；该目标是偏好，不限制 global scope 中的其它终端。",
+            "把内置右栏 Agent session id 解析为当前 targetBinding 首选终端，并返回 live/stale 状态；该解析不改变外部 MCP 的后台默认，也不限制 Agent global scope 中的其它终端。",
             ToolCategory::Terminal,
             ToolEffect::Read,
             object_schema(vec![string_field(
@@ -209,7 +211,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::KerminalAgentTargetContext,
             "读取 Agent 目标上下文",
-            "读取当前 Agent 的 targetBinding 首选目标、global scope、live/stale 状态和最近终端输出快照。",
+            "读取内置右栏 Agent 的 targetBinding 首选目标、global scope、live/stale 状态和最近终端输出快照；外部 MCP 默认不因该上下文切换到可见 Tab。",
             ToolCategory::Terminal,
             ToolEffect::Read,
             object_schema(vec![
@@ -246,7 +248,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::TerminalList,
             "列出终端会话",
-            "读取当前运行时全部用户终端会话摘要；Agent endpoint 默认按 global scope 返回所有 Kerminal tabs 的用户终端及断开 pane 成员，targetBinding 仅标记首选目标。",
+            "读取当前运行时全部用户终端会话摘要；Agent endpoint 默认按 global scope 返回所有 Kerminal tabs 的用户终端及断开 pane 成员，targetBinding 仅标记内置 Agent 的首选目标。外部 MCP 可用该列表做后台会话查询、诊断和清理；列表可见不等于 UI 操作授权，只有用户明确要求操作某个 UI Tab 时才可选择对应 sessionId 写入。",
             ToolCategory::Terminal,
             ToolEffect::Read,
             object_schema(vec![string_field(

@@ -34,7 +34,7 @@ use kerminal_lib::{
         ssh_runtime::{
             auth_broker::SshSessionSecretInput, native_backend::NativeSshRuntimeBackend,
             ManagedSshSessionManager, SshAuthSecretKind, SshChannelKind,
-            MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG, MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
+            MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
         },
         ssh_terminal_service::INTERACTIVE_TERMINAL_RUNTIME_FLAG_PREFIX,
     },
@@ -620,7 +620,8 @@ fn external_launch_sftp_directory_listing_falls_back_to_managed_exec() {
 }
 
 #[tokio::test]
-async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connection() {
+/// 浏览操作复用受管通道，bulk 传输独占原生 SSH 以便取消时不拖累其它终端或列表。
+async fn browser_sftp_reuses_managed_channel_while_bulk_isolated() {
     let server_root = tempdir().expect("server root");
     fs::write(server_root.path().join("managed-runtime.txt"), b"runtime")
         .await
@@ -739,9 +740,9 @@ async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connec
     assert_eq!(
         server.auth_successes.load(Ordering::SeqCst),
         2,
-        "bulk transfer should use a second managed SSH transport while reusing session-only auth"
+        "bulk transfer should use a dedicated SSH transport while reusing session-only auth"
     );
-    assert_eq!(manager.active_session_count().expect("active sessions"), 2);
+    assert_eq!(manager.active_session_count().expect("active sessions"), 1);
     let snapshot = manager.snapshot().expect("runtime snapshot");
     assert_eq!(
         snapshot.active_channels, 1,
@@ -759,24 +760,12 @@ async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connec
                 .any(|flag| flag == MANAGED_SSH_CAPABILITY_RUNTIME_FLAG)
         })
         .expect("browser capability SFTP lane");
-    let bulk = snapshot
-        .sessions
-        .iter()
-        .find(|session| {
-            session
-                .key
-                .runtime_flags
-                .iter()
-                .any(|flag| flag == MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG)
-        })
-        .expect("bulk transfer SFTP lane");
     assert_eq!(
         browser.channel_counts.get(&SshChannelKind::Sftp),
         Some(&1),
         "two browser listings should reuse one retained SFTP subsystem"
     );
     assert_eq!(browser.channel_counts.get(&SshChannelKind::Exec), Some(&1));
-    assert_eq!(bulk.channel_counts.get(&SshChannelKind::Sftp), Some(&1));
     let debug = format!("{snapshot:?}");
     assert!(!debug.contains("secret"));
     assert!(!debug.contains("PRIVATE KEY"));
@@ -786,7 +775,7 @@ async fn sftp_operations_use_real_managed_sftp_channel_without_second_ssh_connec
         snapshot_after_drop.active_channels, 0,
         "dropping the SFTP service should release the retained browser transport channel"
     );
-    assert_eq!(manager.close_idle_sessions().expect("close idle"), 2);
+    assert_eq!(manager.close_idle_sessions().expect("close idle"), 1);
 }
 
 #[path = "managed_runtime/runtime_support.rs"]

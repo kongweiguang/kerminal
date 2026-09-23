@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
@@ -286,6 +288,7 @@ describe("sftpApi", () => {
       enqueueSftpTransfer,
       listSftpTransfers,
       readSftpLocalFileClipboard,
+      retrySftpTransfer,
       trustSftpHostKey,
     } = await import("../../../src/lib/sftpApi");
 
@@ -331,6 +334,7 @@ describe("sftpApi", () => {
       transferId: "transfer-1",
       viewScope: "sftp-workbench:tab-a",
     });
+    await retrySftpTransfer({ transferId: "transfer-1" });
     await clearCompletedSftpTransfers();
     await clearCompletedSftpTransfers({ viewScope: "sftp-workbench:tab-a" });
     await classifySftpLocalPaths({ paths: ["C:\\\\tmp\\\\a.log"] });
@@ -346,6 +350,9 @@ describe("sftpApi", () => {
         localPath: "C:\\tmp\\a.log",
         remotePath: "/tmp/a.log",
       },
+    });
+    expect(invokeMock).toHaveBeenCalledWith("sftp_retry_transfer", {
+      transferId: "transfer-1",
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_enqueue_remote_copy", {
       request: {

@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 import type {
   SftpArchiveDownloadRequest,
   SftpArchiveUploadRequest,
@@ -27,6 +29,7 @@ import type {
   SftpTransferKind,
   SftpTransferOperation,
   SftpTransferRequest,
+  SftpTransferRetryRequest,
   SftpTransferScopeRequest,
   SftpTransferSummary,
   SftpTrustHostKeyRequest,
@@ -357,6 +360,7 @@ function browserLineEnding(content: string) {
 
 const browserTransfers: SftpTransferSummary[] = [];
 const browserTransferTimers = new Map<string, ReturnType<typeof setInterval>>();
+const browserTransferRetries = new Map<string, string>();
 let browserTransferSeq = 0;
 
 function browserLocalEndpoint(path: string): SftpTransferEndpoint {
@@ -393,6 +397,12 @@ function browserManagedTransferTarget(
     : browserLocalEndpoint(request.localPath);
 }
 
+/**
+ * 浏览器预览用同一份快照形状模拟后台队列，默认保留可观察的恢复元数据，
+ * 这样预览不会把桌面端的等待、重试和进度布局误导成同步上传。
+ *
+ * @author kongweiguang
+ */
 export function browserEnqueueTransfer(
   request: SftpManagedTransferRequest,
   metadata: Partial<
@@ -404,6 +414,12 @@ export function browserEnqueueTransfer(
       | "source"
       | "target"
       | "transportMode"
+      | "bytesTransferred"
+      | "totalBytes"
+      | "lastProgressAt"
+      | "recoveryAttempt"
+      | "retryable"
+      | "resumable"
     >
   > = {},
 ): SftpTransferSummary {
@@ -426,6 +442,10 @@ export function browserEnqueueTransfer(
     transportMode: "singleHostSftp",
     phase: "running",
     currentItem: null,
+    lastProgressAt: now,
+    recoveryAttempt: 0,
+    retryable: true,
+    resumable: request.kind === "file",
     ...metadata,
   };
   browserTransfers.unshift(transfer);
@@ -520,6 +540,11 @@ export function browserListTransfers(
     .map((transfer) => ({ ...transfer }));
 }
 
+/**
+ * 预览端立即落为取消终态，桌面端则由真实通道异步确认；两者都停止进度模拟并释放定时器。
+ *
+ * @author kongweiguang
+ */
 export function browserCancelTransfer(
   request: SftpTransferCancelRequest,
 ): SftpTransferSummary {
@@ -539,6 +564,80 @@ export function browserCancelTransfer(
   transfer.updatedAt = nowSeconds();
   stopBrowserTransferSimulation(transfer.id);
   return { ...transfer };
+}
+
+/**
+ * 浏览器预览按旧任务 ID 幂等创建后继任务，避免重复点击生成多个模拟上传。
+ * 真实桌面端由 Rust 保证断点校验和同目标互斥，预览只复现调用与展示契约。
+ *
+ * @author kongweiguang
+ */
+export function browserRetryTransfer(
+  request: SftpTransferRetryRequest,
+): SftpTransferSummary {
+  const transfer = browserTransfers.find(
+    (item) => item.id === request.transferId,
+  );
+  if (!transfer) {
+    throw new Error(`SFTP 传输任务不存在: ${request.transferId}`);
+  }
+  if (!transferMatchesViewScope(transfer, request.viewScope)) {
+    throw new Error(`SFTP 传输任务不属于当前视图: ${request.transferId}`);
+  }
+  if (transfer.status !== "failed" && transfer.status !== "canceled") {
+    throw new Error("只有失败或已取消的传输任务可以重试。");
+  }
+  if (transfer.retryable === false || transfer.failureKind === "commitUnknown") {
+    throw new Error("该传输任务当前不可重试。");
+  }
+  if (
+    transfer.operation !== "upload" &&
+    transfer.operation !== "download"
+  ) {
+    throw new Error("该传输类型暂不支持安全重试。");
+  }
+  if (transfer.transportMode !== "singleHostSftp") {
+    throw new Error("该传输方式暂不支持安全重试。");
+  }
+
+  const existingRetryId = browserTransferRetries.get(transfer.id);
+  if (existingRetryId) {
+    const existingRetry = browserTransfers.find(
+      (item) => item.id === existingRetryId,
+    );
+    if (existingRetry) {
+      return { ...existingRetry };
+    }
+    browserTransferRetries.delete(transfer.id);
+  }
+
+  const resumable = transfer.resumable !== false;
+  const resumedBytes = resumable
+    ? Math.min(transfer.bytesTransferred, transfer.totalBytes ?? transfer.bytesTransferred)
+    : 0;
+  const retry = browserEnqueueTransfer(
+    {
+      conflictPolicy: transfer.conflictPolicy ?? "overwrite",
+      direction: transfer.direction,
+      hostId: transfer.hostId,
+      kind: transfer.kind,
+      localPath: transfer.localPath,
+      remotePath: transfer.remotePath,
+      viewScope: transfer.viewScope ?? null,
+      idleTimeoutSeconds: transfer.idleTimeoutSeconds,
+    },
+    {
+      bytesTransferred: resumedBytes,
+      lastProgressAt: nowSeconds(),
+      recoveryAttempt: (transfer.recoveryAttempt ?? 0) + 1,
+      resumable,
+      retryable: true,
+      totalBytes: transfer.totalBytes ?? undefined,
+    },
+  );
+  browserTransferRetries.set(transfer.id, retry.id);
+  transfer.successorId = retry.id;
+  return { ...retry };
 }
 
 export function browserClearCompletedTransfers(
@@ -581,6 +680,11 @@ export function browserReadSftpLocalFileClipboard(): SftpLocalPathInfo[] {
   return [];
 }
 
+/**
+ * 预览计时器按确认块推进 lastProgressAt，供等待响应与恢复 UI 在无真实网络时保持可测。
+ *
+ * @author kongweiguang
+ */
 function startBrowserTransferSimulation(transferId: string) {
   stopBrowserTransferSimulation(transferId);
   const timer = setInterval(() => {
@@ -603,6 +707,7 @@ function startBrowserTransferSimulation(transferId: string) {
       nextBytesTransferred,
     );
     transfer.updatedAt = nowSeconds();
+    transfer.lastProgressAt = transfer.updatedAt;
     if (transfer.bytesTransferred >= totalBytes) {
       transfer.status = "succeeded";
       transfer.phase = "done";

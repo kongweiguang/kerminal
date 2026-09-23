@@ -1,6 +1,5 @@
 // @author kongweiguang
 
-import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 import type { Machine } from "../../../../src/features/workspace/types";
 import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
@@ -19,6 +18,7 @@ const sftpApiMocks = vi.hoisted(() => ({
   enqueueSftpClipboardDownload: vi.fn(),
   enqueueSftpRemoteCopy: vi.fn(),
   enqueueSftpTransfer: vi.fn(),
+  retrySftpTransfer: vi.fn(),
   listSftpDirectory: vi.fn(),
   listSftpTransfers: vi.fn(),
   previewSftpFile: vi.fn(),
@@ -138,6 +138,8 @@ vi.mock("../../../../src/lib/sftpApi", () => ({
     sftpApiMocks.enqueueSftpRemoteCopy(...args),
   enqueueSftpTransfer: (...args: unknown[]) =>
     sftpApiMocks.enqueueSftpTransfer(...args),
+  retrySftpTransfer: (...args: unknown[]) =>
+    sftpApiMocks.retrySftpTransfer(...args),
   listSftpDirectory: (...args: unknown[]) => sftpApiMocks.listSftpDirectory(...args),
   listSftpTransfers: (...args: unknown[]) => sftpApiMocks.listSftpTransfers(...args),
   previewSftpFile: (...args: unknown[]) =>
@@ -255,32 +257,7 @@ export const containerMachine: Machine = {
   workdir: "/app",
 };
 
-export function createDragDataTransfer() {
-  const store = new Map<string, string>();
-  return {
-    dropEffect: "none",
-    effectAllowed: "all",
-    clearData: vi.fn((type?: string) => {
-      if (type) {
-        store.delete(type);
-        return;
-      }
-      store.clear();
-    }),
-    getData: vi.fn((type: string) => store.get(type) ?? ""),
-    setData: vi.fn((type: string, value: string) => {
-      store.set(type, value);
-    }),
-    setDragImage: vi.fn(),
-  } as unknown as DataTransfer;
-}
-
-export function openCurrentDirectoryContextMenu() {
-  fireEvent.contextMenu(screen.getByTestId("sftp-drop-zone"), {
-    clientX: 24,
-    clientY: 24,
-  });
-}
+export { createDragDataTransfer, openCurrentDirectoryContextMenu } from "./SftpToolContent.testInteractions";
 
 export function createSftpTransferSummary(
   overrides: Partial<SftpTransferSummary> = {},
@@ -353,6 +330,7 @@ beforeEach(() => {
   sftpApiMocks.enqueueSftpClipboardDownload.mockReset();
   sftpApiMocks.enqueueSftpRemoteCopy.mockReset();
   sftpApiMocks.enqueueSftpTransfer.mockReset();
+  sftpApiMocks.retrySftpTransfer.mockReset();
   sftpApiMocks.listSftpDirectory.mockReset();
   sftpApiMocks.listSftpTransfers.mockReset();
   sftpApiMocks.previewSftpFile.mockReset();
@@ -527,6 +505,14 @@ beforeEach(() => {
         : { kind: "local", path: request.localPath },
     totalBytes: request.direction === "upload" ? 1024 : undefined,
   })),
+  );
+  sftpApiMocks.retrySftpTransfer.mockImplementation(({ transferId }) =>
+    Promise.resolve(
+      createSftpTransferSummary({
+        id: `retry-${transferId}`,
+        status: "queued",
+      }),
+    ),
   );
   sftpApiMocks.listSftpTransfers.mockResolvedValue([]);
   desktopRuntimeMocks.listen.mockImplementation(async (_eventName, handler) => {

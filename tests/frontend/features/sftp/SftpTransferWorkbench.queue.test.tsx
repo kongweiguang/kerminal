@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +14,7 @@ const sftpApiMock = vi.hoisted(() => ({
   clearCompletedSftpTransfers: vi.fn(),
   enqueueSftpTransfer: vi.fn(),
   listSftpTransfers: vi.fn(),
+  retrySftpTransfer: vi.fn(),
 }));
 
 const fileDialogApiMock = vi.hoisted(() => ({
@@ -25,6 +28,7 @@ vi.mock("../../../../src/lib/sftpApi", () => ({
   clearCompletedSftpTransfers: sftpApiMock.clearCompletedSftpTransfers,
   enqueueSftpTransfer: sftpApiMock.enqueueSftpTransfer,
   listSftpTransfers: sftpApiMock.listSftpTransfers,
+  retrySftpTransfer: sftpApiMock.retrySftpTransfer,
 }));
 
 vi.mock("../../../../src/lib/fileDialogApi", () => ({
@@ -279,6 +283,7 @@ describe("SftpTransferWorkbench", () => {
     sftpApiMock.clearCompletedSftpTransfers.mockReset();
     sftpApiMock.enqueueSftpTransfer.mockReset();
     sftpApiMock.listSftpTransfers.mockReset();
+    sftpApiMock.retrySftpTransfer.mockReset();
     fileDialogApiMock.listLocalDirectory.mockReset();
     fileDialogApiMock.openLocalDirectory.mockReset();
     fileDialogApiMock.selectLocalDirectory.mockReset();
@@ -291,6 +296,11 @@ describe("SftpTransferWorkbench", () => {
     });
     sftpApiMock.clearCompletedSftpTransfers.mockResolvedValue([]);
     sftpApiMock.enqueueSftpTransfer.mockResolvedValue({
+      ...failedTransfer,
+      id: "transfer-retried",
+      status: "queued",
+    });
+    sftpApiMock.retrySftpTransfer.mockResolvedValue({
       ...failedTransfer,
       id: "transfer-retried",
       status: "queued",
@@ -489,21 +499,15 @@ describe("SftpTransferWorkbench", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "重试传输 failed.log",
+        name: "重新传输 failed.log",
       }),
     );
 
-    expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conflictPolicy: "overwrite",
-        direction: "download",
-        hostId: "host-right",
-        kind: "file",
-        localPath: "C:\\\\Downloads\\\\failed.log",
-        remotePath: "/var/log/failed.log",
-        viewScope: expect.stringMatching(/^sftp-workbench:/),
-      }),
-    );
+    expect(sftpApiMock.retrySftpTransfer).toHaveBeenCalledWith({
+      transferId: "transfer-failed",
+      viewScope: expect.stringMatching(/^sftp-workbench:/),
+    });
+    expect(sftpApiMock.enqueueSftpTransfer).not.toHaveBeenCalled();
   });
 
   it("keeps long transfer history collapsed and scrollable when expanded", async () => {
@@ -566,10 +570,10 @@ describe("SftpTransferWorkbench", () => {
     );
 
     expect(await screen.findByText("app.log")).toBeInTheDocument();
-    expect(screen.getByText("传输中")).toBeInTheDocument();
+    expect(screen.getByLabelText("正在取消")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "取消传输 app.log" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "取消传输 app.log" }),
+    ).toBeDisabled();
     expect(sftpApiMock.cancelSftpTransfer).not.toHaveBeenCalled();
   });
 

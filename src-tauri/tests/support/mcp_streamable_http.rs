@@ -51,6 +51,7 @@ const EXPECTED_TOOL_IDS: &[&str] = &[
     "sftp.transfer.clear_completed",
     "sftp.transfer.enqueue",
     "sftp.transfer.list",
+    "sftp.transfer.retry",
     "ssh.command",
     "ssh.command_on_resolved_host",
     "terminal.close",
@@ -346,6 +347,7 @@ pub fn assert_capability_payload(capability_payload: &Value) {
     }
 }
 
+/// 通用终端示例只绑定显式 sessionId，避免把内置 Agent 参数误传给外部工具。
 pub fn assert_terminal_tool_help_payload(payload: &Value) {
     assert_eq!(
         payload
@@ -373,8 +375,7 @@ pub fn assert_terminal_tool_help_payload(payload: &Value) {
                         .is_some()
                     && tool_reference
                         .pointer("/exampleArguments/agentSessionId")
-                        .and_then(Value::as_str)
-                        .is_some()
+                        .is_none()
                     && tool_reference
                         .pointer("/annotations/readOnlyHint")
                         .and_then(Value::as_bool)
@@ -521,6 +522,7 @@ pub fn assert_config_operation_guide_payload(payload: &Value) {
         }));
 }
 
+/// 会话指南引用通用终端 schema，因此示例不能泄漏仅内置 Agent 接口接受的字段。
 pub fn assert_session_operation_guide_payload(payload: &Value) {
     assert_eq!(
         payload.pointer("/data/intent").and_then(Value::as_str),
@@ -553,8 +555,7 @@ pub fn assert_session_operation_guide_payload(payload: &Value) {
                         .is_some()
                     && tool_reference
                         .pointer("/exampleArguments/agentSessionId")
-                        .and_then(Value::as_str)
-                        .is_some()
+                        .is_none()
             })
         }));
 }

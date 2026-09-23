@@ -87,6 +87,24 @@ fn uses_fixed_default_mcp_http_port() {
     assert_eq!(rules::requested_start_port(Some(48123)), 48123);
 }
 
+/// 锁定 HTTP MCP 握手说明的外部后台默认、headless 生命周期和显式 UI Tab 边界。
+#[test]
+fn advertises_external_background_execution_policy() {
+    let instructions = rules::server_instructions();
+
+    assert!(instructions.contains("External MCP calls default to background execution"));
+    assert!(instructions.contains("ssh.command or ssh.command_on_resolved_host"));
+    assert!(instructions.contains("terminal.create"));
+    assert!(instructions.contains("returned sessionId"));
+    assert!(instructions
+        .contains("Only when the user explicitly asks to operate a specific visible UI Tab"));
+    assert!(instructions.contains(
+        "A stale explicit UI target must be reported instead of substituted with another Tab"
+    ));
+    assert!(instructions.contains("a background failure must not fall back to a visible terminal"));
+    assert!(instructions.contains("built-in right-panel Agent/session-terminal"));
+}
+
 #[test]
 fn parses_tmux_probe_arguments_from_flat_mcp_shape() {
     let mut arguments = serde_json::Map::new();

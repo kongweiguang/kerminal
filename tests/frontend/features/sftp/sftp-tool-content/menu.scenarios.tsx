@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -343,7 +345,7 @@ describe("SftpToolContent context menu behavior", () => {
       resolveDownload?.(true);
     });
 
-    expect(await screen.findByText("完成")).toBeInTheDocument();
+    expect(await screen.findByLabelText("完成")).toBeInTheDocument();
     expect(transferStatusBar).toHaveTextContent("100%");
     expect(screen.queryByTestId("sftp-operation-status")).not.toBeInTheDocument();
     const dropZone = screen.getByTestId("sftp-drop-zone");

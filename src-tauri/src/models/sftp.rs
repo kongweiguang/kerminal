@@ -355,6 +355,8 @@ pub enum SftpTransferStatus {
 pub enum SftpTransferFailureKind {
     /// 后台传输连续一段时间没有确认任何新字节。
     IdleTimeout,
+    /// 原子提交请求可能已生效，但回执未在取消等待预算内返回；禁止自动重写目标。
+    CommitUnknown,
     /// 非结构化或当前不需要进一步细分的失败。
     Other,
 }
@@ -473,6 +475,19 @@ pub struct SftpTransferCancelRequest {
     pub view_scope: Option<String>,
 }
 
+/// 请求从已结束且可恢复的传输任务继续执行。
+///
+/// `transfer_id` 指向原任务而不是重新拼装路径；服务端据此继承已固化的 idle 阈值、
+/// 实际目标和断点检查点，避免调用方误传新目标造成重复写入。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SftpTransferRetryRequest {
+    /// 原始传输任务 id。
+    pub transfer_id: String,
+    /// 可选视图 scope；存在时只允许继续当前视图拥有的任务。
+    pub view_scope: Option<String>,
+}
+
 /// SFTP 传输端点，用于在队列中明确展示来源和目标。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -580,6 +595,21 @@ pub struct SftpTransferSummary {
     /// 结构化失败原因；成功、排队、运行和取消时为空。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<SftpTransferFailureKind>,
+    /// 最近一次确认字节或阶段推进的 Unix 毫秒时间戳；排队任务为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_progress_at: Option<u64>,
+    /// 已经发生的自动无进度恢复次数；当前最多自动恢复一次。
+    #[serde(default)]
+    pub recovery_attempt: u8,
+    /// 失败后是否允许通过 retry 继续执行。
+    #[serde(default)]
+    pub retryable: bool,
+    /// 当前任务是否有可验证的安全断点。
+    #[serde(default)]
+    pub resumable: bool,
+    /// 人工 retry 创建的后继任务 id；自动恢复保持原 id，不填写该字段。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub successor_id: Option<String>,
 }
 
 /// 显式信任 SSH/SFTP 主机密钥请求。

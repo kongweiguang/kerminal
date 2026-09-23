@@ -21,8 +21,9 @@ struct OperationGuidePlan {
     next_hints: Vec<&'static str>,
 }
 
-/// 根据任务意图生成 MCP 操作顺序，默认把当前 targetBinding 当作首选目标，
-/// 让普通命令经由真实可见 PTY 执行；只有切换到其它终端或后台 SSH 时才扩展流程。
+/// 根据任务意图生成 MCP 操作顺序；外部 MCP 默认选择后台 SSH 或 headless PTY，
+/// 只有用户明确指定 UI Tab 才返回可见终端分支，而内置 session-terminal 保持 targetBinding。
+/// SFTP bulk 独占连接需按任务 id 排障，不能从 managedSsh 共享通道计数推断其状态。
 pub(super) fn execute_kerminal_operation_guide(
     tools: &[ToolDefinition],
     arguments: &serde_json::Map<String, Value>,
@@ -75,7 +76,7 @@ pub(super) fn execute_kerminal_operation_guide(
             "requestedIntent": requested_intent,
             "goal": goal,
             "note": intent_note,
-            "purpose": "Give external AI agents a concrete sequence for operating Kerminal through runtime MCP tools. Prefer the current targetBinding and visible PTY for ordinary commands; use global scope members or background tools only when the task needs them.",
+            "purpose": "Give external AI agents a concrete sequence for operating Kerminal through runtime MCP tools. External MCP defaults to background tools: use ssh.command for non-interactive SSH and terminal.create with an explicit sessionId for persistent, interactive, or local shells. Visible UI Tab work requires an explicit user request; the built-in session-terminal flow alone retains targetBinding-first behavior.",
             "recommendedFirstCalls": first_calls,
             "workflow": plan.workflow.clone(),
             "toolReference": tool_reference,
@@ -104,10 +105,12 @@ pub(super) fn execute_kerminal_operation_guide(
             },
             "safetyBoundaries": {
                 "hostPolicy": "The MCP host owns any confirmation, approval, permissions, hooks, and audit it chooses; Kerminal does not add a second per-command prompt.",
-                "terminalWrite": "Every external Agent session uses global scope. Prefer the current live targetBinding, inspect it with terminal.snapshot, and write through terminal.write so input and output remain visible in the user's left PTY. Use terminal.list and an explicit sessionId only for another user terminal or stale target; the server validates any explicit membership.",
+                "terminalWrite": "External MCP calls use background tools by default. For persistent, interactive, or local shell work, call terminal.create and use its returned explicit sessionId with terminal.snapshot/write/close. Use terminal.list and a confirmed explicit sessionId only after the user requests a visible UI Tab; the server validates membership, and a stale target is reported rather than replaced. The session-terminal intent is the built-in right-panel Agent exception and retains its targetBinding-first scope flow.",
                 "remoteWrite": "For remote file deletes, tmux kills, port-forward closes, and credential writes, rely on host approval and user intent before calling write/destructive tools.",
-                "backgroundSsh": "ssh.command and ssh.command_on_resolved_host are non-interactive background fallbacks; their structured stdout/stderr do not appear in the left terminal. Prefer terminal.create for a headless PTY when no live PTY exists, and use SSH background tools only when the user explicitly requests structured background output or PTY execution is unsuitable.",
-                "managedSsh": "For SSH-bound tool families, inspect kerminal.runtime_snapshot.managedSsh to verify whether terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools are sharing a managed session; the snapshot is redacted and never returns credential material.",
+                "backgroundSsh": "ssh.command and ssh.command_on_resolved_host are the external MCP default for non-interactive SSH; their structured stdout/stderr do not appear in the left terminal. Use terminal.create only for persistent, interactive, or local shell semantics, and never fall back to a visible PTY after a background failure.",
+                "uiTab": "Only an explicit user request to operate a visible UI Tab permits terminal.list followed by target confirmation and terminal.snapshot/write with its explicit sessionId. A stale target must be reported without substituting another Tab.",
+                "sessionTerminal": "For intent=session-terminal, the built-in right-panel Agent/session-terminal flow may use global scope, targetBinding, terminal.list, and reconnect behavior as described by that workflow; this exception does not change the external MCP default for other intents.",
+                "managedSsh": "For SSH-bound tool families, inspect kerminal.runtime_snapshot.managedSsh for terminal, SFTP browsing/preview/management, exec/tmux/system/container, port-forward, and MCP SSH session reuse. Background bulk SFTP transfers own dedicated SSH/SFTP connections; diagnose them through sftp.transfer.list by id. The snapshot is redacted and never returns credential material.",
                 "externalLaunch": "External SSH launch compatibility is configured in settings.toml externalLaunch; runtime diagnostics expose only policy, counts, launch ids, and redacted rejection metadata.",
                 "secrets": "Never copy passwords, tokens, private keys, vault keys, or decrypted secret material into chat, docs, logs, ordinary config files, or diagnostics."
             },
@@ -115,8 +118,8 @@ pub(super) fn execute_kerminal_operation_guide(
                 "inspectTool": "kerminal.runtime_snapshot",
                 "snapshotPath": "managedSsh",
                 "appliesToIntents": ["ssh-command", "sftp", "tmux", "container", "port-forward", "server-info", "diagnostics"],
-                "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens independent shell, SFTP, exec, and forwarding channels under the same session key when available.",
-                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures should not be hidden by opening a separate legacy SSH connection.",
+                "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens independent shell, SFTP browsing, exec, and forwarding channels under the same session key when available. Background bulk transfers own a separate SSH/SFTP connection so stopping one transfer cannot close a shared terminal.",
+                "fallbackRule": "Managed browsing falls back only for unsupported or unwired backends; background bulk transfers intentionally use dedicated connections. Authentication, host-key, connect, subsystem, exec, or channel-open failures must be surfaced rather than hidden by another connection attempt.",
                 "secretBoundary": "managedSsh diagnostics include only redacted session/channel/runtime state, never passwords, private keys, passphrases, raw env, or vault refs."
             },
             "deliberatelyAbsentToolFamilies": absent_tool_families(),
@@ -149,7 +152,7 @@ pub(super) fn execute_kerminal_operation_guide(
     }
 }
 
-/// 将用户意图映射到最窄的运行态流程，并为 SFTP 传输固定端点确认、入队、跟踪和取消顺序。
+/// 将用户意图映射到最窄的运行态流程，并为 SFTP 传输固定端点确认、入队、跟踪、恢复和取消顺序。
 fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
     let normalized_intent = requested_intent
         .trim()
@@ -182,23 +185,23 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 guide_step(
                     "track",
                     Some("sftp.transfer.list"),
-                    "Read the transfer.id returned by enqueue by calling sftp.transfer.list with { transferId } until the task reaches a terminal state.",
+                    "Read the transfer.id returned by enqueue by calling sftp.transfer.list with { transferId } until the task reaches a terminal state. Waiting for a response is not failure; safe file tasks automatically recover once from an idle timeout under the same id.",
                     &["transferId"],
                     "Enqueue means accepted into the queue, not completed; transportMode is selected automatically and is not an Agent option. The 60-second MCP client call guard applies to this enqueue/list request only, never to the queued transfer lifetime.",
                 ),
                 guide_step(
                     "resume",
-                    Some("sftp.transfer.enqueue"),
-                    "When list reports failureKind = idleTimeout, enqueue the same source, destination, kind, conflictPolicy, and returned idleTimeoutSeconds again to continue from the confirmed partial offset.",
-                    &["source", "destination", "kind", "conflictPolicy"],
-                    "Only idle-timeout tasks offer resumable partial data. Do not choose a new timeout on retry; keep the adopted value from the failed task summary.",
+                    Some("sftp.transfer.retry"),
+                    "When list reports a failed or canceled terminal task with retryable=true, call sftp.transfer.retry with its transferId. The service reuses the original endpoints, conflict policy, adopted idle timeout, and validated confirmed partial offset when available.",
+                    &["transferId"],
+                    "Any terminal task reporting retryable=true can be passed to retry. resumable=true means the service can use the confirmed partial offset; resumable=false means it starts a fresh transfer. The retry call is short and returns an accepted idempotent successor; query it until completion and do not reconstruct endpoints or choose a new timeout.",
                 ),
                 guide_step(
                     "cancel",
                     Some("sftp.transfer.cancel"),
                     "If the user asks to stop the task, cancel it with the same transferId and inspect the returned transfer snapshot.",
                     &["transferId"],
-                    "Cancel only the explicitly selected task and rely on MCP host approval for the remote side effect.",
+                    "Cancel only the explicitly selected task and rely on MCP host approval for the remote side effect. Cancellation is a request: poll until canceled, failed, or succeeded; an atomic commit that already completed remains succeeded.",
                 ),
             ],
             vec![
@@ -211,21 +214,25 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 "sftp.transfer.enqueue",
                 "sftp.transfer.list",
                 "sftp.transfer.cancel",
+                "sftp.transfer.retry",
                 "sftp.transfer.clear_completed",
             ],
             vec![
                 "Canonical source and destination endpoints support local -> remote, remote -> local, same-host remote copy, and cross-host remote copy; a local path always means the computer running Kerminal.",
                 "kind and conflictPolicy are required for every transfer; choose file or directory and overwrite, skip, or rename respectively.",
-                "idleTimeoutSeconds defaults from [sftp].idleTimeoutSeconds and protects only consecutive missing byte progress. There is no total transfer duration limit; saved-host SSH connectTimeoutSeconds remains the separate connection boundary.",
+                "idleTimeoutSeconds defaults from [sftp].idleTimeoutSeconds (normally 180 seconds) and protects only consecutive missing confirmed-byte progress. There is no total transfer duration limit; do not increase the default just because a file is large. Saved-host SSH connectTimeoutSeconds remains the separate connection boundary.",
+                "After five seconds without confirmed bytes the UI speed becomes zero and the phase is waiting; keep polling. For safe single-file upload/download, the first idle timeout automatically reconnects once under the same task id; a second idle timeout ends failed/idleTimeout. Queue wait does not consume the idle budget.",
+                "If failureKind=commitUnknown, the final rename may have completed without an acknowledgement. This task is not retryable; inspect the destination file and its content before any new write.",
                 "Do not choose clientBridge or localStage: the runtime selects transportMode automatically and hides temporary staging paths.",
-                "Cached sftp.upload, sftp.upload_directory, sftp.download, and sftp.download_directory calls return a migration hint only. Use enqueue -> list -> cancel or resumable enqueue instead.",
-                "A missing host, credential, host-key trust, SFTP subsystem, or path permission is a recoverable transfer error; fix that condition before retrying.",
+                "Cached sftp.upload, sftp.upload_directory, sftp.download, and sftp.download_directory calls return a migration hint only. Use enqueue -> list -> retry or cancel instead.",
+                "A missing host, credential, host-key trust, SFTP subsystem, or path permission needs that condition fixed first; do not automatically retry authentication, permission, or changed-source failures. Follow the returned retryable flag.",
                 "If the host id is unknown, read hosts/*.toml directly or use the selected scope member's host context.",
                 "If a local-to-local copy is requested, use the local filesystem capability instead; SFTP transfer does not implement it.",
             ],
             vec![
-                "After enqueue, call sftp.transfer.list with the returned transfer.id as transferId.",
-                "If list reports failureKind = idleTimeout, enqueue the same transfer again with its idleTimeoutSeconds to continue the retained partial data.",
+                "After enqueue, call sftp.transfer.list with the returned transfer.id as transferId; a final file missing while the task is queued/running/recovering does not imply failure.",
+                "If list reports retryable=true, call sftp.transfer.retry with the failed transferId; resumable=false means a fresh transfer, and repeated retry requests return the same successor.",
+                "If list reports failureKind=commitUnknown, inspect the destination before taking action; never retry this task automatically.",
                 "Call sftp.transfer.cancel with that transferId only when the user asks to stop the task.",
                 "Use sftp.transfer.clear_completed after reviewing finished tasks when queue cleanup is requested.",
             ],

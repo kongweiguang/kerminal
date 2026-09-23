@@ -62,9 +62,10 @@ describe("SftpTransferStatusBar", () => {
       screen.getByRole("status", { name: "SFTP 传输状态" }),
     ).toBeInTheDocument();
     expect(screen.getByText("app.log")).toBeInTheDocument();
+    expect(screen.getByLabelText("正在取消")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "取消传输 app.log" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "取消传输 app.log" }),
+    ).toBeDisabled();
     expect(onCancel).not.toHaveBeenCalled();
   });
 
@@ -182,7 +183,7 @@ describe("SftpTransferStatusBar", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "重试传输 app.log" }));
+    await user.click(screen.getByRole("button", { name: "重新传输 app.log" }));
 
     expect(onRetry).toHaveBeenCalledWith(failedTransfer);
   });
@@ -206,11 +207,11 @@ describe("SftpTransferStatusBar", () => {
     );
 
     const retryButton = screen.getByRole("button", {
-      name: "重试传输 app.log",
+      name: "重新传输 app.log",
     });
     expect(retryButton).toHaveAttribute(
       "title",
-      "重新加入传输队列；将优先尝试断点续传",
+      "已请求重新传输；该任务没有可用断点。",
     );
 
     await user.click(retryButton);
@@ -245,7 +246,7 @@ describe("SftpTransferStatusBar", () => {
       screen.getByText("不能安全重试：该传输类型暂不支持安全重试。"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "重试传输 app.log" }),
+      screen.queryByRole("button", { name: /继续传输 app.log|重新传输 app.log/ }),
     ).not.toBeInTheDocument();
   });
 });

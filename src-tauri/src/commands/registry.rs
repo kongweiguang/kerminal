@@ -126,6 +126,7 @@ pub fn register_kerminal_commands(
         crate::commands::sftp::sftp_enqueue_clipboard_download,
         crate::commands::sftp::sftp_list_transfers,
         crate::commands::sftp::sftp_cancel_transfer,
+        crate::commands::sftp::sftp_retry_transfer,
         crate::commands::sftp::sftp_clear_completed_transfers,
         crate::commands::sftp::sftp_classify_local_paths,
         crate::commands::sftp::sftp_read_local_file_clipboard,

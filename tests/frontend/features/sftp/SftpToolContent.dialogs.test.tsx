@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   fireEvent,
   render,
@@ -82,7 +84,7 @@ describe("SftpToolContent events and dialogs", () => {
       );
     });
 
-    expect(await screen.findByText("失败")).toBeInTheDocument();
+    expect(await screen.findByLabelText("失败")).toBeInTheDocument();
     expect(screen.queryByText("SSH 认证失败")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/transfer-event-secret/),

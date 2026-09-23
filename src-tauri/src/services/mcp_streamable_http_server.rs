@@ -39,7 +39,7 @@ const DEFAULT_MCP_HTTP_PORT: u16 = 37657;
 const MCP_HTTP_PORT_SCAN_LIMIT: u16 = 64;
 const MCP_PATH: &str = "/mcp";
 const MCP_AGENT_PATH: &str = "/mcp/agents";
-const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, headless terminal creation, SSH/SFTP, tmux, containers, port forwarding, server info, command history, diagnostics, authorized credential saving, and read-only file-backed config validation. Every external Agent session uses global terminal scope across Kerminal tabs; targetBinding is the preferred current target, not an access restriction. For ordinary commands, inspect the preferred live PTY with terminal.snapshot and write through terminal.write so input and output remain visible in the user's left terminal. If no live PTY exists, use terminal.create with target=local or target=ssh plus a saved hostId when needed, then use terminal.snapshot/write/close on its sessionId without opening a UI Tab; shell applies only to local targets, while SSH uses the saved host login shell and agentSessionId is optional correlation metadata. Use ssh.command or ssh.command_on_resolved_host only when a suitable PTY cannot be created or the user explicitly requests a background structured result; those tools do not display output in a terminal. Do not ask the user to reopen an already available terminal or create a new binding. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP host policy owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt and validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
+const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, headless terminal creation, SSH/SFTP, tmux, containers, port forwarding, server info, command history, diagnostics, authorized credential saving, and read-only file-backed config validation. External MCP calls default to background execution: use ssh.command or ssh.command_on_resolved_host for non-interactive SSH commands. For a persistent or interactive shell, including a local shell, call terminal.create, keep its returned sessionId explicit, then use terminal.snapshot/write and terminal.close; terminal.create is headless and does not open a UI Tab. Only when the user explicitly asks to operate a specific visible UI Tab should you discover and confirm that target, then call terminal.snapshot/write with its explicit sessionId. A stale explicit UI target must be reported instead of substituted with another Tab, and a background failure must not fall back to a visible terminal. The built-in right-panel Agent/session-terminal flow retains global scope and targetBinding as its preferred target; ordinary Tab changes do not rebind it. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP host policy owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt and validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
 
 /// Streamable HTTP MCP server runtime rules used by integration tests.
 #[doc(hidden)]
@@ -60,6 +60,11 @@ pub mod rules {
 
     pub fn mcp_http_port_scan_limit() -> u16 {
         super::MCP_HTTP_PORT_SCAN_LIMIT
+    }
+
+    /// 返回 MCP 握手说明供契约测试锁定外部默认路径，避免初始化文案与各指南漂移。
+    pub fn server_instructions() -> &'static str {
+        super::MCP_SERVER_INSTRUCTIONS
     }
 
     pub fn is_externally_callable_tool(tool: &ToolDefinition) -> bool {
@@ -423,6 +428,7 @@ fn tool_execution_to_call_tool_result(result: McpToolExecutionOutput) -> CallToo
             "summary": summary,
             "data": result.data,
             "entities": result.entities,
+            "nextHints": result.next_hints,
         }));
     }
 

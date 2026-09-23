@@ -26,9 +26,10 @@ use crate::{
         SftpLocalPathInfo, SftpManagedTransferRequest, SftpPathRequest, SftpPathStat,
         SftpPreviewRequest, SftpReadTextFileRequest, SftpReadTextFileResponse,
         SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferCancelRequest, SftpTransferDirection,
-        SftpTransferKind, SftpTransferOperation, SftpTransferRequest, SftpTransferScopeRequest,
-        SftpTransferStatus, SftpTransferSummary, SftpTransferTransportMode,
-        SftpTrustHostKeyRequest, SftpWriteTextFileRequest, SftpWriteTextFileResponse,
+        SftpTransferKind, SftpTransferOperation, SftpTransferRequest, SftpTransferRetryRequest,
+        SftpTransferScopeRequest, SftpTransferStatus, SftpTransferSummary,
+        SftpTransferTransportMode, SftpTrustHostKeyRequest, SftpWriteTextFileRequest,
+        SftpWriteTextFileResponse,
     },
     paths::KerminalPaths,
     services::{
@@ -77,9 +78,9 @@ use self::transfer_paths::{
 };
 
 use self::transfer::{
-    run_with_idle_watchdog, CancellationReader, ProgressWriter, TransferEventEmitter,
-    TransferLimiter, TransferProgress, TransferTask,
+    run_with_idle_watchdog, TransferEventEmitter, TransferLimiter, TransferProgress, TransferTask,
 };
+use self::transfer_io::{new_recovery_checkpoints, RecoveryCheckpointHolder};
 
 const DEFAULT_PREVIEW_BYTES: usize = 16 * 1024;
 const MIN_PREVIEW_BYTES: usize = 256;
@@ -95,6 +96,7 @@ pub struct SftpService {
     external_targets: Option<ExternalSessionMaterializer>,
     transfers: Arc<Mutex<HashMap<String, TransferTask>>>,
     transfer_limiter: Arc<TransferLimiter>,
+    target_writers: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
 }
 
 impl fmt::Debug for SftpService {
@@ -179,6 +181,7 @@ impl SftpService {
             external_targets,
             transfers: Arc::new(Mutex::new(HashMap::new())),
             transfer_limiter: Arc::new(TransferLimiter::default()),
+            target_writers: Mutex::new(HashMap::new()),
         }
     }
 

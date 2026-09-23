@@ -8,8 +8,9 @@ use super::diagnostics_common::{
 use super::*;
 use crate::services::external_agent_workspace::CONFIG_REFERENCE_BODY;
 
-/// 返回当前 MCP 能力和 Agent scope 的运行规则，供外部 Agent 优先使用当前
-/// targetBinding 对应的可见 PTY，并在需要时选择 global scope 中的其它终端。
+/// 返回当前 MCP 能力和 Agent scope 的运行规则；外部 MCP 默认使用后台工具，
+/// 只有明确的 UI Tab 请求才进入可见终端分支，内置 session-terminal 继续保留 targetBinding。
+/// SFTP 浏览可复用受管连接，bulk 传输独占连接以便取消和恢复时隔离共享终端。
 pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExecutionResult {
     let exposed_tools = exposed_tool_definitions(tools);
     let exposed_tool_count = exposed_tools.len();
@@ -40,10 +41,9 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 "kerminal.tool_help",
                 "kerminal.operation_guide",
                 "kerminal.runtime_snapshot",
-                "kerminal.agent.current_session",
-                "kerminal.agent.target_context",
-                "terminal.list",
-                "terminal.snapshot",
+                "ssh.command",
+                "ssh.command_on_resolved_host",
+                "terminal.create",
                 "kerminal.config.validate"
             ],
             "sessionWorkspace": {
@@ -61,32 +61,34 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                     "terminal.list",
                     "terminal.snapshot"
                 ],
-                "scopeRule": "Every external Agent session uses global scope across all Kerminal tabs. targetBinding identifies the current preferred terminal only; it is not an access restriction. Other user terminals remain available, while the right-panel Agent TUI is excluded.",
-                "terminalWriteRule": "Prefer the current live targetBinding: call terminal.snapshot, then terminal.write so the command and output stay visible in the user's left PTY. Use terminal.list and an explicit sessionId only when the preferred target is unavailable or the task names another terminal; a disconnected member can be recovered with terminal.reconnect using its paneId. Kerminal does not add a per-command confirmation or require reopening an already available terminal.",
+                "scopeRule": "Every external Agent session uses global scope across all Kerminal tabs. targetBinding identifies the built-in right-panel Agent's preferred terminal only; it is not an access restriction. External MCP calls do not inherit that visible target, while other user terminals remain available when the user explicitly names a UI Tab.",
+                "terminalWriteRule": "External MCP defaults to background tools: use ssh.command for non-interactive SSH, or terminal.create for a persistent/interactive/local shell and pass its returned sessionId to terminal.snapshot/write/close. Use terminal.list plus an explicit sessionId only after the user explicitly asks to operate a visible UI Tab; a stale target is reported, never replaced. Kerminal does not add a per-command confirmation.",
                 "terminalExecutionPolicy": {
                     "scope": "global",
                     "preferredTarget": "targetBinding",
-                    "visiblePtyFirst": "Ordinary commands and interactive work go through terminal.snapshot and terminal.write on the preferred live PTY.",
-                    "otherTerminals": "Choose another user terminal from terminal.list only when the task needs it; targetBinding is a preference, not a scope boundary.",
-                    "headlessFallback": "If no live visible PTY exists, call terminal.create with target=local or target=ssh and a saved hostId when needed, then use terminal.snapshot and terminal.write on the returned sessionId; close the headless session when finished.",
-                    "backgroundFallback": "Use ssh.command or ssh.command_on_resolved_host only when the user explicitly requests a structured background result or a PTY is unsuitable; their stdout/stderr do not appear in the left terminal.",
-                    "reconnect": "If a selected pane is actually disconnected, call terminal.reconnect and continue after acknowledgement; do not ask the user to reopen an already available terminal or create a new binding."
+                    "externalMcpDefault": "Use background tools by default. Non-interactive SSH uses ssh.command or ssh.command_on_resolved_host; persistent, interactive, and local shells use terminal.create followed by terminal.snapshot/write/close on its explicit sessionId. These paths do not open or change a UI Tab.",
+                    "visiblePtyFirst": "Compatibility field for the built-in right-panel Agent/session-terminal flow only: targetBinding may be inspected with terminal.snapshot and written through terminal.write. External MCP does not use this as its default.",
+                    "otherTerminals": "External MCP calls may use terminal.list for background session query, diagnostics, or cleanup, but do not switch tabs. Only after an explicit UI Tab request may a confirmed sessionId be used for visible writes; targetBinding remains a built-in Agent preference, not an external access boundary.",
+                    "headlessFallback": "For persistent, interactive, or local shell work, call terminal.create with target=local or target=ssh and a saved hostId when needed, then use the returned explicit sessionId with terminal.snapshot/write/close. Creation is headless and does not open a UI Tab.",
+                    "backgroundFallback": "External MCP default: call ssh.command or ssh.command_on_resolved_host for non-interactive SSH. Their structured stdout/stderr do not appear in the left terminal; a background failure must not fall back to a visible PTY.",
+                    "uiTabInteraction": "Only an explicit user request to operate a visible UI Tab permits terminal.list followed by target confirmation and terminal.snapshot/write with its explicit sessionId. If that target is stale, report it and do not substitute another Tab.",
+                    "reconnect": "External MCP may reconnect only an explicitly selected disconnected pane after the user names that UI target; it must not switch or substitute a Tab implicitly. Built-in right-panel Agent/session-terminal retains its targetBinding scope behavior."
                 }
             },
             "managedSshRuntime": {
                 "inspectTool": "kerminal.runtime_snapshot",
                 "snapshotPath": "managedSsh",
                 "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
-                "sharedSessionRule": "SSH hosts may reuse one authenticated ManagedSshSession across terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools. SFTP-only hosts may use only SFTP channels; shell-derived capability families fail closed before transport.",
-                "channelRule": "Reuse does not mean a single blocking stream: shell, SFTP, exec, and forwarding use separate managed channels with counts, queue depth, timeout, cancel, cleanup, and recent-failure diagnostics.",
-                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures must remain managed runtime errors.",
+                "sharedSessionRule": "SSH hosts may reuse one authenticated ManagedSshSession across terminal, SFTP browsing/preview/management, exec/tmux/system/container, port-forward, and MCP SSH tools. Background bulk SFTP transfers use a dedicated SSH/SFTP connection so cancel and reconnect cannot close a shared terminal. SFTP-only hosts may use only SFTP capabilities; shell-derived families fail closed before transport.",
+                "channelRule": "Managed shell, SFTP browsing, exec, and forwarding use separate channels with redacted diagnostics. Bulk transfer connection ownership and recovery are reflected in the transfer task, not in managedSsh channel counts.",
+                "fallbackRule": "Managed browsing falls back only for unsupported or unwired backends. Background bulk transfer's dedicated connection is intentional, not a fallback; auth, host-key, connect, subsystem, exec, or channel-open failures must be surfaced rather than hidden by another connection attempt.",
                 "secretBoundary": "managedSsh diagnostics are redacted and must not expose passwords, private keys, key passphrases, raw env, or vault refs."
             },
             "runtimeToolFamilies": [
-                capability_family("agentSession", "Use the current Kerminal Agent session and its global terminal scope; targetBinding marks the preferred terminal without limiting access to other user terminals.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
-                capability_family("terminal", "Create headless local/SSH PTYs when no visible terminal exists, then list, inspect, write, resize, reconnect, and close user terminals in the global Agent scope; targetBinding is the preferred visible target, while UI focus stays in the app/UI host.", &exposed_tools, &["terminal."]),
-                capability_family("ssh", "Use terminal.snapshot plus terminal.write on the preferred visible PTY for ordinary commands; ssh.* remains a background non-interactive fallback through the managed SSH exec facade whose output is not shown in the left terminal. SFTP-only hosts are rejected before transport.", &exposed_tools, &["ssh."]),
-                capability_family("sftp", "Browse, preview, transfer, and manage remote files for saved SSH or SFTP-only hosts through the managed SSH SFTP subsystem/runtime.", &exposed_tools, &["sftp."]),
+                capability_family("agentSession", "Use the current Kerminal Agent session and its global terminal scope only for the built-in right-panel Agent/session-terminal flow; targetBinding does not change the external MCP default.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
+                capability_family("terminal", "Create headless local/SSH PTYs for persistent or interactive work, then use the returned explicit sessionId with snapshot, write, resize, and close; terminal.reconnect is only for an explicitly selected disconnected UI pane. Visible UI Tab operations require an explicit user request and confirmed sessionId.", &exposed_tools, &["terminal."]),
+                capability_family("ssh", "Use ssh.command or ssh.command_on_resolved_host by default for non-interactive SSH through the managed SSH exec facade; their output is structured and not shown in the left terminal. SFTP-only hosts are rejected before transport.", &exposed_tools, &["ssh."]),
+                capability_family("sftp", "Browse, preview, and manage remote files for saved SSH or SFTP-only hosts with managed SFTP channels when available. Background bulk transfers use dedicated SSH/SFTP connections and expose progress, cancel, and recovery through sftp.transfer.*.", &exposed_tools, &["sftp."]),
                 capability_family("tmux", "Probe, list, create, rename, kill, inspect, capture, and attach-plan tmux sessions through managed exec on SSH targets.", &exposed_tools, &["tmux."]),
                 capability_family("container", "List, inspect, tail logs, read stats, manage lifecycle, and browse, edit, transfer, or manage files for SSH-host Docker/Podman containers through managed SSH exec/SFTP capabilities.", &exposed_tools, &["container."]),
                 capability_family("portForward", "Create, list, and close managed SSH port forwards and local proxy entries; runtime diagnostics show session/channel/tunnel ownership.", &exposed_tools, &["port_forward."]),
@@ -139,7 +141,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
             .collect(),
         next_hints: vec![
             "When you know the task type, call kerminal.operation_guide with an intent such as terminal, config, sftp, tmux, or credentials.".to_owned(),
-            "For session work, use targetBinding as the preferred global terminal; refresh with kerminal.agent.target_context or terminal.list only when the target is missing, stale, or another terminal is requested, then use terminal.snapshot/terminal.write for visible PTY execution.".to_owned(),
+            "For external MCP work, use ssh.command for non-interactive SSH or terminal.create plus explicit sessionId for persistent/interactive/local shells; only a direct UI Tab request permits terminal.list and visible snapshot/write. Built-in session-terminal keeps targetBinding as its preferred global terminal.".to_owned(),
             "For SSH-bound tools, inspect kerminal.runtime_snapshot.managedSsh to confirm managed session/channel reuse before assuming a separate SSH connection is needed.".to_owned(),
             "For config edits, read kerminal-config.md, edit files directly, then call kerminal.config.validate.".to_owned(),
             "Use kerminal.tool_help for exact schemas, examples, and safety annotations before calling a specific runtime tool.".to_owned(),
@@ -150,6 +152,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
 
 /// 返回 Kerminal 的产品区域与 MCP 路由，明确 global scope、headless PTY 与 UI 编排边界；
 /// SFTP 文件复制在这里仅指向统一 source/destination 队列，避免导航层复制执行细节。
+/// 排障入口需区分受管浏览通道与独占 bulk 连接，避免误读 managedSsh 计数。
 pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecutionResult {
     let exposed_tools = exposed_tool_definitions(tools);
     let tool_family = |candidate_tool_ids: &[&'static str]| {
@@ -200,6 +203,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
         "sftp.transfer.enqueue",
         "sftp.transfer.list",
         "sftp.transfer.cancel",
+        "sftp.transfer.retry",
         "sftp.transfer.clear_completed",
     ]);
     let container_tools = tool_family(&[
@@ -273,7 +277,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "userSees": "Saved Local/SSH/SFTP/RDP/Telnet/Serial targets, groups, tags, connection entry points, and host context actions. Double-clicking an SFTP-only host opens the central transfer workbench without creating a terminal.",
                     "aiCanDo": [
                         "Read or update host/profile/group files directly when the user asks for configuration changes.",
-                        "Use the currently open targetBinding PTY for ordinary commands; use non-interactive SSH through saved credentials only when no visible PTY is available or a background structured result is explicitly requested.",
+                        "Use ssh.command or ssh.command_on_resolved_host by default for non-interactive SSH; use terminal.create with an explicit sessionId for persistent/interactive/local shell work. A visible PTY requires an explicit UI Tab request.",
                         "Open runtime views indirectly by using the corresponding MCP tool family rather than UI choreography."
                     ],
                     "runtimeTools": remote_tools.clone(),
@@ -289,9 +293,9 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "surface": "terminalWorkspace",
                     "userSees": "Tabs, panes, split terminal workspace, command blocks, search, terminal logs, and the live terminal scope for each Agent session.",
                     "aiCanDo": [
-                        "List and inspect every existing user terminal in the global scope across Kerminal tabs.",
-                        "Prefer the current targetBinding terminal for visible execution; every Agent session can also operate other user terminals in the global scope, selected by sessionId when needed, or create a headless PTY when no terminal is open.",
-                        "Reconnect a disconnected pane through terminal.reconnect, then refresh the scope membership.",
+                        "Use terminal.create for a headless PTY when persistent, interactive, or local shell semantics are required; retain its explicit sessionId for snapshot/write/close.",
+                        "Use terminal.list and a confirmed explicit sessionId only after the user explicitly asks to operate a visible UI Tab; do not infer a Tab from targetBinding.",
+                        "The built-in right-panel Agent/session-terminal may inspect targetBinding and reconnect a disconnected pane; external MCP may do so only for an explicitly selected UI target, then refresh membership.",
                         "Resize terminals and manage terminal logging when requested."
                     ],
                     "runtimeTools": terminal_tools.clone(),
@@ -302,10 +306,10 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     ],
                     "boundaries": [
                         "terminal.create can create a headless local or saved-host SSH PTY without opening a UI pane or Tab; UI focus remains outside MCP.",
-                        "For ordinary commands, inspect the current targetBinding with terminal.snapshot and write through terminal.write so output remains visible in the left PTY; list terminals only when selecting another target or recovering stale context.",
-                        "A disconnected member is recoverable through terminal.reconnect with paneId; continue after the connection acknowledgement.",
+                        "External MCP defaults to ssh.command for non-interactive SSH or terminal.create plus explicit sessionId for persistent/interactive/local shell work; these paths do not open a UI pane or Tab.",
+                        "A visible UI Tab is actionable only after an explicit user request, terminal.list discovery, and target confirmation; snapshot/write/reconnect use its explicit session or pane id, while a stale target is reported and never replaced by another Tab.",
                         "terminal.reconnect only restores an existing pane connection; it does not orchestrate arbitrary UI.",
-                        "ssh.command and ssh.command_on_resolved_host are explicit background fallbacks and do not display output in a terminal; use terminal.create for PTY semantics when no visible PTY exists."
+                        "A background command failure never falls back to a visible PTY; the built-in right-panel Agent/session-terminal remains the only targetBinding-first compatibility flow."
                     ]
                 },
                 {
@@ -331,7 +335,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "boundaries": [
                         "Do not expect settings.*, snippet.*, workflow.*, or workspace.* MCP CRUD tools.",
                         "Edit configuration files directly and validate.",
-                        "Inspect kerminal.runtime_snapshot.managedSsh before treating SFTP, tmux, container, server-info, or port-forward failures as independent SSH login failures.",
+                        "Inspect kerminal.runtime_snapshot.managedSsh for SFTP browsing/preview, tmux, container, server-info, or port-forward session diagnostics. For background bulk SFTP transfers, inspect sftp.transfer.list by id because those connections are dedicated and absent from managedSsh channel counts.",
                         "MCP host owns confirmation, approval, permissions, hooks, and audit; Kerminal does not add a second per-command prompt."
                     ]
                 },
@@ -340,9 +344,9 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "userSees": "Codex, Claude, or custom CLI sessions launched from Kerminal with session-scoped workspace files and a global terminal scope.",
                     "aiCanDo": [
                         "Read current Agent session metadata.",
-                        "Use the current targetBinding as the preferred terminal, or operate any other user terminal in the global scope when the task needs it.",
-                        "Refresh terminal membership only when targetBinding is unavailable, stale, or another terminal is requested.",
-                        "Recover disconnected pane connections through terminal.reconnect."
+                        "Use targetBinding-first terminal behavior only inside the built-in right-panel Agent/session-terminal flow; external MCP calls remain background-first.",
+                        "For a user-requested visible Tab, list and confirm the named sessionId; do not substitute another Tab when it is stale.",
+                        "Recover disconnected pane connections through terminal.reconnect only inside the built-in Agent flow."
                     ],
                     "runtimeTools": discovery_tools.clone(),
                     "sessionWorkspaceFiles": [
@@ -391,11 +395,11 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 }
             ],
             "taskRoutes": [
-                app_task_route("understand-current-state", "Call kerminal.runtime_snapshot when a broad live overview is needed; otherwise use the current targetBinding and refresh kerminal.agent.target_context or terminal.list only when target context is missing, stale, or another terminal is requested.", &discovery_tools),
+                app_task_route("understand-current-state", "Call kerminal.runtime_snapshot when a broad live overview is needed; do not use it to select a visible Tab implicitly. The built-in Agent can refresh targetBinding through its session flow.", &discovery_tools),
                 app_task_route("discover-mcp-capabilities", "Call kerminal.capabilities to read the current tool map, recommended first calls, file-first configuration boundary, and deliberately absent tool families.", &discovery_tools),
-                app_task_route("operate-terminal", "Prefer the current targetBinding and use terminal.snapshot followed by terminal.write so commands remain visible in the left PTY; use terminal.list/sessionId only for another global terminal or stale target, terminal.create for a headless local/saved-host SSH PTY when none exists, and terminal.reconnect only for an actually disconnected pane.", &terminal_tools),
-                app_task_route("run-ssh-command", "Use the current targetBinding visible PTY for ordinary commands; if no PTY exists, create a local or saved-host SSH headless PTY with terminal.create and use terminal.snapshot/write. Use ssh.command_on_resolved_host or ssh.command only when a structured background result is explicitly requested or a PTY is unsuitable. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
-                app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host, inspect managedSsh runtime reuse, and use sftp.list/preview only when remote context is needed. For copy work, call kerminal.operation_guide with intent=sftp, then use canonical source/destination endpoints with sftp.transfer.enqueue; track the returned transfer.id through sftp.transfer.list and cancel only when requested.", &sftp_tools),
+                app_task_route("operate-terminal", "For persistent, interactive, or local shell work, call terminal.create and use its explicit sessionId with terminal.snapshot/write/close. Only an explicit user request for a visible UI Tab permits terminal.list plus confirmed snapshot/write; stale targets are not substituted.", &terminal_tools),
+                app_task_route("run-ssh-command", "Use ssh.command or ssh.command_on_resolved_host by default for non-interactive SSH; output is structured and remains outside the UI. Use terminal.create only when persistent/interactive shell semantics are required, and never fall back to a visible Tab after background failure. Do not invoke this route for protocol=sftp hosts.", &remote_tools),
+                app_task_route("manage-remote-files", "Identify an SSH or SFTP-only host and use sftp.list/preview only when remote context is needed. Managed SSH diagnostics describe browsing channels; background bulk transfers have dedicated connections. For copy work, call kerminal.operation_guide with intent=sftp, then use canonical source/destination endpoints with sftp.transfer.enqueue; track the returned transfer.id through sftp.transfer.list, call sftp.transfer.retry for any retryable terminal failure (resumable=false starts fresh), and cancel only when requested.", &sftp_tools),
                 app_task_route("manage-containers", "Inspect managedSsh runtime reuse, then use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
                 app_task_route("manage-tmux", "Inspect managedSsh runtime reuse, then probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
                 app_task_route("manage-port-forwarding", "Inspect managedSsh runtime reuse, then use port_forward.list before create or close; keep risky remote exposure behind user approval.", &port_forward_tools),
@@ -416,8 +420,8 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 "Use this app guide for product orientation, then call kerminal.operation_guide with the closest intent.",
                 "Use kerminal.tool_help when exact schemas or examples are needed; it is optional when the current tool schema is already known.",
                 "For config edits, call kerminal.config_guide or read kerminal-config.md before editing.",
-                "For terminal work, every Agent session has global scope and targetBinding is the preferred target; use terminal.snapshot/write for visible PTY execution, terminal.list only when another target or refresh is needed, and terminal.create when no PTY exists.",
-                "When no visible PTY exists, use terminal.create for a headless local or saved-host SSH PTY, then snapshot/write/close; use ssh.command or ssh.command_on_resolved_host only for explicitly background structured output, which is not visible in the left terminal.",
+                "For external MCP terminal work, use ssh.command for non-interactive SSH or terminal.create plus an explicit sessionId for persistent/interactive/local shells; terminal.create is headless and does not open a UI Tab.",
+                "Only a direct user request to operate a visible UI Tab permits terminal.list and confirmed snapshot/write; a stale target is reported, never replaced, and background failures never switch to visible PTY execution.",
                 "For file-backed config, prefer direct file edits plus kerminal.config.validate instead of looking for MCP CRUD."
             ]
         })),

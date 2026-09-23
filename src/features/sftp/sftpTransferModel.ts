@@ -7,6 +7,8 @@
 import type { SftpTransferEndpoint, SftpTransferSummary } from "../../lib/sftpApi";
 import { fileNameFromPath, formatFileSize } from "./sftpFileUtils";
 
+const SFTP_TRANSFER_WAITING_GRACE_MS = 5_000;
+
 /**
  * 按用户关注优先级排序后台传输任务。
  */
@@ -28,6 +30,12 @@ export function upsertTransfer(
   transfers: SftpTransferSummary[],
   summary: SftpTransferSummary,
 ) {
+  const currentTransfer = transfers.find(
+    (transfer) => transfer.id === summary.id,
+  );
+  if (currentTransfer && shouldKeepCurrentSnapshot(currentTransfer, summary)) {
+    return [...transfers];
+  }
   const nextTransfers = transfers.filter(
     (transfer) => transfer.id !== summary.id,
   );
@@ -46,10 +54,54 @@ export function mergeTransferSnapshot(
 }
 
 /**
- * 用后端返回的完整任务列表替换本地队列，并保持队列统一排序。
+ * 替换轮询快照时保留本地已确认的终态和取消乐观状态，避免迟到列表让按钮闪回可用。
+ * 完整列表仍以服务端任务集合为准，因此只保护同 ID 的快照，不把已清理历史重新带回队列。
+ *
+ * @author kongweiguang
  */
-export function replaceTransferQueue(transfers: SftpTransferSummary[]) {
-  return sortTransfers(transfers);
+export function replaceTransferQueue(
+  transfers: SftpTransferSummary[],
+  previousTransfers: SftpTransferSummary[] = [],
+) {
+  const previousById = new Map(
+    previousTransfers.map((transfer) => [transfer.id, transfer]),
+  );
+  return sortTransfers(
+    transfers.map((summary) => {
+      const currentTransfer = previousById.get(summary.id);
+      return currentTransfer && shouldKeepCurrentSnapshot(currentTransfer, summary)
+        ? currentTransfer
+        : summary;
+    }),
+  );
+}
+
+/**
+ * 过滤迟到的事件或列表快照；终态一旦落地不可被非终态覆盖，取消请求也不能闪回。
+ * 时间戳只作为活动快照的兜底排序依据，避免相同秒级时间戳阻挡正常进度事件。
+ *
+ * @author kongweiguang
+ */
+function shouldKeepCurrentSnapshot(
+  currentTransfer: SftpTransferSummary,
+  incomingTransfer: SftpTransferSummary,
+) {
+  if (isFinishedTransfer(currentTransfer)) {
+    return !isFinishedTransfer(incomingTransfer) ||
+      incomingTransfer.status !== currentTransfer.status ||
+      Boolean(currentTransfer.successorId && !incomingTransfer.successorId) ||
+      currentTransfer.updatedAt > incomingTransfer.updatedAt;
+  }
+  if (isFinishedTransfer(incomingTransfer)) {
+    return false;
+  }
+  if (
+    currentTransfer.cancelRequested &&
+    !isFinishedTransfer(incomingTransfer)
+  ) {
+    return true;
+  }
+  return currentTransfer.updatedAt > incomingTransfer.updatedAt;
 }
 
 function transferStatusRank(status: SftpTransferSummary["status"]) {
@@ -89,12 +141,13 @@ export function activeTransferCount(transfers: SftpTransferSummary[]) {
 }
 
 /**
- * 判断用户是否还能对传输任务发起取消请求。
+ * 容器直传没有后台取消通道；其它任务只在活动且未请求取消时提供操作。
  */
 export function canCancelTransfer(transfer: SftpTransferSummary) {
   return (
     (transfer.status === "queued" || transfer.status === "running") &&
-    !transfer.cancelRequested
+    !transfer.cancelRequested &&
+    transfer.cancelable !== false
   );
 }
 
@@ -192,34 +245,109 @@ export function transferMethodLabel(transfer: SftpTransferSummary) {
 }
 
 /**
- * 获取传输状态中文标签。
+ * 将后端阶段投影成低噪声状态文案；取消请求优先于运行阶段，避免用户重复点击。
+ *
+ * @author kongweiguang
  */
 export function transferStatusLabel(
   status: SftpTransferSummary["status"],
   phase?: SftpTransferSummary["phase"],
+  cancelRequested = false,
+  recoveryAttempt?: number,
 ) {
-  if (status === "queued") {
-    return "排队";
-  }
-  if (status === "running") {
-    if (phase === "archiving") {
-      return "压缩中";
-    }
-    if (phase === "downloading") {
-      return "下载中";
-    }
-    if (phase === "uploading") {
-      return "上传中";
-    }
-    return "传输中";
-  }
+  const normalizedPhase = phase?.toLowerCase();
+  // 终态优先于迟到的取消标记，避免已取消任务在下一次轮询中闪回“正在取消”。
   if (status === "succeeded") {
     return "完成";
   }
   if (status === "failed") {
     return "失败";
   }
+  if (status === "canceled") {
+    return "已取消";
+  }
+  if (
+    cancelRequested ||
+    normalizedPhase === "canceling" ||
+    normalizedPhase === "cancelling"
+  ) {
+    return "正在取消";
+  }
+  if (status === "queued") {
+    return "排队";
+  }
+  if (status === "running") {
+    if (
+      normalizedPhase === "recovering" ||
+      normalizedPhase === "reconnecting" ||
+      normalizedPhase === "retrying"
+    ) {
+      const attempt = Math.max(1, recoveryAttempt ?? 1);
+      return `正在恢复连接（${attempt}/1）`;
+    }
+    if (
+      normalizedPhase === "waiting" ||
+      normalizedPhase === "waitingresponse" ||
+      normalizedPhase === "awaitingresponse"
+    ) {
+      return "等待响应";
+    }
+    if (
+      normalizedPhase === "connecting" ||
+      normalizedPhase === "opening" ||
+      normalizedPhase === "establishingconnection" ||
+      normalizedPhase === "connectingsftp"
+    ) {
+      return "连接中";
+    }
+    if (normalizedPhase === "verifying") {
+      return "校验断点";
+    }
+    if (normalizedPhase === "committing") {
+      return "提交文件";
+    }
+    if (normalizedPhase === "archiving") {
+      return "压缩中";
+    }
+    if (normalizedPhase === "downloading") {
+      return "下载中";
+    }
+    if (normalizedPhase === "uploading") {
+      return "上传中";
+    }
+    return "传输中";
+  }
   return "已取消";
+}
+
+/**
+ * 为 320px 级窄面板提供短状态文案，完整含义仍通过 aria-label/title 暴露。
+ * 这样文件名保留可辨识前缀；等待响应仍需与排队等待区分，不能只剩“等待”。
+ *
+ * @author kongweiguang
+ */
+export function transferCompactStatusLabel(
+  status: SftpTransferSummary["status"],
+  phase?: SftpTransferSummary["phase"],
+  cancelRequested = false,
+  recoveryAttempt?: number,
+) {
+  const fullLabel = transferStatusLabel(
+    status,
+    phase,
+    cancelRequested,
+    recoveryAttempt,
+  );
+  if (fullLabel === "正在恢复连接（1/1）") {
+    return "恢复 1/1";
+  }
+  if (fullLabel === "正在恢复连接") {
+    return "恢复中";
+  }
+  if (fullLabel === "等待响应") {
+    return "待响应";
+  }
+  return fullLabel;
 }
 
 /**
@@ -279,20 +407,54 @@ function isArchiveWritePhase(transfer: SftpTransferSummary) {
 }
 
 /**
- * 获取传输状态 badge 的主题安全样式。
+ * 为运行阶段提供主题安全的 badge 颜色；恢复和等待不使用失败红色，减少误报焦虑。
+ *
+ * @author kongweiguang
  */
-export function transferStatusClassName(status: SftpTransferSummary["status"]) {
-  if (status === "running") {
-    return "border-sky-300/35 bg-sky-500/10 text-sky-700 dark:text-sky-100";
-  }
-  if (status === "queued") {
-    return "border-amber-300/35 bg-amber-500/10 text-amber-700 dark:text-amber-100";
-  }
+export function transferStatusClassName(
+  status: SftpTransferSummary["status"],
+  phase?: SftpTransferSummary["phase"],
+  cancelRequested = false,
+) {
+  const normalizedPhase = phase?.toLowerCase();
+  // 颜色与文案共享同一终态优先级，避免已结束任务继续呈现取消中的琥珀色。
   if (status === "succeeded") {
     return "border-emerald-300/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100";
   }
   if (status === "failed") {
     return "border-rose-300/35 bg-rose-500/10 text-rose-700 dark:text-rose-100";
+  }
+  if (status === "canceled") {
+    return "border-zinc-300/40 bg-zinc-500/10 text-zinc-600 dark:border-zinc-600 dark:text-zinc-300";
+  }
+  if (
+    cancelRequested ||
+    normalizedPhase === "canceling" ||
+    normalizedPhase === "cancelling"
+  ) {
+    return "border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-100";
+  }
+  if (
+    normalizedPhase === "recovering" ||
+    normalizedPhase === "reconnecting" ||
+    normalizedPhase === "retrying" ||
+    normalizedPhase === "waiting" ||
+    normalizedPhase === "waitingresponse" ||
+    normalizedPhase === "awaitingresponse" ||
+    normalizedPhase === "verifying" ||
+    normalizedPhase === "committing" ||
+    normalizedPhase === "connecting" ||
+    normalizedPhase === "opening" ||
+    normalizedPhase === "establishingconnection" ||
+    normalizedPhase === "connectingsftp"
+  ) {
+    return "border-violet-300/35 bg-violet-500/10 text-violet-700 dark:text-violet-100";
+  }
+  if (status === "running") {
+    return "border-sky-300/35 bg-sky-500/10 text-sky-700 dark:text-sky-100";
+  }
+  if (status === "queued") {
+    return "border-amber-300/35 bg-amber-500/10 text-amber-700 dark:text-amber-100";
   }
   return "border-zinc-300/40 bg-zinc-500/10 text-zinc-600 dark:border-zinc-600 dark:text-zinc-300";
 }
@@ -310,20 +472,75 @@ export function formatTransferBytes(transfer: SftpTransferSummary) {
   return speedLabel ? `${bytesLabel} · ${speedLabel}` : bytesLabel;
 }
 
+/**
+ * 速度只有在最近确认仍然有效时显示，停滞期间归零以免用户误以为仍在发送数据。
+ *
+ * @author kongweiguang
+ */
 function transferSpeedLabel(transfer: SftpTransferSummary) {
   const speedBytesPerSecond = transfer.speedBytesPerSecond ?? 0;
-  if (transfer.status !== "running" || speedBytesPerSecond <= 0) {
+  if (
+    transfer.status !== "running" ||
+    speedBytesPerSecond <= 0 ||
+    isTransferWaiting(transfer)
+  ) {
     return null;
   }
   return `${formatFileSize(speedBytesPerSecond)}/s`;
 }
 
 /**
- * 将结构化无进度失败投影为稳定恢复文案，避免前端解析后端网络错误文本。
+ * 判断最近一次已确认字节是否超过 5 秒未变化；连接恢复和取消阶段不显示为网络停滞。
+ * 时间戳同时兼容 Unix 秒和毫秒，避免旧任务或测试 fixture 造成错误等待提示。
+ *
+ * @author kongweiguang
+ */
+export function isTransferWaiting(
+  transfer: SftpTransferSummary,
+  now = Date.now(),
+) {
+  if (transfer.status !== "running" || transfer.cancelRequested) {
+    return false;
+  }
+  const normalizedPhase = transfer.phase?.toLowerCase();
+  if (
+    normalizedPhase === "canceling" ||
+    normalizedPhase === "cancelling" ||
+    normalizedPhase === "recovering" ||
+    normalizedPhase === "reconnecting" ||
+    normalizedPhase === "retrying" ||
+    normalizedPhase === "waiting" ||
+    normalizedPhase === "waitingresponse" ||
+    normalizedPhase === "awaitingresponse" ||
+    normalizedPhase === "verifying" ||
+    normalizedPhase === "committing" ||
+    normalizedPhase === "connecting" ||
+    normalizedPhase === "opening" ||
+    normalizedPhase === "establishingconnection" ||
+    normalizedPhase === "connectingsftp"
+  ) {
+    return true;
+  }
+  if (transfer.lastProgressAt === undefined || transfer.lastProgressAt === null) {
+    return false;
+  }
+  const timestamp = Number(transfer.lastProgressAt);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return false;
+  }
+  const timestampMs = timestamp < 100_000_000_000 ? timestamp * 1000 : timestamp;
+  return now - timestampMs >= SFTP_TRANSFER_WAITING_GRACE_MS;
+}
+
+/**
+ * 将结构化无进度及提交不明失败投影为稳定文案，避免前端解析后端网络错误文本。
  *
  * @author kongweiguang
  */
 export function transferFailureMessage(transfer: SftpTransferSummary) {
+  if (transfer.failureKind === "commitUnknown") {
+    return "提交结果未确认，请核对目标文件";
+  }
   if (transfer.failureKind !== "idleTimeout") {
     return transfer.error ?? null;
   }
@@ -339,5 +556,8 @@ export function transferFailureMessage(transfer: SftpTransferSummary) {
  * @author kongweiguang
  */
 export function transferInlineSpeedLabel(transfer: SftpTransferSummary) {
+  if (isTransferWaiting(transfer)) {
+    return "0 B/s";
+  }
   return transferSpeedLabel(transfer) ?? "-";
 }

@@ -31,6 +31,7 @@ interface UseSftpTransferSyncOptions {
   viewScope?: string | null;
 }
 
+/** 合并轮询与事件时保留已确认终态，避免迟到快照让恢复入口重新出现。 */
 export function useSftpTransferSync({
   active,
   currentPath,
@@ -69,7 +70,7 @@ export function useSftpTransferSync({
       viewScope === undefined ? undefined : { viewScope },
     );
     if (revisionAtRequestStart === transferRevisionRef.current) {
-      setTransfers(replaceTransferQueue(nextTransfers));
+      setTransfers((current) => replaceTransferQueue(nextTransfers, current));
     }
   }, [active, syncHostId, viewScope]);
 
@@ -100,7 +101,9 @@ export function useSftpTransferSync({
           !disposed &&
           revisionAtRequestStart === transferRevisionRef.current
         ) {
-          setTransfers(replaceTransferQueue(nextTransfers));
+          setTransfers((current) =>
+            replaceTransferQueue(nextTransfers, current),
+          );
         }
       } catch {
         if (

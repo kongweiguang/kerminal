@@ -8,17 +8,18 @@ use super::*;
 ///
 /// 这里按公开字符串先处理可选的运行态工具，避免指南代码在 catalog 增加
 /// `terminal.reconnect` 等工具时复制一套业务分支；具体 schema 仍由 catalog
-/// 返回，样例表达 global scope 下 targetBinding 首选、显式 sessionId 选其它
-/// 终端以及 paneId 重连的最小调用边界。SFTP 队列样例固定使用 canonical
-/// source/destination，避免 Agent 从示例推断内部 legacy flat 参数。
+/// 返回，样例表达外部 MCP 后台默认、headless PTY 的显式 sessionId，以及仅在
+/// 内置 session-terminal 或明确 UI Tab 请求时可用的 targetBinding/paneId 边界。
+/// SFTP 队列样例固定使用 canonical source/destination，避免 Agent 从示例推断
+/// 内部 legacy flat 参数。
 pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
     match tool_id {
         ToolId::KerminalCapabilities | ToolId::KerminalRuntimeSnapshot | ToolId::TerminalList => {
             Some(json!({}))
         }
         ToolId::KerminalOperationGuide => Some(json!({
-            "intent": "session-terminal",
-            "goal": "Operate the current targetBinding visibly; use another global terminal only when the task needs it, create a headless PTY when no PTY is available, and use background SSH only when structured output is explicitly requested."
+            "intent": "ssh-command",
+            "goal": "Use background SSH by default for non-interactive commands; create a headless PTY with an explicit sessionId for persistent or interactive work, and operate a visible UI Tab only when the user explicitly names and confirms it."
         })),
         ToolId::KerminalToolHelp => Some(json!({
             "toolId": "terminal.write",
@@ -41,13 +42,11 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
             "rows": 30
         })),
         ToolId::TerminalSnapshot => Some(json!({
-            "sessionId": "<scope-member-terminal-session-id>",
-            "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
+            "sessionId": "<session-id-from-terminal.create-or-confirmed-ui-tab>",
             "maxBytes": 24576
         })),
         ToolId::TerminalWrite => Some(json!({
-            "sessionId": "<scope-member-terminal-session-id>",
-            "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
+            "sessionId": "<session-id-from-terminal.create-or-confirmed-ui-tab>",
             "data": "pwd\n"
         })),
         ToolId::TerminalReconnect => Some(json!({
@@ -121,6 +120,9 @@ pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
         })),
         ToolId::SftpTransferList => Some(json!({
             "transferId": "<transfer-id-from-sftp.transfer.enqueue>"
+        })),
+        ToolId::SftpTransferRetry => Some(json!({
+            "transferId": "<failed-transfer-id-from-sftp.transfer.list>"
         })),
         ToolId::SftpTransferClearCompleted => Some(json!({})),
         ToolId::TmuxProbe | ToolId::TmuxListSessions => Some(json!({

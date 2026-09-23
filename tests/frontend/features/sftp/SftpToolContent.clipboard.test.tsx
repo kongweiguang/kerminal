@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   fireEvent,
   render,
@@ -313,7 +315,7 @@ describe("SftpToolContent clipboard and selection", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("SFTP 传输队列")).toBeInTheDocument();
     expect(await screen.findByText("app.log")).toBeInTheDocument();
-    expect(screen.getByText("传输中")).toBeInTheDocument();
+    expect(screen.getByLabelText("传输中")).toBeInTheDocument();
     expect(screen.getByText("1 活动")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
     await user.click(

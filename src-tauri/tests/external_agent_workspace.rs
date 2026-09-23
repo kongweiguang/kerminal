@@ -61,7 +61,14 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("Terminal Execution"));
     assert!(config_reference.contains("global terminal scope across all Kerminal tabs"));
     assert!(config_reference.contains("targetBinding"));
-    assert!(config_reference.contains("do not display it in the left terminal"));
+    assert!(config_reference.contains("External MCP calls default to background execution"));
+    assert!(config_reference.contains("For non-interactive SSH commands"));
+    assert!(config_reference.contains("An interactive shell does not imply UI-Tab interaction"));
+    assert!(config_reference.contains("when the task completes"));
+    assert!(config_reference.contains("Only when the user explicitly asks to operate"));
+    assert!(config_reference.contains("must not fall back to a visible Tab"));
+    assert!(config_reference.contains("not replaced with another Tab"));
+    assert!(!config_reference.contains("For ordinary commands and interactive work, inspect"));
     assert!(config_reference.contains("kerminal.app_guide"));
     assert!(config_reference.contains("kerminal.config_guide"));
     assert!(config_reference.contains("kerminal.tool_help"));
@@ -92,6 +99,12 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference
         .contains("\"destination\": { \"type\": \"remote\", \"hostId\": \"server-b\""));
     assert!(config_reference.contains("sftp.transfer.list` with the returned `transfer.id`"));
+    assert!(config_reference.contains("sftp.transfer.retry"));
+    assert!(config_reference.contains("retryable=true"));
+    assert!(config_reference.contains("resumable=false` starts a fresh transfer"));
+    assert!(config_reference.contains("one idempotent successor"));
+    assert!(config_reference.contains("automatically reconnects once"));
+    assert!(config_reference.contains("failureKind = \"commitUnknown\""));
     assert!(config_reference.contains("transportMode` automatically"));
     assert!(config_reference.contains("[sftp].idleTimeoutSeconds"));
     assert!(config_reference.contains("60-second MCP client call guard"));
@@ -129,9 +142,15 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(agents.contains("Prefer direct file edits"));
     assert!(agents.contains("terminal.write"));
     assert!(agents.contains("targetBinding"));
-    assert!(agents.contains("visible PTY"));
-    assert!(agents.contains("background structured result"));
-    assert!(agents.contains("do not appear in the left terminal"));
+    assert!(agents.contains("External MCP calls default to background execution"));
+    assert!(agents.contains("non-interactive SSH commands"));
+    assert!(agents.contains("headless and does not open a Tab"));
+    assert!(agents.contains("An interactive shell does not imply UI-Tab interaction"));
+    assert!(agents.contains("when the task completes"));
+    assert!(agents.contains("Only when the user explicitly asks to operate"));
+    assert!(agents.contains("must not fall back to a visible Tab"));
+    assert!(agents.contains("not replaced with another Tab"));
+    assert!(!agents.contains("For ordinary commands, inspect the current `targetBinding`"));
     assert!(agents.contains("sessionId"));
     assert!(agents.contains("tab"));
     assert!(agents.contains("global"));
@@ -145,6 +164,8 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(agents.contains("kerminal.tool_help"));
     assert!(agents.contains("kerminal.operation_guide"));
     assert!(agents.contains("kerminal.runtime_snapshot"));
+    assert!(agents.contains("sftp.transfer.retry"));
+    assert!(agents.contains("failureKind=commitUnknown"));
     assert!(agents.contains("Before editing Kerminal configuration files"));
     assert!(agents.contains(CONFIG_REFERENCE_FILE_NAME));
     assert!(agents.contains("Do not use Kerminal MCP tools for settings"));
@@ -277,9 +298,17 @@ fn prepare_claude_merges_mcp_json() {
     assert!(claude.contains("MCP host policy owns confirmation"));
     assert!(claude.contains("terminal.write"));
     assert!(claude.contains("targetBinding"));
-    assert!(claude.contains("visible PTY"));
-    assert!(claude.contains("background structured result"));
-    assert!(claude.contains("do not appear in the left terminal"));
+    assert!(claude.contains("External MCP calls default to background execution"));
+    assert!(claude.contains("For non-interactive SSH commands"));
+    assert!(claude.contains("headless `terminal.create`"));
+    assert!(claude.contains("returned `sessionId` explicitly"));
+    assert!(claude.contains("Do not open, switch, or create a UI Tab unless"));
+    assert!(claude.contains("An interactive shell does not imply UI-Tab interaction"));
+    assert!(claude.contains("when the task completes"));
+    assert!(claude.contains("Only when the user explicitly asks to operate"));
+    assert!(claude.contains("must not fall back to a visible Tab"));
+    assert!(claude.contains("not replaced with another Tab"));
+    assert!(!claude.contains("For ordinary commands and interactive work, use `terminal.snapshot`"));
     assert!(claude.contains("sessionId"));
     assert!(claude.contains("terminal.reconnect"));
     assert!(!claude.contains("bindingGeneration"));
@@ -593,9 +622,15 @@ fn shared_agents_instructions_include_config_boundaries_and_validator() {
     assert!(agents.contains("MCP host policy owns confirmation"));
     assert!(agents.contains("terminal.write"));
     assert!(agents.contains("targetBinding"));
-    assert!(agents.contains("visible PTY"));
-    assert!(agents.contains("background structured result"));
-    assert!(agents.contains("do not appear in the left terminal"));
+    assert!(agents.contains("External MCP calls default to background execution"));
+    assert!(agents.contains("For non-interactive SSH commands"));
+    assert!(agents.contains("headless and does not open a Tab"));
+    assert!(agents.contains("An interactive shell does not imply UI-Tab interaction"));
+    assert!(agents.contains("when the task completes"));
+    assert!(agents.contains("Only when the user explicitly asks to operate"));
+    assert!(agents.contains("must not fall back to a visible Tab"));
+    assert!(agents.contains("not replaced with another Tab"));
+    assert!(!agents.contains("For ordinary commands, inspect the current `targetBinding`"));
     assert!(agents.contains("sessionId"));
     assert!(agents.contains("tab"));
     assert!(agents.contains("global"));
@@ -673,4 +708,59 @@ fn default_kerminal_workspace_paths_are_home_relative_in_agent_instructions() {
     assert!(agents.contains("kerminal.vault.encrypt_secret"));
     assert!(!agents.contains("validate-kerminal-config.mjs"));
     assert!(!agents.contains(&path_to_string(temp.path())));
+}
+
+#[test]
+/// 验证全局外部 MCP 后台规则与内置右栏 session 的 targetBinding 规则保持分层且不互相覆盖。
+fn session_workspace_keeps_right_panel_binding_distinct_from_global_mcp_default() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp.path().join(".kerminal");
+    let service = ExternalAgentWorkspaceService::new(
+        &workspace_root,
+        Some("http://127.0.0.1:3016/mcp".to_owned()),
+        true,
+    );
+    let agent_session_id = "ags_right_panel_policy";
+
+    service
+        .prepare(&PrepareExternalAgentWorkspaceRequest {
+            agent_id: "claude".to_owned(),
+            agent_session_id: Some(agent_session_id.to_owned()),
+            custom_command: None,
+            resume_provider_session: false,
+            dry_run: false,
+            overwrite_policy: ExternalAgentOverwritePolicy::BackupAndReplaceInvalid,
+        })
+        .expect("prepare Claude session");
+
+    let global_agents =
+        fs::read_to_string(workspace_root.join("AGENTS.md")).expect("global agents");
+    assert!(global_agents.contains("External MCP calls default to background execution"));
+    assert!(global_agents.contains("For non-interactive SSH commands"));
+    assert!(!global_agents.contains("For ordinary commands, inspect the current `targetBinding`"));
+
+    let session_root = workspace_root
+        .join("agents")
+        .join("sessions")
+        .join(agent_session_id);
+    let session_agents =
+        fs::read_to_string(session_root.join("AGENTS.md")).expect("session agents");
+    assert!(session_agents.contains("built-in Kerminal right-panel Agent"));
+    assert!(session_agents.contains("exception to the external-MCP background default"));
+    assert!(
+        session_agents.contains("use the session's `targetBinding` as the bound terminal target")
+    );
+    assert!(session_agents.contains("terminal.snapshot` for the current `targetBinding`"));
+    assert!(session_agents.contains("visible PTY"));
+    assert!(session_agents.contains("sftp.transfer.retry"));
+    assert!(session_agents.contains("failureKind=commitUnknown"));
+    assert!(!session_agents.contains("External MCP calls default to background execution"));
+
+    let session_claude =
+        fs::read_to_string(session_root.join("CLAUDE.md")).expect("session Claude");
+    assert!(session_claude.contains("built-in right-panel Agent session workspace"));
+    assert!(session_claude
+        .contains("existing `targetBinding` binding and scope/permissions remain in force"));
+    assert!(session_claude.contains("visible PTY"));
+    assert!(!session_claude.contains("External MCP calls default to background execution"));
 }

@@ -3,7 +3,8 @@ use super::diagnostics_common::{absent_tool_families, exposed_tool_definitions, 
 use super::*;
 use crate::models::target::RemoteTargetRef;
 
-/// 返回当前 catalog 的 schema 和 scope/reconnect 安全说明，不执行所选工具。
+/// 返回当前 catalog 的 schema 和执行分流安全说明，不执行所选工具；外部 MCP
+/// 默认后台，内置 Agent 的 scope/reconnect 规则只作为显式兼容路径说明。
 pub(super) fn execute_kerminal_tool_help(
     tools: &[ToolDefinition],
     arguments: &serde_json::Map<String, Value>,
@@ -132,8 +133,8 @@ pub(super) fn execute_kerminal_tool_help(
                 "readOnly": "kerminal.tool_help is read-only and never invokes the referenced tool.",
                 "hostPolicy": "The MCP host owns any confirmation, approval, permissions, hooks, and audit it chooses; Kerminal does not add a second per-command prompt.",
                 "fileFirstConfiguration": "settings/profile/host/snippet/workflow CRUD tools are deliberately absent; use direct file edits plus validation.",
-                "agentScope": "Every external Agent session uses global scope across Kerminal tabs. targetBinding is the preferred terminal, not an access restriction; terminal.list returns other user terminals when needed, terminal.snapshot/write keep ordinary commands in the visible PTY, explicit sessionId values select another member when needed, and terminal.reconnect accepts a paneId only for a disconnected member.",
-                "terminalExecution": "Use targetBinding with terminal.snapshot then terminal.write for visible commands. If no visible PTY exists, use terminal.create for a headless local or saved-host SSH PTY, then snapshot/write/close. Use ssh.command or ssh.command_on_resolved_host only when background structured output is explicitly requested or PTY creation is unsuitable; those results do not appear in the left terminal.",
+                "agentScope": "The built-in right-panel Agent/session-terminal uses global scope across Kerminal tabs. targetBinding is that flow's preferred terminal, not an access restriction; terminal.list returns members for background query/diagnostics or explicit UI selection, explicit sessionId values select members, and terminal.reconnect accepts a paneId only for a disconnected member. External MCP does not inherit a visible target implicitly.",
+                "terminalExecution": "External MCP defaults to ssh.command or ssh.command_on_resolved_host for non-interactive SSH. For persistent, interactive, or local shells, use terminal.create and then snapshot/write/close with its explicit sessionId. Only an explicit user request for a visible UI Tab permits terminal.list plus confirmed snapshot/write; stale targets are reported, never substituted, and background failures never fall back to visible PTY output.",
                 "managedSsh": "SSH-bound tool families reuse a managed runtime where possible; diagnostics prove session/channel ownership without exposing credential material.",
                 "externalLaunch": "External launch passwords and passphrases are session-only; MCP diagnostics expose policy, counts, launch ids, and redacted rejection metadata only.",
                 "secrets": "Do not extract or print stored secrets. Authorized credential writes use kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret."
@@ -141,7 +142,7 @@ pub(super) fn execute_kerminal_tool_help(
             "nextActions": [
                 "Call the selected read-only discovery or runtime tool only after checking required arguments.",
                 "For SSH-bound operations, call kerminal.runtime_snapshot and inspect managedSsh before and after the operation when debugging session reuse.",
-                "For terminal work, prefer targetBinding and inspect it with terminal.snapshot before terminal.write; refresh kerminal.agent.target_context or terminal.list only when target context is missing/stale or another global terminal is requested. If no PTY exists, use terminal.create, then snapshot/write/close. Recover only disconnected panes with terminal.reconnect.",
+                "For external MCP terminal work, use ssh.command for non-interactive SSH or terminal.create with an explicit sessionId for persistent/interactive/local shells. Use terminal.list for background query/diagnostics or after an explicit UI Tab request; recover only the explicitly selected disconnected pane through terminal.reconnect, never by substituting another Tab.",
                 "For destructive tools, require clear user intent and host-side approval/audit."
             ]
         })),

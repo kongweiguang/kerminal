@@ -14,6 +14,8 @@ use super::super::schema::{
     ToolEffect,
 };
 
+/// 将后台传输的短调用和恢复语义写进工具自发现目录，使没有本地 AGENTS.md 的
+/// 外部 Agent 也能直接按 id 跟踪任务；描述只承诺服务层已经实现的单次安全恢复。
 pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
@@ -103,7 +105,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SftpTransferEnqueue,
             "创建 SFTP 传输任务",
-            "按 source -> destination 加入 SFTP 队列；支持本机与远程主机之间，以及远程主机之间的文件或目录复制。",
+            "按 source -> destination 快速入队并返回任务 id；后台传输没有总时长限制，默认 180 秒无确认进度才触发保护。随后用 sftp.transfer.list 按 transferId 查询终态；安全文件任务首次停滞自动恢复一次，终态 retryable=true 再用 sftp.transfer.retry 继续。大文件无需擅自提高 idleTimeoutSeconds，正式文件尚未出现不代表传输失败。",
             ToolCategory::Sftp,
             ToolEffect::Remote,
             sftp_transfer_enqueue_schema(),
@@ -111,7 +113,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SftpTransferList,
             "列出 SFTP 传输任务",
-            "读取 SFTP 队列、状态和进度；可按 transferId 精确查询。",
+            "读取 SFTP 队列、状态和进度；可按 transferId 精确查询。status=running 且 phase=waiting 时继续查询，recoveryAttempt=1 表示一次自动恢复进行过。终态 retryable=true 时可按 id 使用 sftp.transfer.retry。",
             ToolCategory::Sftp,
             ToolEffect::Read,
             object_schema(vec![string_field(
@@ -123,10 +125,22 @@ pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
         tool(
             ToolId::SftpTransferCancel,
             "取消 SFTP 传输任务",
-            "取消指定传输任务；调用前确认由 MCP host 负责。",
+            "请求取消指定传输任务；调用是短请求，继续按 transferId 查询，直到 canceled、failed 或 succeeded。若原子提交已成功，保留 succeeded。调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
             ToolEffect::Remote,
             object_schema(vec![string_field("transferId", "SFTP 传输任务 id。", true)]),
+        ),
+        tool(
+            ToolId::SftpTransferRetry,
+            "继续 SFTP 传输任务",
+            "继续指定的可重试 SFTP 传输；复用原始端点、冲突策略和无进度阈值。resumable=true 时从已确认断点继续，resumable=false 时从头传输；调用只表示已入队，不代表已完成。调用前确认由 MCP host 负责。",
+            ToolCategory::Sftp,
+            ToolEffect::Remote,
+            object_schema(vec![string_field(
+                "transferId",
+                "允许重试的 SFTP 传输任务 id（由 list 返回 retryable=true）。",
+                true,
+            )]),
         ),
         tool(
             ToolId::SftpTransferClearCompleted,

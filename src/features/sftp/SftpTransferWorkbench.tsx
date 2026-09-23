@@ -73,6 +73,7 @@ import {
 export type { SftpTransferCreateHostRequest, SftpTransferCreatedHostTarget } from "./SftpTransferWorkbench.types";
 export type { SftpTransferWorkbenchProps } from "./SftpTransferWorkbench.types";
 
+/** 将后端短调用的 Promise 交给队列行，使按钮能维持真实的请求中状态。 */
 export function SftpTransferWorkbench({
   active = true,
   createdHostTarget,
@@ -517,8 +518,8 @@ export function SftpTransferWorkbench({
       ) : null}
       <SftpTransferQueuePanel
         error={null}
-        onCancel={(transferId) => void cancelTransfer(transferId)}
-        onRetry={(transfer) => void retryTransfer(transfer)}
+        onCancel={cancelTransfer}
+        onRetry={retryTransfer}
         transfers={transfers}
       />
     </section>

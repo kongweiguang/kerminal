@@ -1,11 +1,13 @@
 //! @author kongweiguang
 
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
+    time::Duration,
 };
 
-use tokio::fs;
+use tokio::{fs, sync::Notify, time::sleep};
 
 use crate::models::sftp::SftpTransferConflictPolicy;
 
@@ -13,6 +15,7 @@ use super::backend::SftpEndpoint;
 use super::*;
 
 impl SftpService {
+    /// 内部同步调用仍借用同一并发限制器，但不注册队列终态或自动重试。
     pub(super) async fn run_transfer_now(
         &self,
         paths: &KerminalPaths,
@@ -34,6 +37,8 @@ impl SftpService {
         Ok(true)
     }
 
+    /// 持有目标写入锁贯穿同 ID 自动恢复；每轮网络 future 由监督器拥有并在取消时丢弃。
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn spawn_transfer_task(
         &self,
         transfer_id: String,
@@ -41,61 +46,100 @@ impl SftpService {
         request: SftpManagedTransferRequest,
         settings: SftpRuntimeSettings,
         cancel_requested: Arc<AtomicBool>,
+        cancel_notify: Arc<Notify>,
+        recovery: RecoveryCheckpointHolder,
         event_emitter: Option<TransferEventEmitter>,
     ) {
         let backend = self.backend.clone();
         let transfers = self.transfers.clone();
         let transfer_limiter = self.transfer_limiter.clone();
         let host_id = request.host_id.clone();
+        let writer = self.target_writer(&request);
 
         tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
                 cancel_requested,
+                cancel_notify,
+                recovery,
                 event_emitter,
             );
 
-            let transfer_permit = match transfer_limiter
-                .acquire(host_id, settings, progress.clone())
-                .await
-            {
-                Ok(permit) => permit,
-                Err(_) if progress.is_cancelled() => {
-                    progress.cancel();
-                    return;
-                }
+            let writer = match writer {
+                Ok(writer) => writer,
                 Err(error) => {
                     progress.fail(error.to_string());
                     return;
                 }
             };
+            let _writer_guard = tokio::select! {
+                guard = writer.lock_owned() => guard,
+                _ = progress.cancel_notified() => { progress.cancel(); return; }
+            };
 
-            if progress.is_cancelled() {
-                progress.cancel();
-                drop(transfer_permit);
-                return;
-            }
-
-            progress.mark_running();
-            progress.mark_phase("connecting", None);
-            let result = run_with_idle_watchdog(
+            let result = run_managed_transfer_with_recovery(
                 &progress,
-                settings.idle_timeout_seconds,
-                backend.transfer(endpoint, request, progress.clone(), settings),
+                settings,
+                transfer_limiter,
+                host_id,
+                request.kind == SftpTransferKind::File,
+                || {
+                    backend.transfer(
+                        endpoint.clone(),
+                        request.clone(),
+                        progress.clone(),
+                        settings,
+                    )
+                },
             )
             .await;
             match result {
-                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) if progress.is_cancelled() && !progress.all_committed() => progress.cancel(),
                 Ok(()) => progress.succeed(),
-                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.all_committed() => progress.succeed(),
+                Err(_) if progress.commit_outcome_uncertain() => {
+                    progress.fail_commit_outcome_uncertain()
+                }
+                Err(_) if progress.is_cancelled() => progress.cancel(),
                 Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
-            drop(transfer_permit);
         });
     }
 
+    /// 同一目标在恢复等待期间仍归原任务所有，防止两个任务交错覆盖同一 partial。
+    fn target_writer(
+        &self,
+        request: &SftpManagedTransferRequest,
+    ) -> AppResult<Arc<tokio::sync::Mutex<()>>> {
+        let key = match request.direction {
+            SftpTransferDirection::Upload => {
+                format!("remote:{}:{}", request.host_id, request.remote_path)
+            }
+            SftpTransferDirection::Download => format!(
+                "local:{}",
+                Path::new(&request.local_path)
+                    .components()
+                    .collect::<PathBuf>()
+                    .to_string_lossy()
+                    .to_lowercase()
+            ),
+        };
+        let mut writers = self
+            .target_writers
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("SFTP target writers"))?;
+        writers.retain(|_, writer| writer.strong_count() > 0);
+        if let Some(writer) = writers.get(&key).and_then(std::sync::Weak::upgrade) {
+            return Ok(writer);
+        }
+        let writer = Arc::new(tokio::sync::Mutex::new(()));
+        writers.insert(key, Arc::downgrade(&writer));
+        Ok(writer)
+    }
+
+    /// 复合复制缺少跨端原子检查点，只监督取消与闲置并保持目标副作用可观察。
     pub(super) fn spawn_remote_copy_task(&self, task: RemoteCopyTaskInput) {
         let RemoteCopyTaskInput {
             transfer_id,
@@ -105,6 +149,8 @@ impl SftpService {
             temp_root,
             settings,
             cancel_requested,
+            cancel_notify,
+            recovery,
             event_emitter,
         } = task;
         let backend = self.backend.clone();
@@ -116,6 +162,8 @@ impl SftpService {
                 transfer_id.clone(),
                 transfers.clone(),
                 cancel_requested,
+                cancel_notify,
+                recovery,
                 event_emitter,
             );
             let result = if should_stage_remote_copy(&request, settings) {
@@ -147,7 +195,10 @@ impl SftpService {
             match result {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
-                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.commit_outcome_uncertain() => {
+                    progress.fail_commit_outcome_uncertain()
+                }
+                Err(_) if progress.is_cancelled() => progress.cancel(),
                 Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
@@ -166,6 +217,8 @@ impl SftpService {
             temp_root,
             settings,
             cancel_requested,
+            cancel_notify,
+            recovery,
             event_emitter,
         } = task;
         let backend = self.backend.clone();
@@ -177,6 +230,8 @@ impl SftpService {
                 transfer_id.clone(),
                 transfers.clone(),
                 cancel_requested,
+                cancel_notify,
+                recovery,
                 event_emitter,
             );
             let job_temp_dir = temp_root.join("sftp-archive-download").join(&transfer_id);
@@ -186,7 +241,7 @@ impl SftpService {
             let local_stage = local_stage_path.to_string_lossy().into_owned();
             let target_local_path = PathBuf::from(&request.target_local_path);
 
-            let result = async {
+            let result: AppResult<()> = async {
                 let transfer_permit = transfer_limiter
                     .acquire(request.host_id.clone(), settings, progress.clone())
                     .await?;
@@ -246,7 +301,10 @@ impl SftpService {
             match result {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
-                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.commit_outcome_uncertain() => {
+                    progress.fail_commit_outcome_uncertain()
+                }
+                Err(_) if progress.is_cancelled() => progress.cancel(),
                 Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
@@ -265,6 +323,8 @@ impl SftpService {
             temp_root,
             settings,
             cancel_requested,
+            cancel_notify,
+            recovery,
             event_emitter,
         } = task;
         let backend = self.backend.clone();
@@ -276,6 +336,8 @@ impl SftpService {
                 transfer_id.clone(),
                 transfers.clone(),
                 cancel_requested,
+                cancel_notify,
+                recovery,
                 event_emitter,
             );
             let job_temp_dir = temp_root.join("sftp-archive-upload").join(&transfer_id);
@@ -287,7 +349,7 @@ impl SftpService {
             ));
             let local_stage = local_stage_path.to_string_lossy().into_owned();
 
-            let result = async {
+            let result: AppResult<()> = async {
                 progress.mark_running();
                 progress.mark_phase(
                     "archiving",
@@ -342,7 +404,10 @@ impl SftpService {
             match result {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
-                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.commit_outcome_uncertain() => {
+                    progress.fail_commit_outcome_uncertain()
+                }
+                Err(_) if progress.is_cancelled() => progress.cancel(),
                 Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
@@ -361,6 +426,8 @@ impl SftpService {
             target_local_path,
             settings,
             cancel_requested,
+            cancel_notify,
+            recovery,
             copy_to_clipboard,
             event_emitter,
         } = task;
@@ -373,11 +440,13 @@ impl SftpService {
                 transfer_id.clone(),
                 transfers.clone(),
                 cancel_requested,
+                cancel_notify,
+                recovery,
                 event_emitter,
             );
             let target_local_path_string = target_local_path.to_string_lossy().into_owned();
 
-            let result = async {
+            let result: AppResult<()> = async {
                 if let Some(parent) = target_local_path
                     .parent()
                     .filter(|path| !path.as_os_str().is_empty())
@@ -433,7 +502,10 @@ impl SftpService {
             match result {
                 Ok(()) if progress.is_cancelled() => progress.cancel(),
                 Ok(()) => progress.succeed(),
-                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(_) if progress.commit_outcome_uncertain() => {
+                    progress.fail_commit_outcome_uncertain()
+                }
+                Err(_) if progress.is_cancelled() => progress.cancel(),
                 Err(_) if progress.failed_with_idle_timeout() => {}
                 Err(error) => progress.fail(error.to_string()),
             }
@@ -452,6 +524,88 @@ pub(super) fn should_stage_remote_copy(
         && is_remote_descendant_path(&request.source_remote_path, &request.target_remote_path)
 }
 
+/// 执行一段受 watchdog 保护的 SFTP 工作，并对首次无进度故障做一次同 ID 重连恢复。
+///
+/// `operation` 每次调用都会重新创建底层连接 future；旧 future 在 watchdog 返回时已被
+/// 丢弃，因此恢复不会继续复用已经不再产生确认的 SFTP stream。排队和恢复等待期间仍监听
+/// 取消，最终失败只由这里写入，避免首次 idle 事件污染 UI 的终态通知。
+async fn run_managed_transfer_with_recovery<F, Fut>(
+    progress: &TransferProgress,
+    settings: SftpRuntimeSettings,
+    limiter: Arc<TransferLimiter>,
+    host_id: String,
+    allow_recovery: bool,
+    mut operation: F,
+) -> AppResult<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = AppResult<()>>,
+{
+    let mut recovery_attempt = 0_u8;
+    loop {
+        let permit = limiter
+            .acquire(host_id.clone(), settings, progress.clone())
+            .await?;
+        progress.mark_running();
+        progress.mark_phase("connecting", None);
+        let result =
+            run_with_idle_watchdog(progress, settings.idle_timeout_seconds, operation()).await;
+        // watchdog 已丢弃旧 I/O；等待恢复前先释放槽，让其他排队任务获得执行机会。
+        drop(permit);
+        if result.is_ok() {
+            return result;
+        }
+
+        let idle_timeout = progress.take_idle_timeout_pending();
+        if idle_timeout
+            && allow_recovery
+            && progress.has_safe_recovery_checkpoint()
+            && recovery_attempt == 0
+            && !progress.is_cancelled()
+        {
+            recovery_attempt = 1;
+            progress.begin_recovery(recovery_attempt);
+            if progress.is_cancelled() {
+                return Err(AppError::Sftp("传输已取消".to_owned()));
+            }
+            tokio::select! {
+                _ = sleep(Duration::from_secs(2)) => {}
+                _ = progress.cancel_notified() => {
+                    return Err(AppError::Sftp("传输已取消".to_owned()));
+                }
+            }
+            if progress.is_cancelled() {
+                return Err(AppError::Sftp("传输已取消".to_owned()));
+            }
+            progress.reset_after_recovery();
+            continue;
+        }
+
+        if idle_timeout {
+            progress.fail_idle_timeout(settings.idle_timeout_seconds);
+        }
+        return result;
+    }
+}
+
+/// 无检查点的复合操作不允许自动重放，只把 watchdog 原因写为稳定终态。
+async fn run_transfer_with_recovery<F, Fut>(
+    progress: &TransferProgress,
+    idle_timeout_seconds: u64,
+    mut operation: F,
+) -> AppResult<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = AppResult<()>>,
+{
+    let result = run_with_idle_watchdog(progress, idle_timeout_seconds, operation()).await;
+    if progress.take_idle_timeout_pending() {
+        progress.fail_idle_timeout(idle_timeout_seconds);
+    }
+    result
+}
+
+/// 跨主机流式复制必须同时拿齐槽位；无安全双端检查点时闲置失败不重放副作用。
 async fn run_streamed_remote_copy(
     backend: Arc<dyn SftpBackend>,
     transfer_limiter: Arc<TransferLimiter>,
@@ -478,22 +632,21 @@ async fn run_streamed_remote_copy(
     }
     progress.mark_running();
     progress.mark_phase("connecting", None);
-    run_with_idle_watchdog(
-        &progress,
-        settings.idle_timeout_seconds,
+    run_transfer_with_recovery(&progress, settings.idle_timeout_seconds, || {
         backend.remote_copy(
-            source_endpoint,
-            target_endpoint,
-            request,
+            source_endpoint.clone(),
+            target_endpoint.clone(),
+            request.clone(),
             progress.clone(),
             settings,
-        ),
-    )
+        )
+    })
     .await?;
     drop(transfer_permits);
     Ok(())
 }
 
+/// 本地中转依次持有源和目标槽位，下载阶段的隐藏字节也刷新共享无进度时钟。
 async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
     let StagedRemoteCopyTask {
         backend,
@@ -513,7 +666,7 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
     ));
     let local_stage = local_stage_path.to_string_lossy().into_owned();
 
-    let result = async {
+    let result: AppResult<()> = async {
         let source_permit = transfer_limiter
             .acquire(request.source_host_id.clone(), settings, progress.clone())
             .await?;
@@ -524,11 +677,9 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
         progress.mark_running();
         progress.mark_phase("connecting", None);
         let source_progress = progress.detached_child();
-        run_with_idle_watchdog(
-            &progress,
-            settings.idle_timeout_seconds,
+        run_transfer_with_recovery(&progress, settings.idle_timeout_seconds, || {
             backend.transfer(
-                source_endpoint,
+                source_endpoint.clone(),
                 SftpManagedTransferRequest {
                     direction: SftpTransferDirection::Download,
                     host_id: request.source_host_id.clone(),
@@ -539,10 +690,10 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                     view_scope: None,
                     idle_timeout_seconds: Some(settings.idle_timeout_seconds as u16),
                 },
-                source_progress,
+                source_progress.clone(),
                 settings,
-            ),
-        )
+            )
+        })
         .await?;
         drop(source_permit);
 
@@ -551,16 +702,14 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
             .acquire(request.target_host_id.clone(), settings, progress.clone())
             .await?;
         progress.mark_phase("connecting", None);
-        run_with_idle_watchdog(
-            &progress,
-            settings.idle_timeout_seconds,
+        run_transfer_with_recovery(&progress, settings.idle_timeout_seconds, || {
             backend.transfer(
-                target_endpoint,
+                target_endpoint.clone(),
                 SftpManagedTransferRequest {
                     direction: SftpTransferDirection::Upload,
                     host_id: request.target_host_id.clone(),
                     kind: request.kind,
-                    local_path: local_stage,
+                    local_path: local_stage.clone(),
                     remote_path: request.target_remote_path.clone(),
                     conflict_policy: request.conflict_policy,
                     view_scope: None,
@@ -568,8 +717,8 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                 },
                 progress.clone(),
                 settings,
-            ),
-        )
+            )
+        })
         .await?;
         drop(target_permit);
         Ok(())
@@ -603,48 +752,5 @@ struct StagedRemoteCopyTask {
     progress: TransferProgress,
 }
 
-#[derive(Debug)]
-pub(super) struct RemoteCopyTaskInput {
-    pub(super) transfer_id: String,
-    pub(super) source_endpoint: SftpEndpoint,
-    pub(super) target_endpoint: SftpEndpoint,
-    pub(super) request: SftpRemoteCopyRequest,
-    pub(super) temp_root: PathBuf,
-    pub(super) settings: SftpRuntimeSettings,
-    pub(super) cancel_requested: Arc<AtomicBool>,
-    pub(super) event_emitter: Option<TransferEventEmitter>,
-}
-
-#[derive(Debug)]
-pub(super) struct ArchiveDownloadTaskInput {
-    pub(super) transfer_id: String,
-    pub(super) endpoint: SftpEndpoint,
-    pub(super) request: SftpArchiveDownloadRequest,
-    pub(super) temp_root: PathBuf,
-    pub(super) settings: SftpRuntimeSettings,
-    pub(super) cancel_requested: Arc<AtomicBool>,
-    pub(super) event_emitter: Option<TransferEventEmitter>,
-}
-
-#[derive(Debug)]
-pub(super) struct ArchiveUploadTaskInput {
-    pub(super) transfer_id: String,
-    pub(super) endpoint: SftpEndpoint,
-    pub(super) request: SftpArchiveUploadRequest,
-    pub(super) temp_root: PathBuf,
-    pub(super) settings: SftpRuntimeSettings,
-    pub(super) cancel_requested: Arc<AtomicBool>,
-    pub(super) event_emitter: Option<TransferEventEmitter>,
-}
-
-#[derive(Debug)]
-pub(super) struct ClipboardDownloadTaskInput {
-    pub(super) transfer_id: String,
-    pub(super) endpoint: SftpEndpoint,
-    pub(super) request: SftpClipboardDownloadRequest,
-    pub(super) target_local_path: PathBuf,
-    pub(super) settings: SftpRuntimeSettings,
-    pub(super) cancel_requested: Arc<AtomicBool>,
-    pub(super) copy_to_clipboard: bool,
-    pub(super) event_emitter: Option<TransferEventEmitter>,
-}
+mod types;
+pub(super) use types::*;

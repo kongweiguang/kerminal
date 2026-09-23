@@ -2,15 +2,13 @@
 //!
 //! @author kongweiguang
 
+use sha2::{Digest, Sha256};
 use std::{
     io::SeekFrom,
     path::{Path, PathBuf},
 };
 
-use russh_sftp::{
-    client::{fs::File as SftpFile, SftpSession},
-    protocol::FileType,
-};
+use russh_sftp::{client::SftpSession, protocol::FileType};
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
@@ -25,7 +23,7 @@ use super::{
     backend::{io_sftp_error, native_sftp_error, SftpRuntimeSettings},
     is_already_exists_error, is_ambiguous_sftp_failure, is_no_such_file_error,
     transfer_paths::join_remote_path,
-    CancellationReader, ProgressWriter, TransferProgress,
+    TransferProgress,
 };
 
 enum RemoteReadFallback {
@@ -35,313 +33,145 @@ enum RemoteReadFallback {
 
 mod reliable_io;
 pub(super) use reliable_io::*;
+mod download;
+mod remote_copy;
+mod upload;
+pub(in crate::services::sftp_service) use download::*;
+pub(in crate::services::sftp_service) use remote_copy::*;
+pub(in crate::services::sftp_service) use upload::*;
+pub(super) mod checkpoint;
+pub(super) use checkpoint::*;
+pub(super) type RecoveryCheckpointHolder = RecoveryCheckpoints;
 
-pub(super) async fn upload_directory(
-    sftp: &SftpSession,
-    local_path: &Path,
-    remote_path: &str,
+/// 目录每个文件独立登记可信断点，不能按文件名后缀猜测 partial 是否属于本任务。
+/// 只有 flush 确认整个有界批次后才推进断点，首字节单独探测可安全重开零确认任务。
+#[allow(clippy::too_many_arguments)]
+async fn copy_confirmed<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    mut offset: u64,
+    hasher: &mut Sha256,
+    checkpoints: &RecoveryCheckpoints,
+    key: &str,
     progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
-) -> AppResult<()> {
-    let total = calculate_local_directory_bytes(local_path).await?;
-    progress.set_total_bytes(total);
-    let Some(remote_root) =
-        prepare_remote_directory_root(sftp, remote_path, conflict_policy).await?
-    else {
-        progress.add_bytes(total);
-        return Ok(());
-    };
-    let mut stack = vec![(local_path.to_path_buf(), remote_root)];
-    while let Some((local_dir, remote_dir)) = stack.pop() {
-        progress.ensure_not_cancelled()?;
-        if let Err(error) = sftp.create_dir(remote_dir.clone()).await {
-            if !remote_create_conflict_confirmed(sftp, &remote_dir, &error, true).await {
-                return Err(native_sftp_error(error));
-            }
-        }
-        let mut entries = fs::read_dir(&local_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            progress.ensure_not_cancelled()?;
-            let metadata = entry.metadata().await?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let remote_child = join_remote_path(&remote_dir, &name);
-            if metadata.is_dir() {
-                stack.push((entry.path(), remote_child));
-            } else if metadata.is_file() {
-                upload_file(
-                    sftp,
-                    &entry.path(),
-                    &remote_child,
-                    progress,
-                    settings,
-                    conflict_policy,
-                    false,
-                )
-                .await?;
-            }
-        }
-    }
-    Ok(())
-}
-
-pub(super) async fn upload_file(
-    sftp: &SftpSession,
-    local_path: &Path,
-    remote_path: &str,
-    progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
-    set_total: bool,
-) -> AppResult<()> {
-    progress.ensure_not_cancelled()?;
-    let metadata = fs::metadata(local_path).await?;
-    if set_total {
-        progress.set_total_bytes(metadata.len());
-    }
-    let mut local_file = fs::File::open(local_path).await?;
-    let Some(mut remote_target) =
-        prepare_remote_reliable_write_target(sftp, remote_path, conflict_policy, metadata.len())
-            .await?
-    else {
-        progress.add_bytes(metadata.len());
-        return Ok(());
-    };
-    if remote_target.offset > 0 {
-        local_file
-            .seek(SeekFrom::Start(remote_target.offset))
-            .await
-            .map_err(io_sftp_error)?;
-        progress.add_bytes(remote_target.offset);
-    }
-    let first_write = write_remote_file_batches(
-        &mut remote_target.file,
-        &mut local_file,
-        progress,
-        settings,
-        settings.pipeline_depth,
-    )
-    .await;
-    if let Err(first_error) = first_write {
-        let _ = remote_target.file.shutdown().await;
-        let empty_partial_removed =
-            cleanup_empty_remote_partial(sftp, &remote_target.partial_path).await;
-        if remote_target.offset == 0 && settings.pipeline_depth > 1 && empty_partial_removed {
-            local_file
-                .seek(SeekFrom::Start(0))
-                .await
-                .map_err(io_sftp_error)?;
-            remote_target = restart_remote_reliable_write_target(
-                sftp,
-                &remote_target.final_path,
-                remote_target.partial_path,
-            )
-            .await?;
-            if let Err(retry_error) = write_remote_file_batches(
-                &mut remote_target.file,
-                &mut local_file,
-                progress,
-                settings,
-                1,
-            )
-            .await
-            {
-                let _ = remote_target.file.shutdown().await;
-                cleanup_empty_remote_partial(sftp, &remote_target.partial_path).await;
-                return Err(AppError::Sftp(format!(
-                    "远端文件写入失败（并发写与顺序重试均失败）: {}; retry: {}",
-                    native_sftp_error(first_error),
-                    native_sftp_error(retry_error)
-                )));
-            }
-        } else {
-            return Err(AppError::Sftp(format!(
-                "远端文件写入失败: {}",
-                native_sftp_error(first_error)
-            )));
-        }
-    }
-    remote_target
-        .file
-        .shutdown()
-        .await
-        .map_err(|error| AppError::Sftp(format!("远端文件关闭失败: {}", io_sftp_error(error))))?;
-    progress.mark_phase("committing", Some(remote_path.to_owned()));
-    commit_remote_reliable_write_target(
-        sftp,
-        &remote_target.final_path,
-        &remote_target.partial_path,
-        metadata.len(),
-    )
-    .await
-}
-
-async fn write_remote_file_batches(
-    remote_file: &mut SftpFile,
-    local_file: &mut fs::File,
-    progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    pipeline_depth: usize,
-) -> Result<(), russh_sftp::client::error::Error> {
-    let confirmed_batch_bytes = u64::from(settings.packet_bytes)
-        .saturating_mul(pipeline_depth as u64)
-        .max(1);
+    probe_first_write: bool,
+    first_write_failed: &mut bool,
+) -> AppResult<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut buffer = vec![0; DOWNLOAD_READ_CHUNK_BYTES];
     loop {
-        let mut batch = (&mut *local_file).take(confirmed_batch_bytes);
-        let mut reader = CancellationReader::new(&mut batch, progress.clone());
-        let confirmed_bytes = remote_file
-            .write_all_pipelined(&mut reader, pipeline_depth)
-            .await?;
-        if confirmed_bytes == 0 {
-            return Ok(());
-        }
-        progress.add_bytes(confirmed_bytes);
-        if confirmed_bytes < confirmed_batch_bytes {
-            return Ok(());
-        }
-    }
-}
-
-pub(super) async fn download_directory(
-    sftp: &SftpSession,
-    remote_path: &str,
-    local_path: &Path,
-    progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
-) -> AppResult<()> {
-    let Some(local_root) = prepare_local_directory_root(local_path, conflict_policy).await? else {
-        return Ok(());
-    };
-    let mut stack = vec![(remote_path.to_owned(), local_root)];
-    while let Some((remote_dir, local_dir)) = stack.pop() {
         progress.ensure_not_cancelled()?;
-        fs::create_dir_all(&local_dir).await?;
-        let entries = sftp
-            .read_dir(remote_dir.clone())
+        progress.note_network_wait("readResponse");
+        let limit = if probe_first_write && offset == 0 {
+            1
+        } else {
+            buffer.len()
+        };
+        let count = reader
+            .read(&mut buffer[..limit])
             .await
-            .map_err(native_sftp_error)?;
-        for entry in entries {
-            progress.ensure_not_cancelled()?;
-            let name = entry.file_name();
-            let remote_child = entry.path();
-            let local_child = local_dir.join(&name);
-            match entry.file_type() {
-                FileType::Dir => stack.push((remote_child, local_child)),
-                FileType::File | FileType::Symlink => {
-                    if let Some(size) = entry.metadata().size {
-                        progress.add_total_bytes(size);
-                    }
-                    download_file(
-                        sftp,
-                        &remote_child,
-                        &local_child,
-                        progress,
-                        settings,
-                        conflict_policy,
-                        false,
-                    )
-                    .await?;
-                }
-                FileType::Other => {}
-            }
+            .map_err(io_sftp_error)?;
+        progress.clear_network_wait();
+        if count == 0 {
+            break;
         }
+        progress.refresh_activity();
+        progress.note_network_wait("writeConfirmation");
+        if let Err(error) = writer.write_all(&buffer[..count]).await {
+            *first_write_failed = probe_first_write && offset == 0;
+            return Err(io_sftp_error(error));
+        }
+        if let Err(error) = writer.flush().await {
+            *first_write_failed = probe_first_write && offset == 0;
+            return Err(io_sftp_error(error));
+        }
+        progress.clear_network_wait();
+        hasher.update(&buffer[..count]);
+        offset += count as u64;
+        checkpoints
+            .lock()
+            .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+            .record_confirmed_batch_with_prefix(key, offset, sha256_hex_digest(hasher));
+        progress.add_bytes(count as u64);
     }
     Ok(())
 }
 
-pub(super) async fn download_file(
-    sftp: &SftpSession,
-    remote_path: &str,
-    local_path: &Path,
+/// 恢复时读取完整确认区，既校验源又校验 partial；读块只刷新活动时间，不重复累计字节。
+async fn hash_prefix<R: tokio::io::AsyncRead + Unpin>(
+    reader: &mut R,
+    mut length: u64,
     progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
-    set_total: bool,
-) -> AppResult<()> {
-    progress.ensure_not_cancelled()?;
-    if set_total {
-        if let Some(directory_path) = resolve_file_request_directory(sftp, remote_path).await {
-            return Box::pin(download_directory(
-                sftp,
-                &directory_path,
-                local_path,
-                progress,
-                settings,
-                conflict_policy,
-            ))
-            .await;
-        }
-    }
-    if let Some(parent) = local_path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    let mut remote_file = match sftp.open(remote_path).await {
-        Ok(remote_file) => remote_file,
-        Err(open_error) => {
-            let Some(fallback) = resolve_remote_read_fallback(sftp, remote_path).await else {
-                return Err(native_sftp_error(open_error));
-            };
-            match fallback {
-                RemoteReadFallback::Directory(directory_path) => {
-                    return Box::pin(download_directory(
-                        sftp,
-                        &directory_path,
-                        local_path,
-                        progress,
-                        settings,
-                        conflict_policy,
-                    ))
-                    .await;
-                }
-                RemoteReadFallback::File(file_path) => {
-                    sftp.open(file_path).await.map_err(native_sftp_error)?
-                }
-            }
-        }
-    };
-    if set_total {
-        if let Ok(metadata) = remote_file.metadata().await {
-            progress.set_total_bytes(metadata.size.unwrap_or(0));
-        }
-    }
-    let remote_size = remote_file
-        .metadata()
-        .await
-        .ok()
-        .and_then(|metadata| metadata.size)
-        .unwrap_or(0);
-    let Some(mut local_target) =
-        prepare_local_reliable_write_target(local_path, conflict_policy, remote_size).await?
-    else {
-        progress.add_bytes(remote_size);
-        return Ok(());
-    };
-    if local_target.offset > 0 {
-        remote_file
-            .seek(SeekFrom::Start(local_target.offset))
+) -> AppResult<Sha256> {
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; DOWNLOAD_READ_CHUNK_BYTES];
+    while length > 0 {
+        progress.ensure_not_cancelled()?;
+        let limit = length.min(buffer.len() as u64) as usize;
+        let count = reader
+            .read(&mut buffer[..limit])
             .await
             .map_err(io_sftp_error)?;
-        progress.add_bytes(local_target.offset);
+        if count == 0 {
+            return Err(AppError::Sftp("断点校验前缀提前结束".into()));
+        }
+        hasher.update(&buffer[..count]);
+        length -= count as u64;
+        progress.refresh_activity();
     }
-    {
-        let mut writer = ProgressWriter::new(&mut local_target.file, progress.clone());
-        stream_remote_file_to_writer(&mut remote_file, &mut writer, progress).await?;
-        writer.flush().await.map_err(io_sftp_error)?;
-    }
-    local_target.file.flush().await.map_err(io_sftp_error)?;
-    local_target.file.shutdown().await.map_err(io_sftp_error)?;
-    let final_path = local_target.final_path.clone();
-    let partial_path = local_target.partial_path.clone();
-    drop(local_target.file);
-    remote_file.shutdown().await.map_err(io_sftp_error)?;
-    progress.mark_phase(
-        "committing",
-        Some(local_path.to_string_lossy().into_owned()),
-    );
-    commit_local_reliable_write_target(&final_path, &partial_path, remote_size).await
+    Ok(hasher)
 }
 
+/// 两侧完整前缀必须与同一 ACK 摘要一致；源读指针停在续传位置。
+async fn verify_resume<R: tokio::io::AsyncRead + AsyncSeekExt + Unpin>(
+    source: &mut R,
+    sftp: &SftpSession,
+    partial: &str,
+    offset: u64,
+    checkpoints: &RecoveryCheckpoints,
+    key: &str,
+    progress: &TransferProgress,
+) -> AppResult<Sha256> {
+    progress.mark_phase("verifying", None);
+    source
+        .seek(SeekFrom::Start(0))
+        .await
+        .map_err(io_sftp_error)?;
+    let hasher = hash_prefix(source, offset, progress).await?;
+    if offset > 0 {
+        let mut target = sftp.open(partial).await.map_err(native_sftp_error)?;
+        let target_hash = hash_prefix(&mut target, offset, progress).await?;
+        verify_digest(checkpoints, key, offset, &hasher, &target_hash)?;
+    }
+    Ok(hasher)
+}
+
+/// 严格要求摘要覆盖整个确认前缀，拒绝旧的不完整或错配记录。
+fn verify_digest(
+    checkpoints: &RecoveryCheckpoints,
+    key: &str,
+    offset: u64,
+    source: &Sha256,
+    target: &Sha256,
+) -> AppResult<()> {
+    let record = checkpoints
+        .lock()
+        .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+        .snapshot(key)
+        .ok_or_else(|| AppError::Sftp("缺少可信 checkpoint".into()))?;
+    if record.source.prefix_length != offset
+        || record.source.prefix_sha256 != sha256_hex_digest(source)
+        || record.source.prefix_sha256 != sha256_hex_digest(target)
+    {
+        return Err(AppError::Sftp("断点完整前缀校验失败，保留 partial".into()));
+    }
+    Ok(())
+}
+
+/// 目录重试重建总量并沿用固定目标根目录，防止 rename 生成新的副本。
 async fn resolve_remote_read_fallback(
     sftp: &SftpSession,
     remote_path: &str,
@@ -429,184 +259,29 @@ fn normalize_remote_fallback_path(path: &str) -> String {
     normalized
 }
 
-pub(super) async fn copy_remote_directory_between_sessions(
-    source_sftp: &SftpSession,
-    source_remote_path: &str,
-    target_sftp: &SftpSession,
-    target_remote_path: &str,
+/// 每个文件独立记录可信断点，目录枚举不依赖文件名后缀判断所有权。
+/// 已提交文件在恢复任务中已计入进度；这里只计入冲突策略真正跳过的新文件。
+fn credit_skipped_or_committed(
     progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
+    key: &str,
+    source_size: u64,
+    single_file: bool,
 ) -> AppResult<()> {
-    let Some(target_root) =
-        prepare_remote_directory_root(target_sftp, target_remote_path, conflict_policy).await?
-    else {
-        return Ok(());
-    };
-    let mut stack = vec![(source_remote_path.to_owned(), target_root)];
-    while let Some((source_dir, target_dir)) = stack.pop() {
-        progress.ensure_not_cancelled()?;
-        ensure_remote_directory(target_sftp, &target_dir).await?;
-        let entries = source_sftp
-            .read_dir(source_dir.clone())
-            .await
-            .map_err(native_sftp_error)?;
-        for entry in entries {
-            progress.ensure_not_cancelled()?;
-            let name = entry.file_name();
-            let source_child = entry.path();
-            let target_child = join_remote_path(&target_dir, &name);
-            match entry.file_type() {
-                FileType::Dir => stack.push((source_child, target_child)),
-                FileType::File | FileType::Symlink => {
-                    if let Some(size) = entry.metadata().size {
-                        progress.add_total_bytes(size);
-                    }
-                    copy_remote_file_between_sessions(
-                        source_sftp,
-                        &source_child,
-                        target_sftp,
-                        &target_child,
-                        progress,
-                        settings,
-                        conflict_policy,
-                        false,
-                    )
-                    .await?;
-                }
-                FileType::Other => {}
-            }
+    let checkpoints = progress.recovery_checkpoints();
+    let state = checkpoints
+        .lock()
+        .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?;
+    let committed = state.record_committed(key);
+    let confirmed = state.confirmed_bytes();
+    drop(state);
+    if committed {
+        if single_file {
+            progress.set_confirmed_bytes(confirmed);
         }
+    } else {
+        progress.add_bytes(source_size);
     }
     Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn copy_remote_file_between_sessions(
-    source_sftp: &SftpSession,
-    source_remote_path: &str,
-    target_sftp: &SftpSession,
-    target_remote_path: &str,
-    progress: &TransferProgress,
-    settings: SftpRuntimeSettings,
-    conflict_policy: SftpTransferConflictPolicy,
-    set_total: bool,
-) -> AppResult<()> {
-    progress.ensure_not_cancelled()?;
-    if set_total {
-        if let Some(directory_path) =
-            resolve_file_request_directory(source_sftp, source_remote_path).await
-        {
-            return Box::pin(copy_remote_directory_between_sessions(
-                source_sftp,
-                &directory_path,
-                target_sftp,
-                target_remote_path,
-                progress,
-                settings,
-                conflict_policy,
-            ))
-            .await;
-        }
-    }
-    let mut source_file = match source_sftp.open(source_remote_path).await {
-        Ok(source_file) => source_file,
-        Err(open_error) => {
-            let Some(fallback) =
-                resolve_remote_read_fallback(source_sftp, source_remote_path).await
-            else {
-                return Err(native_sftp_error(open_error));
-            };
-            match fallback {
-                RemoteReadFallback::Directory(directory_path) => {
-                    return Box::pin(copy_remote_directory_between_sessions(
-                        source_sftp,
-                        &directory_path,
-                        target_sftp,
-                        target_remote_path,
-                        progress,
-                        settings,
-                        conflict_policy,
-                    ))
-                    .await;
-                }
-                RemoteReadFallback::File(file_path) => source_sftp
-                    .open(file_path)
-                    .await
-                    .map_err(native_sftp_error)?,
-            }
-        }
-    };
-    if set_total {
-        if let Ok(metadata) = source_file.metadata().await {
-            progress.set_total_bytes(metadata.size.unwrap_or(0));
-        }
-    }
-    let source_size = source_file
-        .metadata()
-        .await
-        .ok()
-        .and_then(|metadata| metadata.size)
-        .unwrap_or(0);
-    let Some(mut target) = prepare_remote_reliable_write_target(
-        target_sftp,
-        target_remote_path,
-        conflict_policy,
-        source_size,
-    )
-    .await?
-    else {
-        progress.add_bytes(source_size);
-        return Ok(());
-    };
-    if target.offset > 0 {
-        source_file
-            .seek(SeekFrom::Start(target.offset))
-            .await
-            .map_err(io_sftp_error)?;
-        progress.add_bytes(target.offset);
-    }
-    {
-        let mut writer = ProgressWriter::new(&mut target.file, progress.clone());
-        let _ = settings;
-        stream_remote_file_to_writer(&mut source_file, &mut writer, progress).await?;
-        writer.flush().await.map_err(io_sftp_error)?;
-    }
-    target.file.shutdown().await.map_err(io_sftp_error)?;
-    source_file.shutdown().await.map_err(io_sftp_error)?;
-    progress.mark_phase("committing", Some(target_remote_path.to_owned()));
-    commit_remote_reliable_write_target(
-        target_sftp,
-        &target.final_path,
-        &target.partial_path,
-        source_size,
-    )
-    .await
-}
-
-async fn stream_remote_file_to_writer<W>(
-    remote_file: &mut SftpFile,
-    writer: &mut W,
-    progress: &TransferProgress,
-) -> AppResult<u64>
-where
-    W: AsyncWrite + Unpin,
-{
-    let mut total = 0_u64;
-    let mut buffer = vec![0_u8; DOWNLOAD_READ_CHUNK_BYTES];
-    loop {
-        progress.ensure_not_cancelled()?;
-        let read = remote_file.read(&mut buffer).await.map_err(io_sftp_error)?;
-        if read == 0 {
-            break;
-        }
-        writer
-            .write_all(&buffer[..read])
-            .await
-            .map_err(io_sftp_error)?;
-        total = total.saturating_add(read as u64);
-    }
-    Ok(total)
 }
 
 async fn ensure_remote_directory(sftp: &SftpSession, remote_path: &str) -> AppResult<()> {
@@ -616,6 +291,62 @@ async fn ensure_remote_directory(sftp: &SftpSession, remote_path: &str) -> AppRe
         }
     }
     Ok(())
+}
+
+/// 目录级 rename 只选择一次实际目标，防止恢复时换号后把已完成子文件复制第二遍。
+async fn prepare_task_remote_directory_root(
+    sftp: &SftpSession,
+    local_path: &Path,
+    requested_remote_path: &str,
+    conflict_policy: SftpTransferConflictPolicy,
+    progress: &TransferProgress,
+) -> AppResult<Option<String>> {
+    let key = recovery_key(&local_path.to_string_lossy(), requested_remote_path);
+    let checkpoints = progress.recovery_checkpoints();
+    let remembered = checkpoints
+        .lock()
+        .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+        .directory(&key);
+    if let Some(root) = remembered {
+        ensure_remote_directory(sftp, &root).await?;
+        return Ok(Some(root));
+    }
+    let chosen =
+        prepare_remote_directory_root(sftp, requested_remote_path, conflict_policy).await?;
+    if let Some(root) = &chosen {
+        checkpoints
+            .lock()
+            .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+            .remember_directory(key, root.clone());
+    }
+    Ok(chosen)
+}
+
+/// 本地目录级 rename 也必须固定，避免下载重试改写到新的编号目录。
+async fn prepare_task_local_directory_root(
+    remote_path: &str,
+    requested_local_path: &Path,
+    conflict_policy: SftpTransferConflictPolicy,
+    progress: &TransferProgress,
+) -> AppResult<Option<PathBuf>> {
+    let key = recovery_key(remote_path, &requested_local_path.to_string_lossy());
+    let checkpoints = progress.recovery_checkpoints();
+    let remembered = checkpoints
+        .lock()
+        .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+        .directory(&key);
+    if let Some(root) = remembered {
+        fs::create_dir_all(&root).await?;
+        return Ok(Some(PathBuf::from(root)));
+    }
+    let chosen = prepare_local_directory_root(requested_local_path, conflict_policy).await?;
+    if let Some(root) = &chosen {
+        checkpoints
+            .lock()
+            .map_err(|_| AppError::Sftp("checkpoint 锁定失败".into()))?
+            .remember_directory(key, root.to_string_lossy().into_owned());
+    }
+    Ok(chosen)
 }
 
 async fn prepare_remote_directory_root(
@@ -684,5 +415,46 @@ pub(super) async fn prepare_local_directory_root(
                 local_path.display()
             )))
         }
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::{
+        verify_digest, RecoveryCheckpointRecord, RecoveryCheckpoints, RecoverySourceFingerprint,
+        Sha256,
+    };
+    use sha2::Digest;
+    use std::sync::{Arc, Mutex};
+
+    /// 即使大小、修改时间都不变，源或 partial 任一已确认字节变化也必须拒绝续传。
+    #[test]
+    fn full_confirmed_prefix_rejects_source_or_partial_corruption() {
+        let checkpoints: RecoveryCheckpoints =
+            Arc::new(Mutex::new(super::TransferRecoveryState::new()));
+        let mut expected = Sha256::new();
+        expected.update(b"abcd");
+        checkpoints.lock().expect("checkpoint lock").upsert(
+            "item",
+            RecoveryCheckpointRecord {
+                actual_target: "target".into(),
+                partial_path: "target.kerminal-part".into(),
+                confirmed_offset: 4,
+                source: RecoverySourceFingerprint {
+                    size: 8,
+                    mtime_seconds: Some(123),
+                    prefix_sha256: super::sha256_hex_digest(&expected),
+                    prefix_length: 4,
+                },
+                committed: false,
+            },
+        );
+        let mut changed_source = Sha256::new();
+        changed_source.update(b"abce");
+        let mut changed_partial = Sha256::new();
+        changed_partial.update(b"abcf");
+        assert!(verify_digest(&checkpoints, "item", 4, &expected, &expected).is_ok());
+        assert!(verify_digest(&checkpoints, "item", 4, &changed_source, &expected).is_err());
+        assert!(verify_digest(&checkpoints, "item", 4, &expected, &changed_partial).is_err());
     }
 }

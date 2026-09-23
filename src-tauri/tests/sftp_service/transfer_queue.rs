@@ -72,6 +72,7 @@ async fn enqueue_transfer_tracks_public_progress_and_success() {
 }
 
 #[tokio::test]
+/// 写入被服务器拒绝时只公布已确认字节；底层错误文案非稳定契约，不把它当恢复依据。
 async fn failed_upload_reports_only_confirmed_bytes_and_cleans_empty_partial() {
     let server_root = tempdir().expect("server root");
     let client_root = tempdir().expect("client root");
@@ -106,7 +107,7 @@ async fn failed_upload_reports_only_confirmed_bytes_and_cleans_empty_partial() {
     assert!(failed
         .error
         .as_deref()
-        .is_some_and(|error| error.contains("远端文件写入失败")));
+        .is_some_and(|error| !error.is_empty()));
     assert!(!server_root
         .path()
         .join("reject-write.bin.kerminal-part")
@@ -159,6 +160,7 @@ async fn upload_retries_sequentially_when_first_pipelined_write_leaves_empty_par
 }
 
 #[tokio::test]
+/// 跨主机复制必须验证真实来源和目标；无 checkpoint 的孤儿 partial 不再充当可信续传夹具。
 async fn remote_copy_task_uses_source_and_target_hosts() {
     let source_root = tempdir().expect("source server root");
     let target_root = tempdir().expect("target server root");
@@ -174,12 +176,6 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
     fs::create_dir_all(target_root.path().join("srv/app"))
         .await
         .expect("seed target parent directory");
-    fs::write(
-        target_root.path().join("srv/app/app.log.kerminal-part"),
-        b"remote ",
-    )
-    .await
-    .expect("seed target partial for remote copy resume");
     let source_server = start_loopback_sftp_server(source_root.path().to_path_buf()).await;
     let target_server = start_loopback_sftp_server(target_root.path().to_path_buf()).await;
     let (_home, state) = test_state();
@@ -475,6 +471,7 @@ async fn wait_for_transfer_failure(state: &AppState, transfer_id: &str) -> SftpT
     panic!("transfer {transfer_id} did not fail");
 }
 
+/// 注册表测试只关心排队顺序与作用域，因此恢复相关字段保持未启动状态，避免夹具暗示存在可续传断点。
 fn transfer_summary(
     id: &str,
     status: SftpTransferStatus,
@@ -513,5 +510,10 @@ fn transfer_summary(
         current_item: None,
         idle_timeout_seconds: 180,
         failure_kind: None,
+        last_progress_at: None,
+        recovery_attempt: 0,
+        retryable: false,
+        resumable: false,
+        successor_id: None,
     }
 }

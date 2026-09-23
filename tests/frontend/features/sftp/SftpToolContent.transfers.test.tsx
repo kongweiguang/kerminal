@@ -359,7 +359,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(
       screen.getByRole("group", { name: "SFTP 上传 release.tgz" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("完成")).toBeInTheDocument();
+    expect(screen.getByLabelText("完成")).toBeInTheDocument();
   });
 
   it("downloads a container file from the shared context menu", async () => {
@@ -398,7 +398,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(
       screen.getByRole("group", { name: "SFTP 下载 package.json" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("完成")).toBeInTheDocument();
+    expect(screen.getByLabelText("完成")).toBeInTheDocument();
   });
 
   it("opens a container file in the central workspace tab", async () => {

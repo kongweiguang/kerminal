@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "tauri": {
-    "commandCount": 188,
-    "signatureFingerprint": "fnv1a64:dbb38ab0d7130a7f",
-    "frontendInvokeCount": 139,
-    "frontendInvokeFingerprint": "fnv1a64:a4444ffdab30f2c7"
+    "commandCount": 189,
+    "signatureFingerprint": "fnv1a64:aa1016cfcfd6373a",
+    "frontendInvokeCount": 140,
+    "frontendInvokeFingerprint": "fnv1a64:7cdd69fb5ebeac33"
   },
   "events": [
     "kerminal://native-menu-action",
@@ -41,8 +41,8 @@
     ]
   },
   "mcp": {
-    "toolCount": 68,
-    "contractFingerprint": "fnv1a64:5b640ec2da21a29f",
+    "toolCount": 69,
+    "contractFingerprint": "fnv1a64:f75aa3c39d2e67e6",
     "additionalProperties": false,
     "deliberatelyAbsentFamilies": [
       "settings.",

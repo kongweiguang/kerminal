@@ -8,6 +8,7 @@ mod directory_cleanup;
 mod endpoint;
 mod errors;
 mod external_logging;
+mod owned_stream;
 mod settings;
 mod shell_helpers;
 
@@ -470,6 +471,7 @@ impl SftpBackend for RusshSftpBackend {
         Ok(())
     }
 
+    /// bulk 任务独占连接，监督器丢弃 future 时只关闭所属 channel，不牵连其它终端。
     async fn transfer(
         &self,
         endpoint: SftpEndpoint,
@@ -489,6 +491,7 @@ impl SftpBackend for RusshSftpBackend {
             SftpManagedSessionLane::BulkTransfer,
         )
         .await?;
+        progress.mark_phase("transferring", None);
         let result = match (request.direction, request.kind) {
             (SftpTransferDirection::Upload, SftpTransferKind::File) => {
                 upload_file(
@@ -657,21 +660,26 @@ async fn with_sftp_timeout<T>(
 }
 
 struct NativeSftpConnection {
+    _stream_owner: owned_stream::StreamOwner,
     sftp: SftpSession,
     _ssh: Option<NativeSftpSshConnection>,
     _managed_sftp: Option<ManagedSshSftpChannel>,
 }
 
+/// 大文件每次尝试建立新 SSH/SFTP 会话，恢复不会继承已经阻塞的共享 channel。
 async fn connect_native_sftp(
     endpoint: &SftpEndpoint,
     settings: SftpRuntimeSettings,
     managed_runtime: Option<&ManagedSshSessionManager>,
     managed_lane: SftpManagedSessionLane,
 ) -> AppResult<NativeSftpConnection> {
-    if let Some(connection) =
-        connect_managed_sftp(endpoint, settings, managed_runtime, managed_lane).await?
-    {
-        return Ok(connection);
+    // 大文件任务独占连接，恢复不得复用已经失去响应的共享 bulk transport。
+    if !matches!(managed_lane, SftpManagedSessionLane::BulkTransfer) {
+        if let Some(connection) =
+            connect_managed_sftp(endpoint, settings, managed_runtime, managed_lane).await?
+        {
+            return Ok(connection);
+        }
     }
 
     let connection = connect_native_ssh_chain(endpoint, settings).await?;
@@ -685,8 +693,9 @@ async fn connect_native_sftp(
         .request_subsystem(true, "sftp")
         .await
         .map_err(native_ssh_error)?;
+    let (stream_owner, stream) = owned_stream::StreamOwner::wrap(channel.into_stream());
     let sftp = SftpSession::new_with_config(
-        channel.into_stream(),
+        stream,
         NativeSftpConfig {
             max_packet_len: settings.packet_bytes,
             max_concurrent_writes: settings.pipeline_depth,
@@ -696,6 +705,7 @@ async fn connect_native_sftp(
     .await
     .map_err(native_sftp_error)?;
     Ok(NativeSftpConnection {
+        _stream_owner: stream_owner,
         sftp,
         _ssh: Some(connection),
         _managed_sftp: None,
@@ -744,6 +754,7 @@ async fn connect_managed_sftp(
         Err(error) => return Err(managed_sftp_error(error)),
     };
     let stream = channel.take_stream()?;
+    let (stream_owner, stream) = owned_stream::StreamOwner::wrap(stream);
     let sftp = match SftpSession::new_with_config(
         stream,
         NativeSftpConfig {
@@ -765,6 +776,7 @@ async fn connect_managed_sftp(
         }
     };
     Ok(Some(NativeSftpConnection {
+        _stream_owner: stream_owner,
         sftp,
         _ssh: None,
         _managed_sftp: Some(channel),

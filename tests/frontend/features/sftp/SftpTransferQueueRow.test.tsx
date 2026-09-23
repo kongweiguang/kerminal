@@ -21,6 +21,7 @@ describe("SftpTransferQueueRow", () => {
       id: "long-transfer",
       localPath: "C:/Users/example/Downloads/a-very-long-artifact-name.tar.zst",
       remotePath: "/srv/releases/a-very-long-artifact-name.tar.zst",
+      resumable: true,
       status: "failed",
       totalBytes: 1024,
     });
@@ -39,6 +40,8 @@ describe("SftpTransferQueueRow", () => {
     expect(
       screen.getByText("网络连续 3 分钟无响应"),
     ).toBeVisible();
+    expect(screen.getByText("a-very-long-artifact-name.tar.zst"))
+      .toHaveAttribute("title", "a-very-long-artifact-name.tar.zst");
     expect(
       screen.getAllByRole("button", { name: /继续传输.*a-very-long-artifact-name/ }),
     ).toHaveLength(1);
@@ -51,5 +54,86 @@ describe("SftpTransferQueueRow", () => {
       screen.getByRole("button", { name: /继续传输.*a-very-long-artifact-name/ }),
     );
     expect(onRetry).toHaveBeenCalledWith(transfer);
+  });
+
+  it("keeps terminal canceled text after a late cancel phase", () => {
+    const transfer = createSftpTransferSummary({
+      cancelRequested: true,
+      phase: "canceling",
+      status: "canceled",
+    });
+
+    render(
+      <SftpTransferQueueRow
+        onCancel={vi.fn()}
+        onRetry={vi.fn()}
+        transfer={transfer}
+      />,
+    );
+
+    expect(screen.getByLabelText("已取消")).toBeVisible();
+    expect(screen.queryByText("正在取消")).not.toBeInTheDocument();
+  });
+
+  it("shows recovery as the real lifecycle phase and keeps a compact narrow label", () => {
+    const transfer = createSftpTransferSummary({
+      phase: "recovering",
+      recoveryAttempt: 1,
+      status: "running",
+    });
+
+    render(
+      <SftpTransferQueueRow
+        onCancel={vi.fn()}
+        transfer={transfer}
+      />,
+    );
+
+    const status = screen.getByLabelText("正在恢复连接（1/1）");
+    expect(status).toHaveAttribute("title", "正在恢复连接（1/1）");
+    expect(status).toHaveTextContent("正在恢复连接（1/1）");
+  });
+
+  it("closes the old retry action when a successor task exists", async () => {
+    const transfer = createSftpTransferSummary({
+      failureKind: "idleTimeout",
+      idleTimeoutSeconds: 180,
+      status: "failed",
+      successorId: "successor-transfer",
+    });
+
+    render(
+      <SftpTransferQueueRow
+        onCancel={vi.fn()}
+        onRetry={vi.fn()}
+        transfer={transfer}
+      />,
+    );
+
+    expect(screen.getByLabelText("已重新排队")).toBeVisible();
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: /查看传输详情/ }),
+    );
+    expect(screen.getByText(/已重新排队，后继任务正在队列中执行/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /继续传输/ })).not.toBeInTheDocument();
+  });
+
+  /** 提交结果不明时把核对提示放在主行，并阻止 UI 诱导重复上传。 */
+  it("shows uncertain commit without a retry action", () => {
+    render(<SftpTransferQueueRow
+      onCancel={vi.fn()}
+      onRetry={vi.fn()}
+      transfer={createSftpTransferSummary({
+        failureKind: "commitUnknown",
+        retryable: false,
+        status: "failed",
+      })}
+    />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "提交结果未确认，请核对目标文件",
+    );
+    expect(screen.queryByRole("button", { name: /继续传输|重新传输/ }))
+      .not.toBeInTheDocument();
   });
 });

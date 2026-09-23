@@ -1,3 +1,5 @@
+/** @author kongweiguang */
+
 import { isTauri } from "@tauri-apps/api/core";
 import {
   browserCancelTransfer,
@@ -16,6 +18,7 @@ import {
   browserListTransfers,
   browserPreviewFile,
   browserPreviewListing,
+  browserRetryTransfer,
   browserReadSftpLocalFileClipboard,
   browserReadTextFile,
   browserRenameSftpPath,
@@ -42,6 +45,7 @@ import {
   tauriListSftpDirectory,
   tauriListSftpTransfers,
   tauriPreviewSftpFile,
+  tauriRetrySftpTransfer,
   tauriReadSftpLocalFileClipboard,
   tauriReadSftpTextFile,
   tauriRenameSftpPath,
@@ -231,6 +235,19 @@ export async function cancelSftpTransfer(
   return isTauri()
     ? tauriCancelSftpTransfer(request)
     : browserCancelTransfer(request);
+}
+
+/**
+ * 请求后端按原任务 ID 幂等恢复，保持实际目标和已确认断点由后端统一决定。
+ *
+ * @author kongweiguang
+ */
+export async function retrySftpTransfer(
+  request: SftpTypes.SftpTransferRetryRequest,
+): Promise<SftpTypes.SftpTransferSummary> {
+  return isTauri()
+    ? tauriRetrySftpTransfer(request)
+    : browserRetryTransfer(request);
 }
 
 export async function clearCompletedSftpTransfers(

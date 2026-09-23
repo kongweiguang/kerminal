@@ -10,8 +10,8 @@ use crate::{
         SftpLocalPathInfo, SftpManagedTransferRequest, SftpPathRequest, SftpPathStat,
         SftpPreviewRequest, SftpReadTextFileRequest, SftpReadTextFileResponse,
         SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferCancelRequest, SftpTransferRequest,
-        SftpTransferScopeRequest, SftpTransferSummary, SftpTrustHostKeyRequest,
-        SftpWriteTextFileRequest, SftpWriteTextFileResponse,
+        SftpTransferRetryRequest, SftpTransferScopeRequest, SftpTransferSummary,
+        SftpTrustHostKeyRequest, SftpWriteTextFileRequest, SftpWriteTextFileResponse,
     },
     state::AppState,
 };
@@ -273,6 +273,22 @@ pub fn sftp_cancel_transfer(
     state
         .sftp()
         .cancel_transfer_for_window(request, window)
+        .map_err(|error| error.to_string())
+}
+
+/// 继续一个可恢复的 SFTP 传输，并复用核心服务的事件链与断点幂等语义。
+///
+/// Command 只负责把 Tauri Window 和输入边界交给服务层；重试是否安全、是否已经存在
+/// 后继任务以及如何校验断点都由 SFTP 核心统一决定，避免 UI 与 MCP 各自实现一套恢复规则。
+#[tauri::command]
+pub fn sftp_retry_transfer(
+    state: State<'_, AppState>,
+    request: SftpTransferRetryRequest,
+    window: Window,
+) -> Result<SftpTransferSummary, String> {
+    state
+        .sftp()
+        .retry_transfer_for_window(state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 

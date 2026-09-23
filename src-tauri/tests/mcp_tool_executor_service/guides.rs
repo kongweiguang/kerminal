@@ -52,14 +52,22 @@ async fn mcp_runtime_snapshot_reports_external_launch_policy_without_secrets() {
         output.data["terminalExecutionPolicy"]["preferredTarget"],
         "targetBinding"
     );
+    assert!(output.data["terminalExecutionPolicy"]["externalMcpDefault"]
+        .as_str()
+        .expect("external MCP policy")
+        .contains("ssh.command"));
     assert!(output.data["terminalExecutionPolicy"]["visiblePtyFirst"]
         .as_str()
-        .expect("visible PTY policy")
-        .contains("terminal.write"));
+        .expect("visible PTY compatibility policy")
+        .contains("built-in right-panel Agent"));
     assert!(output.data["terminalExecutionPolicy"]["backgroundFallback"]
         .as_str()
         .expect("background fallback policy")
-        .contains("do not appear in the left terminal"));
+        .contains("External MCP default"));
+    assert!(output.data["terminalExecutionPolicy"]["uiTabInteraction"]
+        .as_str()
+        .expect("UI Tab policy")
+        .contains("stale"));
     let serialized = output.data.to_string();
     assert!(!serialized.contains("external-secret:"));
     assert!(!serialized.contains("correct horse"));
@@ -130,6 +138,7 @@ async fn mcp_runtime_snapshot_reports_external_launch_rejection_without_raw_args
     assert!(!serialized.contains("-pw"));
 }
 
+/// 受管 SSH 快照只覆盖浏览通道；bulk 传输独占连接须在自发现中明示。
 #[tokio::test]
 async fn mcp_capabilities_exposes_managed_ssh_runtime_guidance() {
     let (_home, state) = test_state();
@@ -159,6 +168,10 @@ async fn mcp_capabilities_exposes_managed_ssh_runtime_guidance() {
         &output.data["managedSshRuntime"]["appliesToFamilies"],
         "sftp"
     ));
+    assert!(output.data["managedSshRuntime"]["sharedSessionRule"]
+        .as_str()
+        .expect("SFTP connection ownership guidance")
+        .contains("dedicated SSH/SFTP connection"));
     assert!(value_array_contains_str(
         &output.data["managedSshRuntime"]["appliesToFamilies"],
         "portForward"
@@ -292,7 +305,8 @@ async fn mcp_tool_help_query_external_launch_discovers_runtime_and_config_withou
     assert!(!serialized.contains("external-secret:"));
 }
 
-/// 验证 SFTP 指南固定为端点确认、入队、按 id 跟踪和按需取消，且示例使用 canonical 端点。
+/// 验证 SFTP 指南固定为端点确认、入队、按 id 跟踪、按需恢复与取消；
+/// bulk 连接和提交未知故障的排障说明必须与真实资源归属一致。
 #[tokio::test]
 async fn mcp_operation_guide_sftp_uses_canonical_transfer_sequence() {
     let (_home, state) = test_state();
@@ -336,9 +350,19 @@ async fn mcp_operation_guide_sftp_uses_canonical_transfer_sequence() {
     assert_eq!(workflow[2]["toolId"], "sftp.transfer.list");
     assert_eq!(workflow[2]["requires"], json!(["transferId"]));
     assert_eq!(workflow[3]["phase"], "resume");
-    assert_eq!(workflow[3]["toolId"], "sftp.transfer.enqueue");
+    assert_eq!(workflow[3]["toolId"], "sftp.transfer.retry");
+    assert_eq!(workflow[3]["requires"], json!(["transferId"]));
     assert_eq!(workflow[4]["phase"], "cancel");
     assert_eq!(workflow[4]["toolId"], "sftp.transfer.cancel");
+    assert!(output.data["managedSshRuntime"]["sharedSessionRule"]
+        .as_str()
+        .expect("bulk connection guidance")
+        .contains("separate SSH/SFTP connection"));
+    assert!(output.data["fallbacks"]
+        .as_array()
+        .expect("SFTP fallback hints")
+        .iter()
+        .any(|hint| hint.as_str().unwrap_or_default().contains("commitUnknown")));
 }
 
 #[tokio::test]
@@ -519,7 +543,7 @@ async fn mcp_tool_call_log_includes_redacted_runtime_audit() {
     assert!(!log.contains("kerminal://host/"));
 }
 
-/// 锁定 capabilities 对 global scope、targetBinding 首选目标和可见 PTY 的公共契约。
+/// 锁定 capabilities 对外部后台默认、显式 UI Tab 和内置 targetBinding 的公共契约。
 #[tokio::test]
 async fn mcp_capabilities_exposes_agent_scope_contract() {
     let (_home, state) = test_state();
@@ -539,7 +563,7 @@ async fn mcp_capabilities_exposes_agent_scope_contract() {
     assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
     assert!(value_array_contains_str(
         &output.data["recommendedFirstCalls"],
-        "terminal.list"
+        "ssh.command"
     ));
     assert!(output.data["sessionWorkspace"]["scopeRule"]
         .as_str()
@@ -553,27 +577,36 @@ async fn mcp_capabilities_exposes_agent_scope_contract() {
         .as_str()
         .expect("terminal write rule");
     assert!(write_rule.contains("sessionId"));
-    assert!(write_rule.contains("terminal.reconnect"));
+    assert!(write_rule.contains("terminal.create"));
+    assert!(!write_rule.contains("terminal.reconnect"));
     assert!(!write_rule.contains("bindingGeneration"));
     assert!(!write_rule.contains("rebind"));
     let execution_policy = &output.data["sessionWorkspace"]["terminalExecutionPolicy"];
     assert_eq!(execution_policy["scope"], "global");
     assert_eq!(execution_policy["preferredTarget"], "targetBinding");
+    assert!(execution_policy["externalMcpDefault"]
+        .as_str()
+        .expect("external MCP policy")
+        .contains("ssh.command"));
     assert!(execution_policy["visiblePtyFirst"]
         .as_str()
-        .expect("visible PTY policy")
-        .contains("terminal.write"));
+        .expect("visible PTY compatibility policy")
+        .contains("built-in right-panel Agent"));
     assert!(execution_policy["backgroundFallback"]
         .as_str()
         .expect("background fallback policy")
-        .contains("do not appear in the left terminal"));
+        .contains("External MCP default"));
     assert!(execution_policy["headlessFallback"]
         .as_str()
         .expect("headless fallback policy")
         .contains("terminal.create"));
+    assert!(execution_policy["uiTabInteraction"]
+        .as_str()
+        .expect("UI Tab policy")
+        .contains("stale"));
 }
 
-/// 锁定 session-terminal 指南始终按 scope 成员操作，并把断线恢复放在同一流程内。
+/// 锁定内置右栏 Agent 的 session-terminal 指南仍按 scope 成员操作，并把断线恢复放在同一流程内。
 #[tokio::test]
 async fn mcp_operation_guide_session_terminal_uses_scope_members() {
     let (_home, state) = test_state();
@@ -615,15 +648,15 @@ async fn mcp_operation_guide_session_terminal_uses_scope_members() {
         "nextHints": output.data["nextHints"].clone()
     })
     .to_string();
-    assert!(guidance_only.contains("scope-member"));
+    assert!(guidance_only.contains("global scope"));
     assert!(guidance_only.contains("sessionId"));
     assert!(!guidance_only.contains("bindingGeneration"));
     assert!(!guidance_only.contains("rebind"));
 }
 
-/// 锁定 ssh-command 指南优先复用 targetBinding 可见 PTY，并明确后台 fallback 不回显到左侧。
+/// 锁定 ssh-command 指南默认使用后台 SSH，并明确显式 UI Tab 才能进入可见分支。
 #[tokio::test]
-async fn mcp_operation_guide_ssh_command_prefers_visible_target_binding() {
+async fn mcp_operation_guide_ssh_command_defaults_to_background_tools() {
     let (_home, state) = test_state();
     let tools = state.mcp_tool_catalog().list_tools();
 
@@ -640,10 +673,16 @@ async fn mcp_operation_guide_ssh_command_prefers_visible_target_binding() {
 
     assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
     assert_eq!(output.data["intent"], "ssh-command");
-    assert_eq!(output.data["safetyBoundaries"]["backgroundSsh"],
-        "ssh.command and ssh.command_on_resolved_host are non-interactive background fallbacks; their structured stdout/stderr do not appear in the left terminal. Prefer terminal.create for a headless PTY when no live PTY exists, and use SSH background tools only when the user explicitly requests structured background output or PTY execution is unsuitable.");
+    assert!(output.data["safetyBoundaries"]["backgroundSsh"]
+        .as_str()
+        .expect("background safety")
+        .contains("external MCP default"));
     let workflow = output.data["workflow"].as_array().expect("workflow");
-    assert_eq!(workflow[0]["toolId"], "kerminal.agent.target_context");
+    assert_eq!(workflow[0]["toolId"], "ssh.command");
+    assert_eq!(workflow[1]["toolId"], "ssh.command_on_resolved_host");
+    for step in &workflow[..2] {
+        assert!(step.to_string().contains("Choose exactly one"));
+    }
     assert!(workflow
         .iter()
         .any(|step| step["toolId"] == "terminal.snapshot"));
@@ -657,11 +696,64 @@ async fn mcp_operation_guide_ssh_command_prefers_visible_target_binding() {
     assert!(background["safety"]
         .as_str()
         .expect("background safety")
-        .contains("do not present them as PTY output"));
+        .contains("do not display"));
+    let ui_tab = workflow
+        .iter()
+        .find(|step| step["phase"] == "ui-tab")
+        .expect("explicit UI Tab branch");
+    assert!(ui_tab["safety"]
+        .as_str()
+        .expect("UI Tab safety")
+        .contains("stale"));
+    assert!(output.data["fallbacks"]
+        .as_array()
+        .expect("fallbacks")
+        .iter()
+        .any(|fallback| fallback
+            .as_str()
+            .unwrap_or_default()
+            .contains("background failures never trigger")));
     assert!(value_array_contains_str(
         &output.data["availableReferencedToolIds"],
         "terminal.write"
     ));
+}
+
+/// 锁定 terminal 意图使用 headless PTY 的显式 sessionId 生命周期，不隐式打开可见 Tab。
+#[tokio::test]
+async fn mcp_operation_guide_terminal_uses_headless_session_lifecycle() {
+    let (_home, state) = test_state();
+    let tools = state.mcp_tool_catalog().list_tools();
+
+    let output = state
+        .mcp_tool_executor()
+        .execute(
+            mcp_context(&state, state.ssh_commands()),
+            &tools,
+            "kerminal.operation_guide",
+            json!({ "intent": "terminal" }),
+        )
+        .await
+        .expect("terminal operation guide");
+
+    assert_eq!(output.status, McpToolExecutionStatus::Succeeded);
+    let workflow = output.data["workflow"].as_array().expect("workflow");
+    assert_eq!(workflow[0]["toolId"], "terminal.create");
+    assert_eq!(workflow[1]["toolId"], "terminal.snapshot");
+    assert_eq!(workflow[2]["toolId"], "terminal.write");
+    assert_eq!(workflow[3]["toolId"], "terminal.close");
+    assert!(workflow[0]["safety"]
+        .as_str()
+        .expect("create safety")
+        .contains("returned sessionId"));
+    assert!(output.data["fallbacks"]
+        .as_array()
+        .expect("fallbacks")
+        .iter()
+        .any(|fallback| fallback
+            .as_str()
+            .unwrap_or_default()
+            .contains("headless failure")));
 }
 
 /// 工具帮助的 scope 查询必须把 runtime scope 入口和 terminal membership 边界一起返回。

@@ -4,11 +4,16 @@
  * @author kongweiguang
  */
 
-import { useCallback, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   cancelSftpTransfer,
   clearCompletedSftpTransfers,
-  enqueueSftpTransfer,
+  retrySftpTransfer,
   type SftpTransferSummary,
 } from "../../lib/sftpApi";
 import { resolveSftpTransferRetry } from "./sftpTransferRetryPolicy";
@@ -25,6 +30,10 @@ type UseSftpManagedTransferQueueArgs = {
   viewScope?: string | null;
 };
 
+/**
+ * 请求级门闩阻止同一任务重复取消或重试；取消失败只撤销乐观标记，
+ * 不得把等待网络期间收到的字节进度或终态回滚到旧快照。
+ */
 export function useSftpManagedTransferQueue({
   onCancelSuccess,
   onClearSuccess,
@@ -35,8 +44,29 @@ export function useSftpManagedTransferQueue({
   setTransfers,
   viewScope,
 }: UseSftpManagedTransferQueueArgs) {
+  const cancelingTransferIdsRef = useRef(new Set<string>());
+  const retryingTransferIdsRef = useRef(new Set<string>());
   const cancelTransfer = useCallback(
     async (transferId: string) => {
+      if (cancelingTransferIdsRef.current.has(transferId)) {
+        return;
+      }
+      cancelingTransferIdsRef.current.add(transferId);
+      let previousTransfer: SftpTransferSummary | undefined;
+      setTransfers((current) =>
+        current.map((transfer) => {
+          if (transfer.id !== transferId || (transfer.status !== "queued" && transfer.status !== "running")) {
+            return transfer;
+          }
+          previousTransfer = transfer;
+          return {
+            ...transfer,
+            cancelRequested: true,
+            phase: "canceling",
+            speedBytesPerSecond: 0,
+          };
+        }),
+      );
       try {
         const summary = await cancelSftpTransfer(
           viewScope === undefined ? { transferId } : { transferId, viewScope },
@@ -45,7 +75,29 @@ export function useSftpManagedTransferQueue({
         onCancelSuccess?.(summary);
         void refreshTransfers?.();
       } catch (error) {
+        // React 可能在异步异常到达后才执行乐观 setter，因而不能只依赖闭包捕获的旧快照。
+        // 仅回滚仍处于 canceling 的同一任务，绝不覆盖期间已经落地的终态。
+        setTransfers((current) =>
+          current.map((transfer) => {
+            if (
+              transfer.id !== transferId ||
+              (transfer.status !== "queued" && transfer.status !== "running") ||
+              !transfer.cancelRequested ||
+              transfer.phase !== "canceling"
+            ) {
+              return transfer;
+            }
+            return {
+              ...transfer,
+              cancelRequested: false,
+              phase: previousTransfer?.phase,
+              speedBytesPerSecond: undefined,
+            };
+          }),
+        );
         onError?.(error);
+      } finally {
+        cancelingTransferIdsRef.current.delete(transferId);
       }
     },
     [onCancelSuccess, onError, refreshTransfers, setTransfers, viewScope],
@@ -72,18 +124,26 @@ export function useSftpManagedTransferQueue({
         onRetryUnavailable?.(decision.statusMessage);
         return;
       }
+      if (retryingTransferIdsRef.current.has(transfer.id)) {
+        return;
+      }
+      retryingTransferIdsRef.current.add(transfer.id);
 
       try {
-        const summary = await enqueueSftpTransfer(
+        const summary = await retrySftpTransfer(
           viewScope === undefined
-            ? decision.request
-            : { ...decision.request, viewScope },
+            ? { transferId: decision.transferId }
+            : { transferId: decision.transferId, viewScope },
         );
-        setTransfers((current) => mergeTransferSnapshot(current, summary));
+        setTransfers((current) => mergeTransferSnapshot(current.map((item) =>
+          item.id === transfer.id ? { ...item, successorId: summary.id } : item,
+        ), summary));
         onRetrySuccess?.(summary);
         void refreshTransfers?.();
       } catch (error) {
         onError?.(error);
+      } finally {
+        retryingTransferIdsRef.current.delete(transfer.id);
       }
     },
     [

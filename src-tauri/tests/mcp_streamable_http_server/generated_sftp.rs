@@ -73,6 +73,15 @@ async fn generated_configs_expose_canonical_sftp_transfer_contract() {
         enqueue_tool.input_schema["properties"]["idleTimeoutSeconds"]["maximum"],
         3600
     );
+    let retry_tool = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "sftp.transfer.retry")
+        .expect("sftp transfer retry tool through mcp endpoint");
+    assert_eq!(
+        retry_tool.input_schema["required"],
+        serde_json::json!(["transferId"])
+    );
 
     let local_local = client
         .peer()
@@ -141,6 +150,18 @@ async fn generated_configs_expose_canonical_sftp_transfer_contract() {
         .await
         .expect("enqueue remote copy through MCP endpoint");
     assert_eq!(remote_copy.is_error, Some(false));
+    assert!(
+        remote_copy
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/nextHints"))
+            .and_then(Value::as_array)
+            .is_some_and(|hints| hints.iter().any(|hint| {
+                hint.as_str()
+                    .is_some_and(|hint| hint.contains("sftp.transfer.list"))
+            })),
+        "successful MCP calls must preserve nextHints"
+    );
     let transfer_id = remote_copy
         .structured_content
         .as_ref()

@@ -12,10 +12,12 @@ import {
   canCancelTransfer,
   canClearFinishedTransfers,
   formatTransferBytes,
+  isTransferWaiting,
   isFinishedTransfer,
   mergeTransferSnapshot,
   replaceTransferQueue,
   sortTransfers,
+  transferCompactStatusLabel,
   transferPathSummary,
   transferPercentLabel,
   transferProgressPercent,
@@ -112,6 +114,78 @@ describe("sftpTransferModel", () => {
     expect(merged[1]).toBe(replacement);
   });
 
+  it("does not let a late active snapshot regress a terminal result", () => {
+    const completed = transfer({
+      id: "same",
+      status: "canceled",
+      cancelRequested: true,
+      phase: "canceling",
+      updatedAt: 10,
+    });
+    const lateRunning = transfer({
+      id: "same",
+      status: "running",
+      cancelRequested: false,
+      phase: "uploading",
+      updatedAt: 11,
+    });
+
+    expect(mergeTransferSnapshot([completed], lateRunning)).toEqual([
+      completed,
+    ]);
+  });
+
+  it("keeps an optimistic cancel state until the backend reports a terminal result", () => {
+    const canceling = transfer({
+      id: "same",
+      status: "running",
+      cancelRequested: true,
+      phase: "canceling",
+      updatedAt: 20,
+    });
+    const lateQueued = transfer({
+      id: "same",
+      status: "queued",
+      cancelRequested: false,
+      updatedAt: 21,
+    });
+
+    expect(mergeTransferSnapshot([canceling], lateQueued)).toEqual([
+      canceling,
+    ]);
+    expect(
+      mergeTransferSnapshot(
+        [canceling],
+        transfer({
+          id: "same",
+          status: "canceled",
+          cancelRequested: true,
+          updatedAt: 22,
+        }),
+      )[0].status,
+    ).toBe("canceled");
+  });
+
+  it("applies the same guard when replacing a polling list", () => {
+    const canceling = transfer({
+      id: "same",
+      status: "running",
+      cancelRequested: true,
+      phase: "canceling",
+      updatedAt: 20,
+    });
+    const lateList = transfer({
+      id: "same",
+      status: "running",
+      cancelRequested: false,
+      updatedAt: 21,
+    });
+
+    expect(replaceTransferQueue([lateList], [canceling])).toEqual([
+      canceling,
+    ]);
+  });
+
   it("sorts replacement queue results without mutating the backend result", () => {
     const running = transfer({
       createdAt: 1,
@@ -199,6 +273,30 @@ describe("sftpTransferModel", () => {
         }),
       ),
     ).toBe("1.5 KB / 3.0 KB");
+  });
+
+  /** 窄面板的短文案也必须区分网络等待与排队，避免用户误判是否该取消。 */
+  it("projects stale progress as waiting without keeping a stale speed", () => {
+    const now = 1_700_000_000_000;
+    const waiting = transfer({
+      lastProgressAt: (now - 6_000) / 1_000,
+      phase: "uploading",
+      speedBytesPerSecond: 64 * 1024,
+      status: "running",
+    });
+
+    expect(isTransferWaiting(waiting, now)).toBe(true);
+    expect(transferStatusLabel(waiting.status, "waiting")).toBe("等待响应");
+    expect(transferCompactStatusLabel(waiting.status, "waiting")).toBe("待响应");
+    expect(transferStatusLabel(waiting.status, "recovering")).toBe(
+      "正在恢复连接（1/1）",
+    );
+    expect(transferStatusLabel(waiting.status, "canceling", true)).toBe("正在取消");
+    expect(
+      transferStatusLabel("canceled", "canceling", true),
+    ).toBe("已取消");
+    expect(transferStatusLabel("running", "connecting")).toBe("连接中");
+    expect(transferStatusLabel("running", "verifying")).toBe("校验断点");
   });
 
   it("prefers structured source and target endpoints for cross-host tasks", () => {
@@ -298,6 +396,7 @@ describe("sftpTransferModel", () => {
   it("allows cancel only for queued or running transfers without a pending cancel request", () => {
     expect(canCancelTransfer(transfer({ status: "queued" }))).toBe(true);
     expect(canCancelTransfer(transfer({ status: "running" }))).toBe(true);
+    expect(canCancelTransfer(transfer({ cancelable: false, status: "running" }))).toBe(false);
     expect(
       canCancelTransfer(
         transfer({ cancelRequested: true, status: "queued" }),

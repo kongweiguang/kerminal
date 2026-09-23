@@ -81,6 +81,7 @@ const defaultListenToUpdates: SftpTransferUpdateListener = async (onUpdate) => {
   );
 };
 
+/** 后台列表是任务集合权威来源，单项快照则按状态合并以抵御迟到事件。 */
 export function useSftpTransferQueueSync({
   active,
   documentVisible = defaultDocumentVisible,
@@ -112,15 +113,12 @@ export function useSftpTransferQueueSync({
     }
 
     try {
-      setTransfers(
-        replaceTransferQueue(
-          sanitizeSftpTransferSummaries(
-            await listSftpTransfers(
-              viewScope === undefined ? undefined : { viewScope },
-            ),
-          ),
+      const nextTransfers = sanitizeSftpTransferSummaries(
+        await listSftpTransfers(
+          viewScope === undefined ? undefined : { viewScope },
         ),
       );
+      setTransfers((current) => replaceTransferQueue(nextTransfers, current));
       setQueueError(null);
     } catch (error) {
       setQueueError(buildSftpTransferQueueError(error));
@@ -144,7 +142,7 @@ export function useSftpTransferQueueSync({
           ),
         );
         if (!disposed) {
-          setTransfers(replaceTransferQueue(nextTransfers));
+          setTransfers((current) => replaceTransferQueue(nextTransfers, current));
           setQueueError(null);
         }
       } catch (error) {

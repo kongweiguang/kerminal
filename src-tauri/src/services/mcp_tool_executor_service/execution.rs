@@ -123,6 +123,9 @@ pub(super) async fn execute_tool(
             execute_sftp_transfer_list_with_arguments(context.sftp, arguments)
         }
         ToolId::SftpTransferCancel => execute_sftp_transfer_cancel(context.sftp, arguments),
+        ToolId::SftpTransferRetry => {
+            execute_sftp_transfer_retry(context.sftp, context.paths, arguments)
+        }
         ToolId::SftpTransferClearCompleted => execute_sftp_transfer_clear_completed(context.sftp),
         ToolId::ContainerList => {
             execute_container_list(

@@ -9,7 +9,7 @@ import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 import { resolveSftpTransferRetry } from "../../../../src/features/sftp/sftpTransferRetryPolicy";
 
 describe("resolveSftpTransferRetry", () => {
-  it("rebuilds a managed upload or download request from a failed transfer", () => {
+  it("returns only the source task id for a failed transfer", () => {
     const decision = resolveSftpTransferRetry(
       transferSummary({
         conflictPolicy: "rename",
@@ -23,23 +23,30 @@ describe("resolveSftpTransferRetry", () => {
     if (!decision.canRetry) {
       throw new Error("expected retryable transfer");
     }
-    expect(decision.request).toEqual({
-      conflictPolicy: "rename",
-      direction: "upload",
-      hostId: "host-left",
-      kind: "file",
-      localPath: "C:/downloads/app.log",
-      remotePath: "/srv/app.log",
-      viewScope: "sftp-workbench:tab-a",
-    });
-    expect(decision.request).not.toHaveProperty("resume");
-    expect(decision.request).not.toHaveProperty("partialPath");
+    expect(decision.transferId).toBe("transfer-1");
+    expect(decision.actionLabel).toBe("重新传输");
     expect(decision.statusMessage).toBe(
-      "已重新加入传输队列；将优先尝试断点续传。",
+      "已请求重新传输；该任务没有可用断点。",
     );
   });
 
-  it("allows canceled transfers to be retried through the same request shape", () => {
+  it("only promises continuation when the backend confirms a resumable checkpoint", () => {
+    const decision = resolveSftpTransferRetry(
+      transferSummary({
+        conflictPolicy: "overwrite",
+        resumable: true,
+        status: "failed",
+      }),
+    );
+
+    expect(decision).toMatchObject({
+      actionLabel: "继续传输",
+      canRetry: true,
+      transferId: "transfer-1",
+    });
+  });
+
+  it("allows canceled transfers to be retried by id", () => {
     const decision = resolveSftpTransferRetry(
       transferSummary({
         conflictPolicy: "overwrite",
@@ -51,14 +58,35 @@ describe("resolveSftpTransferRetry", () => {
     if (!decision.canRetry) {
       throw new Error("expected retryable canceled transfer");
     }
-    expect(decision.request).toEqual({
-      conflictPolicy: "overwrite",
-      direction: "download",
-      hostId: "host-left",
-      kind: "file",
-      localPath: "C:/downloads/app.log",
-      remotePath: "/srv/app.log",
-      viewScope: null,
+    expect(decision.transferId).toBe("transfer-1");
+    expect(decision.actionLabel).toBe("重新传输");
+  });
+
+  it("closes the old retry entry after a successor has been created", () => {
+    expect(
+      resolveSftpTransferRetry(
+        transferSummary({
+          status: "failed",
+          successorId: "transfer-successor",
+        }),
+      ),
+    ).toMatchObject({
+      canRetry: false,
+      reason: "successorExists",
+      statusMessage: "该任务已重新排队，请跟踪后继任务。",
+    });
+  });
+
+  /** 回执不明时正式文件可能已提交，旧 retryable 标志也不得重新写入。 */
+  it("never retries an uncertain commit", () => {
+    expect(resolveSftpTransferRetry(transferSummary({
+      failureKind: "commitUnknown",
+      retryable: true,
+      resumable: true,
+      status: "failed",
+    }))).toMatchObject({
+      canRetry: false,
+      reason: "commitUnknown",
     });
   });
 

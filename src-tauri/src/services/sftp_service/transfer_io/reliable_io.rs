@@ -1,4 +1,5 @@
 //! 可靠传输的 partial、resume、冲突与提交语义。
+//! @author kongweiguang
 
 use std::{
     io::SeekFrom,
@@ -9,7 +10,20 @@ use russh_sftp::{
     client::{fs::File as SftpFile, SftpSession},
     protocol::OpenFlags,
 };
-use tokio::{fs, io::AsyncSeekExt};
+use sha2::{Digest, Sha256};
+use tokio::{
+    fs,
+    io::{AsyncReadExt, AsyncSeekExt},
+};
+
+use super::checkpoint::*;
+
+mod local;
+mod recovery;
+mod remote;
+pub(in crate::services::sftp_service) use local::*;
+pub(in crate::services::sftp_service) use recovery::*;
+pub(in crate::services::sftp_service) use remote::*;
 
 use crate::{
     error::{AppError, AppResult},
@@ -147,331 +161,28 @@ async fn remote_path_exists(sftp: &SftpSession, remote_path: &str) -> AppResult<
     }
 }
 
-pub(in crate::services::sftp_service) async fn prepare_remote_reliable_write_target(
+/// 为真实源文件准备远端 partial；没有同一任务的可信 checkpoint 时拒绝未知 partial。
+pub(in crate::services::sftp_service) async fn prepare_remote_reliable_write_target_for_source(
     sftp: &SftpSession,
     remote_path: &str,
     conflict_policy: SftpTransferConflictPolicy,
-    source_bytes: u64,
+    source: &RecoverySourceFingerprint,
+    checkpoints: Option<&RecoveryCheckpoints>,
+    checkpoint_key: &str,
 ) -> AppResult<Option<PreparedRemoteReliableWriteTarget>> {
-    match conflict_policy {
-        SftpTransferConflictPolicy::Overwrite => {
-            prepare_selected_remote_reliable_write_target(
-                sftp,
-                remote_path,
-                conflict_policy,
-                remote_path_exists(sftp, remote_path).await?,
-                source_bytes,
-            )
-            .await
-        }
-        SftpTransferConflictPolicy::Skip if remote_path_exists(sftp, remote_path).await? => {
-            Ok(None)
-        }
-        SftpTransferConflictPolicy::Skip => {
-            prepare_selected_remote_reliable_write_target(
-                sftp,
-                remote_path,
-                conflict_policy,
-                false,
-                source_bytes,
-            )
-            .await
-        }
-        SftpTransferConflictPolicy::Rename => {
-            for candidate in remote_conflict_candidates(remote_path).take(1000) {
-                if remote_path_exists(sftp, &candidate).await? {
-                    continue;
-                }
-                return prepare_selected_remote_reliable_write_target(
-                    sftp,
-                    &candidate,
-                    conflict_policy,
-                    false,
-                    source_bytes,
-                )
-                .await;
-            }
-            Err(AppError::Sftp(format!(
-                "无法为远程目标生成不冲突的文件名: {remote_path}"
-            )))
-        }
-    }
+    prepare_remote_target_with_checkpoint(
+        sftp,
+        remote_path,
+        conflict_policy,
+        source.size,
+        Some(source),
+        checkpoints,
+        checkpoint_key,
+    )
+    .await
 }
 
-async fn prepare_selected_remote_reliable_write_target(
-    sftp: &SftpSession,
-    final_path: &str,
-    conflict_policy: SftpTransferConflictPolicy,
-    final_exists: bool,
-    source_bytes: u64,
-) -> AppResult<Option<PreparedRemoteReliableWriteTarget>> {
-    let partial_path = reliable_remote_partial_path(final_path);
-    let partial_bytes = remote_partial_bytes(sftp, &partial_path).await?;
-    match plan_reliable_write(conflict_policy, final_exists, source_bytes, partial_bytes) {
-        ReliableWriteDecision::SkipExistingFinal => Ok(None),
-        ReliableWriteDecision::ChooseRenamedFinal => Err(AppError::Sftp(format!(
-            "无法为远程目标生成不冲突的文件名: {final_path}"
-        ))),
-        ReliableWriteDecision::Fresh | ReliableWriteDecision::RestartPartial => {
-            open_remote_reliable_partial_target(sftp, final_path, partial_path, 0, true)
-                .await
-                .map(Some)
-        }
-        ReliableWriteDecision::Resume { offset } => {
-            open_remote_reliable_partial_target(sftp, final_path, partial_path, offset, false)
-                .await
-                .map(Some)
-        }
-        ReliableWriteDecision::CommitExistingPartial => {
-            open_remote_reliable_partial_target(sftp, final_path, partial_path, source_bytes, false)
-                .await
-                .map(Some)
-        }
-    }
-}
-
-async fn remote_partial_bytes(sftp: &SftpSession, partial_path: &str) -> AppResult<Option<u64>> {
-    match sftp.metadata(partial_path.to_owned()).await {
-        Ok(metadata) => Ok(metadata.size),
-        Err(error) if is_no_such_file_error(&error) => Ok(None),
-        Err(error) => Err(native_sftp_error(error)),
-    }
-}
-
-async fn open_remote_reliable_partial_target(
-    sftp: &SftpSession,
-    final_path: &str,
-    partial_path: String,
-    offset: u64,
-    truncate: bool,
-) -> AppResult<PreparedRemoteReliableWriteTarget> {
-    let flags = if truncate {
-        OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE
-    } else {
-        OpenFlags::CREATE | OpenFlags::WRITE
-    };
-    let mut file = sftp
-        .open_with_flags(partial_path.clone(), flags)
-        .await
-        .map_err(native_sftp_error)?;
-    if offset > 0 {
-        file.seek(SeekFrom::Start(offset))
-            .await
-            .map_err(io_sftp_error)?;
-    }
-    Ok(PreparedRemoteReliableWriteTarget {
-        final_path: final_path.to_owned(),
-        partial_path,
-        offset,
-        file,
-    })
-}
-
-pub(in crate::services::sftp_service) async fn commit_remote_reliable_write_target(
-    sftp: &SftpSession,
-    final_path: &str,
-    partial_path: &str,
-    expected_bytes: u64,
-) -> AppResult<()> {
-    let actual_bytes = sftp
-        .metadata(partial_path.to_owned())
-        .await
-        .map_err(native_sftp_error)?
-        .size
-        .unwrap_or(0);
-    match confirm_reliable_write_size(expected_bytes, actual_bytes) {
-        ReliableSizeConfirmation::Verified => {}
-        ReliableSizeConfirmation::Mismatch { expected, actual } => {
-            return Err(AppError::Sftp(format!(
-                "可靠上传 size 确认失败: expected {expected} bytes, got {actual} bytes"
-            )));
-        }
-    }
-
-    match sftp
-        .rename(partial_path.to_owned(), final_path.to_owned())
-        .await
-    {
-        Ok(()) => Ok(()),
-        Err(error) if remote_create_conflict_confirmed(sftp, final_path, &error, false).await => {
-            sftp.remove_file(final_path.to_owned())
-                .await
-                .map_err(native_sftp_error)?;
-            sftp.rename(partial_path.to_owned(), final_path.to_owned())
-                .await
-                .map_err(native_sftp_error)
-        }
-        Err(error) => Err(native_sftp_error(error)),
-    }
-}
-
-/// 写请求在服务端确认前失败时清理空 partial；已有内容的 partial 保留用于续传。
-pub(in crate::services::sftp_service) async fn cleanup_empty_remote_partial(
-    sftp: &SftpSession,
-    partial_path: &str,
-) -> bool {
-    let is_empty = sftp
-        .metadata(partial_path.to_owned())
-        .await
-        .ok()
-        .and_then(|metadata| metadata.size)
-        == Some(0);
-    if is_empty {
-        return sftp.remove_file(partial_path.to_owned()).await.is_ok();
-    }
-    false
-}
-
-/// 首次并发写未落下任何字节时，以截断方式重新打开同一个 partial 供顺序重试。
-pub(in crate::services::sftp_service) async fn restart_remote_reliable_write_target(
-    sftp: &SftpSession,
-    final_path: &str,
-    partial_path: String,
-) -> AppResult<PreparedRemoteReliableWriteTarget> {
-    open_remote_reliable_partial_target(sftp, final_path, partial_path, 0, true).await
-}
-
-pub(in crate::services::sftp_service) async fn prepare_local_reliable_write_target(
-    local_path: &Path,
-    conflict_policy: SftpTransferConflictPolicy,
-    source_bytes: u64,
-) -> AppResult<Option<PreparedLocalReliableWriteTarget>> {
-    if let Some(parent) = local_path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    match conflict_policy {
-        SftpTransferConflictPolicy::Overwrite => {
-            prepare_selected_local_reliable_write_target(
-                local_path,
-                conflict_policy,
-                fs::try_exists(local_path).await?,
-                source_bytes,
-            )
-            .await
-        }
-        SftpTransferConflictPolicy::Skip if fs::try_exists(local_path).await? => Ok(None),
-        SftpTransferConflictPolicy::Skip => {
-            prepare_selected_local_reliable_write_target(
-                local_path,
-                conflict_policy,
-                false,
-                source_bytes,
-            )
-            .await
-        }
-        SftpTransferConflictPolicy::Rename => {
-            for candidate in local_conflict_candidates(local_path).take(1000) {
-                if fs::try_exists(&candidate).await? {
-                    continue;
-                }
-                return prepare_selected_local_reliable_write_target(
-                    &candidate,
-                    conflict_policy,
-                    false,
-                    source_bytes,
-                )
-                .await;
-            }
-            Err(AppError::Sftp(format!(
-                "无法为本地目标生成不冲突的文件名: {}",
-                local_path.display()
-            )))
-        }
-    }
-}
-
-async fn prepare_selected_local_reliable_write_target(
-    final_path: &Path,
-    conflict_policy: SftpTransferConflictPolicy,
-    final_exists: bool,
-    source_bytes: u64,
-) -> AppResult<Option<PreparedLocalReliableWriteTarget>> {
-    let partial_path = reliable_local_partial_path(final_path);
-    let partial_bytes = local_partial_bytes(&partial_path).await?;
-    match plan_reliable_write(conflict_policy, final_exists, source_bytes, partial_bytes) {
-        ReliableWriteDecision::SkipExistingFinal => Ok(None),
-        ReliableWriteDecision::ChooseRenamedFinal => Err(AppError::Sftp(format!(
-            "无法为本地目标生成不冲突的文件名: {}",
-            final_path.display()
-        ))),
-        ReliableWriteDecision::Fresh | ReliableWriteDecision::RestartPartial => {
-            open_local_reliable_partial_target(final_path, partial_path, 0, true)
-                .await
-                .map(Some)
-        }
-        ReliableWriteDecision::Resume { offset } => {
-            open_local_reliable_partial_target(final_path, partial_path, offset, false)
-                .await
-                .map(Some)
-        }
-        ReliableWriteDecision::CommitExistingPartial => {
-            open_local_reliable_partial_target(final_path, partial_path, source_bytes, false)
-                .await
-                .map(Some)
-        }
-    }
-}
-
-async fn local_partial_bytes(partial_path: &Path) -> AppResult<Option<u64>> {
-    match fs::metadata(partial_path).await {
-        Ok(metadata) => Ok(Some(metadata.len())),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.into()),
-    }
-}
-
-async fn open_local_reliable_partial_target(
-    final_path: &Path,
-    partial_path: PathBuf,
-    offset: u64,
-    truncate: bool,
-) -> AppResult<PreparedLocalReliableWriteTarget> {
-    if let Some(parent) = partial_path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(truncate)
-        .open(&partial_path)
-        .await?;
-    if offset > 0 {
-        file.seek(SeekFrom::Start(offset)).await?;
-    }
-    Ok(PreparedLocalReliableWriteTarget {
-        final_path: final_path.to_path_buf(),
-        partial_path,
-        offset,
-        file,
-    })
-}
-
-pub(in crate::services::sftp_service) async fn commit_local_reliable_write_target(
-    final_path: &Path,
-    partial_path: &Path,
-    expected_bytes: u64,
-) -> AppResult<()> {
-    let actual_bytes = fs::metadata(partial_path).await?.len();
-    match confirm_reliable_write_size(expected_bytes, actual_bytes) {
-        ReliableSizeConfirmation::Verified => {}
-        ReliableSizeConfirmation::Mismatch { expected, actual } => {
-            return Err(AppError::Sftp(format!(
-                "可靠下载 size 确认失败: expected {expected} bytes, got {actual} bytes"
-            )));
-        }
-    }
-
-    match fs::rename(partial_path, final_path).await {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            fs::remove_file(final_path).await?;
-            fs::rename(partial_path, final_path).await?;
-            Ok(())
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
+/// 恢复优先锁定首次实际目标；正式文件若已完整提交则用 SHA 对账，避免回执丢失后重复上传。
 pub(in crate::services::sftp_service) async fn open_local_write_target(
     local_path: &Path,
     conflict_policy: SftpTransferConflictPolicy,
@@ -581,4 +292,288 @@ pub(in crate::services::sftp_service) async fn calculate_local_directory_bytes(
         }
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        commit_local_reliable_write_target, empty_prefix_digest, hex_digest,
+        prepare_local_reliable_write_target_for_source, safe_first_write_retry_checkpoint,
+    };
+    use crate::{
+        models::sftp::SftpTransferConflictPolicy,
+        services::sftp_service::transfer_io::checkpoint::{
+            new_recovery_checkpoints, RecoveryCheckpointRecord, RecoverySourceFingerprint,
+        },
+    };
+    use sha2::{Digest, Sha256};
+
+    /// 首写兼容重试只接受零确认的同一文件；非空断点和已提交项绝不能重新截断。
+    #[test]
+    fn first_write_retry_requires_trusted_zero_checkpoint() {
+        let source = RecoverySourceFingerprint {
+            size: 8,
+            mtime_seconds: Some(123),
+            prefix_sha256: empty_prefix_digest(),
+            prefix_length: 0,
+        };
+        let mut record = RecoveryCheckpointRecord {
+            actual_target: "/target".into(),
+            partial_path: "/target.kerminal-part".into(),
+            confirmed_offset: 0,
+            source: source.clone(),
+            committed: false,
+        };
+        assert!(safe_first_write_retry_checkpoint(
+            &record,
+            "/target",
+            "/target.kerminal-part",
+            &source,
+        ));
+        record.confirmed_offset = 1;
+        assert!(!safe_first_write_retry_checkpoint(
+            &record,
+            "/target",
+            "/target.kerminal-part",
+            &source,
+        ));
+        record.confirmed_offset = 0;
+        record.committed = true;
+        assert!(!safe_first_write_retry_checkpoint(
+            &record,
+            "/target",
+            "/target.kerminal-part",
+            &source,
+        ));
+        record.committed = false;
+        assert!(!safe_first_write_retry_checkpoint(
+            &record,
+            "/other",
+            "/target.kerminal-part",
+            &source,
+        ));
+    }
+
+    /// 已存在正式文件也只能经同目录原子替换，不能先删除旧文件。
+    #[tokio::test]
+    async fn local_commit_replaces_existing_final_atomically() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let final_path = directory.path().join("target.txt");
+        let partial_path = directory.path().join("target.txt.kerminal-part");
+        tokio::fs::write(&final_path, b"old")
+            .await
+            .expect("old final");
+        tokio::fs::write(&partial_path, b"new contents")
+            .await
+            .expect("partial");
+
+        commit_local_reliable_write_target(&final_path, &partial_path, 12)
+            .await
+            .expect("commit");
+
+        assert_eq!(
+            tokio::fs::read(&final_path).await.expect("final"),
+            b"new contents"
+        );
+        assert!(!tokio::fs::try_exists(&partial_path)
+            .await
+            .expect("partial state"));
+    }
+
+    /// 大小不符时保持两个文件原样，方便用户重试或检查故障残留。
+    #[tokio::test]
+    async fn local_commit_mismatch_preserves_final_and_partial() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let final_path = directory.path().join("target.txt");
+        let partial_path = directory.path().join("target.txt.kerminal-part");
+        tokio::fs::write(&final_path, b"old")
+            .await
+            .expect("old final");
+        tokio::fs::write(&partial_path, b"short")
+            .await
+            .expect("partial");
+
+        assert!(
+            commit_local_reliable_write_target(&final_path, &partial_path, 9)
+                .await
+                .is_err()
+        );
+
+        assert_eq!(tokio::fs::read(&final_path).await.expect("final"), b"old");
+        assert_eq!(
+            tokio::fs::read(&partial_path).await.expect("partial"),
+            b"short"
+        );
+    }
+
+    /// 提交回执未知时完整哈希可识别已替换的正式文件，重试不会再打开写句柄。
+    #[tokio::test]
+    async fn retry_reconciles_already_committed_local_file() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let final_path = directory.path().join("target.txt");
+        let contents = b"already committed";
+        tokio::fs::write(&final_path, contents)
+            .await
+            .expect("final");
+        let source = RecoverySourceFingerprint {
+            size: contents.len() as u64,
+            mtime_seconds: Some(123),
+            prefix_sha256: hex_digest(&Sha256::digest(contents)),
+            prefix_length: contents.len() as u64,
+        };
+        let checkpoints = new_recovery_checkpoints();
+        checkpoints.lock().expect("checkpoint lock").upsert(
+            "item",
+            RecoveryCheckpointRecord {
+                actual_target: final_path.to_string_lossy().into_owned(),
+                partial_path: directory
+                    .path()
+                    .join("target.txt.kerminal-part")
+                    .to_string_lossy()
+                    .into_owned(),
+                confirmed_offset: contents.len() as u64,
+                source: source.clone(),
+                committed: false,
+            },
+        );
+
+        let prepared = prepare_local_reliable_write_target_for_source(
+            &final_path,
+            SftpTransferConflictPolicy::Overwrite,
+            &source,
+            Some(&checkpoints),
+            "item",
+        )
+        .await
+        .expect("reconcile");
+        assert!(prepared.is_none());
+        assert!(checkpoints
+            .lock()
+            .expect("checkpoint lock")
+            .record_committed("item"));
+        assert_eq!(tokio::fs::read(&final_path).await.expect("final"), contents);
+    }
+
+    /// 新连接先裁掉未确认的乱序尾部，再从可信偏移续写；原正式文件一直不受影响。
+    #[tokio::test]
+    async fn retry_truncates_unconfirmed_partial_tail() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let final_path = directory.path().join("target.txt");
+        let partial_path = directory.path().join("target.txt.kerminal-part");
+        tokio::fs::write(&final_path, b"original")
+            .await
+            .expect("final");
+        tokio::fs::write(&partial_path, b"abcdXX")
+            .await
+            .expect("partial");
+        let source = RecoverySourceFingerprint {
+            size: 8,
+            mtime_seconds: Some(123),
+            prefix_sha256: hex_digest(&Sha256::digest(b"abcd")),
+            prefix_length: 4,
+        };
+        let checkpoints = new_recovery_checkpoints();
+        checkpoints.lock().expect("checkpoint lock").upsert(
+            "item",
+            RecoveryCheckpointRecord {
+                actual_target: final_path.to_string_lossy().into_owned(),
+                partial_path: partial_path.to_string_lossy().into_owned(),
+                confirmed_offset: 4,
+                source: source.clone(),
+                committed: false,
+            },
+        );
+
+        let target = prepare_local_reliable_write_target_for_source(
+            &final_path,
+            SftpTransferConflictPolicy::Overwrite,
+            &source,
+            Some(&checkpoints),
+            "item",
+        )
+        .await
+        .expect("resume")
+        .expect("target");
+        assert_eq!(target.offset, 4);
+        drop(target);
+        assert_eq!(
+            tokio::fs::read(&partial_path).await.expect("partial"),
+            b"abcd"
+        );
+        assert_eq!(
+            tokio::fs::read(&final_path).await.expect("final"),
+            b"original"
+        );
+        use tokio::io::AsyncWriteExt;
+        let mut resumed = tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(&partial_path)
+            .await
+            .expect("reopen");
+        resumed.write_all(b"efgh").await.expect("remaining bytes");
+        resumed.sync_all().await.expect("sync");
+        drop(resumed);
+        commit_local_reliable_write_target(&final_path, &partial_path, 8)
+            .await
+            .expect("commit");
+        let final_bytes = tokio::fs::read(&final_path).await.expect("final");
+        assert_eq!(final_bytes, b"abcdefgh");
+        assert_eq!(
+            hex_digest(&Sha256::digest(&final_bytes)),
+            hex_digest(&Sha256::digest(b"abcdefgh"))
+        );
+    }
+
+    /// 修改时间变化说明源身份不再可信；重试拒绝并保留正式文件与 partial。
+    #[tokio::test]
+    async fn retry_rejects_changed_source_without_touching_files() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let final_path = directory.path().join("target.txt");
+        let partial_path = directory.path().join("target.txt.kerminal-part");
+        tokio::fs::write(&final_path, b"original")
+            .await
+            .expect("final");
+        tokio::fs::write(&partial_path, b"abcdXX")
+            .await
+            .expect("partial");
+        let source = RecoverySourceFingerprint {
+            size: 8,
+            mtime_seconds: Some(123),
+            prefix_sha256: hex_digest(&Sha256::digest(b"abcd")),
+            prefix_length: 4,
+        };
+        let checkpoints = new_recovery_checkpoints();
+        checkpoints.lock().expect("checkpoint lock").upsert(
+            "item",
+            RecoveryCheckpointRecord {
+                actual_target: final_path.to_string_lossy().into_owned(),
+                partial_path: partial_path.to_string_lossy().into_owned(),
+                confirmed_offset: 4,
+                source: source.clone(),
+                committed: false,
+            },
+        );
+        let changed_source = RecoverySourceFingerprint {
+            mtime_seconds: Some(124),
+            ..source
+        };
+
+        assert!(prepare_local_reliable_write_target_for_source(
+            &final_path,
+            SftpTransferConflictPolicy::Overwrite,
+            &changed_source,
+            Some(&checkpoints),
+            "item",
+        )
+        .await
+        .is_err());
+        assert_eq!(
+            tokio::fs::read(&partial_path).await.expect("partial"),
+            b"abcdXX"
+        );
+        assert_eq!(
+            tokio::fs::read(&final_path).await.expect("final"),
+            b"original"
+        );
+    }
 }

@@ -206,6 +206,11 @@ export interface SftpTransferCancelRequest {
   viewScope?: string | null;
 }
 
+export interface SftpTransferRetryRequest {
+  transferId: string;
+  viewScope?: string | null;
+}
+
 export interface SftpTransferSummary {
   id: string;
   hostId: string;
@@ -221,6 +226,8 @@ export interface SftpTransferSummary {
   totalBytes?: number | null;
   error?: string | null;
   cancelRequested: boolean;
+  /** 前端直传容器任务没有后台取消通道；缺失时沿用普通 SFTP 可取消语义。 */
+  cancelable?: boolean;
   createdAt: number;
   updatedAt: number;
   operation: SftpTransferOperation;
@@ -231,7 +238,17 @@ export interface SftpTransferSummary {
   currentItem?: string | null;
   /** 实际采用的保护值；旧版缓存任务可暂时缺失。 */
   idleTimeoutSeconds?: number;
-  failureKind?: "idleTimeout" | "other" | null;
+  failureKind?: "idleTimeout" | "commitUnknown" | "other" | null;
+  /** 最近一次获得远端确认的时间，兼容旧任务时允许缺失。 */
+  lastProgressAt?: number | null;
+  /** 已执行的自动恢复次数；手动重试由后端生成新的任务快照。 */
+  recoveryAttempt?: number;
+  /** 后端是否允许用户继续该任务。 */
+  retryable?: boolean;
+  /** 任务是否保留了可安全续传的断点。 */
+  resumable?: boolean;
+  /** 手动重试已创建的后继任务；存在时旧任务不再显示重复恢复入口。 */
+  successorId?: string | null;
 }
 
 export interface SftpTrustHostKeyRequest {
